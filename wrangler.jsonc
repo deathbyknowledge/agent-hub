@@ -1,0 +1,54 @@
+{
+  "compatibility_date": "2025-03-14",
+  "compatibility_flags": ["nodejs_compat"],
+  // "assets": {
+  //   "not_found_handling": "single-page-application",
+  //   "run_worker_first": ["/api/*", "/agencies", "/agency/*"]
+  // },
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "HubAgent",
+        "name": "HUB_AGENT"
+      },
+      {
+        "class_name": "Agency",
+        "name": "AGENCY"
+      },
+      // {
+      //   "class_name": "Sandbox",
+      //   "name": "SANDBOX"
+      // }
+    ]
+  },
+  "kv_namespaces": [
+    {
+      "binding": "AGENCY_REGISTRY",
+      "id": "deep-soc-demo-registry"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FS",
+      "name": "agent-files"
+    }
+  ],
+  // "containers": [
+  //   {
+  //     "class_name": "Sandbox",
+  //     "image": "./Dockerfile",
+  //     "instance_type": "lite",
+  //     // Increase for multiple concurrent code reviews
+  //     "max_instances": 5
+  //   }
+  // ],
+  "main": "src/index.ts",
+  "migrations": [
+    {
+      // "new_sqlite_classes": ["HubAgent", "Agency", "Sandbox"],
+      "new_sqlite_classes": ["HubAgent", "Agency"],
+      "tag": "v1"
+    }
+  ],
+  "name": "deep-soc-demo"
+}
