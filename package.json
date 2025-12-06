@@ -1,0 +1,22 @@
+{
+  "name": "agent-hub",
+  "description": "A serverless agentic runtime",
+  "keywords": [
+    "cloudflare",
+    "agents",
+    "ai",
+    "llm",
+    "durable objects"
+  ],
+  "type": "module",
+  "version": "0.0.1",
+  "license": "MIT",
+  "bin": {
+    "agents": "dist/cli.js"
+  },
+  "author": "Steve James <sjames@cloudflare.com>",
+  "dependencies": {
+    "agents": "^0.2.30"
+  },
+  "scripts": {}
+}
