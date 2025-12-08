@@ -1,17 +1,14 @@
 import type { AgentMiddleware, ToolCall, Todo } from "../types";
 import {
-  WRITE_TODOS_SYSTEM_PROMPT,
   FILESYSTEM_SYSTEM_PROMPT,
   TASK_SYSTEM_PROMPT,
-  TASK_TOOL_DESCRIPTION,
-  WRITE_TODOS_TOOL_DESCRIPTION,
   WRITE_FILE_TOOL_DESCRIPTION,
   EDIT_FILE_TOOL_DESCRIPTION,
   LIST_FILES_TOOL_DESCRIPTION,
-  READ_FILE_TOOL_DESCRIPTION
+  READ_FILE_TOOL_DESCRIPTION,
+  TASK_TOOL_DESCRIPTION
 } from "./prompts";
 import {
-  WriteTodosParams,
   ListFilesParams,
   ReadFileParams,
   WriteFileParams,
@@ -28,68 +25,6 @@ export function defineMiddleware<TConfig>(
 ): AgentMiddleware<TConfig> {
   return mw as AgentMiddleware<TConfig>;
 }
-
-/* -------------------- Planning: write_todos -------------------- */
-const write_todos = tool({
-  name: "write_todos",
-  description: WRITE_TODOS_TOOL_DESCRIPTION,
-  inputSchema: WriteTodosParams,
-  execute: async (p, ctx) => {
-    const sql = ctx.agent.store.sql;
-    const clean = (p.todos ?? []).map((t) => ({
-      content: String(t.content ?? "").slice(0, 2000),
-      status:
-        t.status === "in_progress" || t.status === "completed"
-          ? t.status
-          : ("pending" as const)
-    }));
-    sql.exec("DELETE FROM todos");
-    let pos = 0;
-    for (const td of clean) {
-      sql.exec(
-        "INSERT INTO todos (content, status, pos, updated_at) VALUES (?, ?, ?, ?)",
-        td.content,
-        td.status,
-        pos++,
-        Date.now()
-      );
-    }
-    return `Updated todo list (${clean.length} items).`;
-  }
-});
-
-export const planning: AgentMiddleware = {
-  name: "planning",
-  async onInit(ctx) {
-    ctx.agent.store.sql.exec(`
-CREATE TABLE IF NOT EXISTS todos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  content TEXT NOT NULL,
-  status TEXT NOT NULL CHECK(status IN ('pending','in_progress','completed')),
-  pos INTEGER NOT NULL DEFAULT 0,
-  updated_at INTEGER NOT NULL
-);
-`);
-  },
-  state: (ctx) => {
-    const rows = ctx.agent.store.sql.exec(
-      "SELECT content, status FROM todos ORDER BY pos ASC, id ASC"
-    );
-    const todos: Todo[] = [];
-    for (const r of rows) {
-      todos.push({
-        content: String(r.content ?? ""),
-        status: String(r.status) as Todo["status"]
-      });
-    }
-    return { todos };
-  },
-  async beforeModel(ctx, plan) {
-    plan.addSystemPrompt(WRITE_TODOS_SYSTEM_PROMPT);
-    ctx.registerTool(write_todos);
-  },
-  tags: ["planning"]
-};
 
 /* -------------------- Filesystem: ls/read/write/edit -------------------- */
 

@@ -5,21 +5,6 @@
 import { z } from "zod";
 
 // ============================================================
-// Planning
-// ============================================================
-
-export const TodoSchema = z.object({
-  content: z.string().describe("Task text"),
-  status: z
-    .enum(["pending", "in_progress", "completed"])
-    .describe("Current task state")
-});
-
-export const WriteTodosParams = z.object({
-  todos: z.array(TodoSchema).describe("Full replacement list of todos")
-});
-
-// ============================================================
 // Filesystem
 // ============================================================
 

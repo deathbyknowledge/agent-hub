@@ -16,8 +16,7 @@
   },
   "author": "Steve James <sjames@cloudflare.com>",
   "dependencies": {
-    "agents": "^0.2.30",
-    "alchemy": "^0.80.1"
+    "agents": "^0.2.30"
   },
   "scripts": {
     "dev": "wrangler dev"

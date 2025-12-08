@@ -8,7 +8,6 @@ import { HubAgent } from "./agent";
 import { Agency } from "./agent/agency";
 import { AgentEventType } from "./events";
 import {
-  planning,
   filesystem,
   subagents,
   sandbox,
@@ -148,8 +147,7 @@ export class AgentHub<TConfig = Record<string, unknown>> {
   constructor(private options: AgentHubOptions) {}
 
   defaults() {
-    return this.use(planning, ["default"])
-      .use(filesystem, ["default"])
+    return this.use(filesystem, ["default"])
       .use(subagents, ["default"])
       .use(sandbox, ["sandbox"]);
   }
