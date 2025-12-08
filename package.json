@@ -19,7 +19,8 @@
     "agents": "^0.2.30"
   },
   "scripts": {
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "tsc": "npx tsc --noEmit",
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20251205.0",

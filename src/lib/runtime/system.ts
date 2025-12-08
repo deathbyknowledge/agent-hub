@@ -7,12 +7,7 @@ import { getAgentByName } from "agents";
 import { HubAgent } from "./agent";
 import { Agency } from "./agent/agency";
 import { AgentEventType } from "./events";
-import {
-  filesystem,
-  subagents,
-  sandbox,
-  getToolMeta
-} from "./middleware";
+import { getToolMeta } from "./middleware";
 import { makeOpenAI, type Provider } from "./providers";
 import type {
   ToolHandler,
@@ -145,12 +140,6 @@ export class AgentHub<TConfig = Record<string, unknown>> {
   // private defaultMiddlewares: AgentMiddleware[] = [];
 
   constructor(private options: AgentHubOptions) {}
-
-  defaults() {
-    return this.use(filesystem, ["default"])
-      .use(subagents, ["default"])
-      .use(sandbox, ["sandbox"]);
-  }
 
   addTool(handler: ToolHandler, tags?: string[]): AgentHub<TConfig> {
     const toolName = getToolMeta(handler)?.name;

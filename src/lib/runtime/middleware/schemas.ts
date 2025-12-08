@@ -8,55 +8,6 @@ import { z } from "zod";
 // Filesystem
 // ============================================================
 
-export const ListFilesParams = z.object({
-  path: z
-    .string()
-    .optional()
-    .describe(
-      "Directory to list. Relative paths resolve to home. Use /shared for shared files, /agents/{id} for other agents. Default: home directory"
-    )
-});
-
-export const ReadFileParams = z.object({
-  path: z
-    .string()
-    .describe(
-      "File path. Relative paths resolve to home. Use /shared/... for shared files, /agents/{id}/... for other agents"
-    ),
-  offset: z.number().int().min(0).optional().describe("Line offset (0-based)"),
-  limit: z
-    .number()
-    .int()
-    .min(1)
-    .optional()
-    .describe("Max number of lines to read")
-});
-
-export const WriteFileParams = z.object({
-  path: z
-    .string()
-    .describe(
-      "File path. Relative paths write to home. Use /shared/... for shared files. Cannot write to other agents' homes."
-    ),
-  content: z.string().describe("File contents")
-});
-
-export const EditFileParams = z.object({
-  path: z
-    .string()
-    .describe(
-      "File path. Relative paths edit in home. Use /shared/... for shared files. Cannot edit other agents' files."
-    ),
-  oldString: z
-    .string()
-    .describe("Exact string to match (must be unique unless replaceAll=true)"),
-  newString: z.string().describe("Replacement string (can be empty)"),
-  replaceAll: z
-    .boolean()
-    .optional()
-    .describe("Replace every occurrence instead of enforcing uniqueness")
-});
-
 // ============================================================
 // Subagents
 // ============================================================
