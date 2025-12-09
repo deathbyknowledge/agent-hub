@@ -5,3 +5,4 @@ dist/
 *.swp
 .dev.vars
 .alchemy
+*_generated.ts

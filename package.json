@@ -11,19 +11,25 @@
   "type": "module",
   "version": "0.0.1",
   "license": "MIT",
-  "bin": {
-    "agents": "dist/cli.js"
-  },
   "author": "Steve James <sjames@cloudflare.com>",
-  "dependencies": {
-    "agents": "^0.2.30"
-  },
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "tsc": "npx tsc --noEmit"
   },
+  "dependencies": {
+    "agents": "^0.2.30",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.0.0",
     "@cloudflare/workers-types": "^4.20251205.0",
-    "@types/node": "^24.10.1"
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.4.1"
   }
 }

@@ -1,10 +1,10 @@
 {
   "compatibility_date": "2025-03-14",
   "compatibility_flags": ["nodejs_compat"],
-  // "assets": {
-  //   "not_found_handling": "single-page-application",
-  //   "run_worker_first": ["/api/*", "/agencies", "/agency/*"]
-  // },
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/agencies", "/agency/*"]
+  },
   "durable_objects": {
     "bindings": [
       {
@@ -29,8 +29,7 @@
   ],
   "r2_buckets": [
     {
-      "binding": "FS",
-      "name": "agent-files"
+      "binding": "FS"
     }
   ],
   // "containers": [
@@ -42,7 +41,7 @@
   //     "max_instances": 5
   //   }
   // ],
-  "main": "src/index.ts",
+  "main": "src/_generated.ts",
   "migrations": [
     {
       // "new_sqlite_classes": ["HubAgent", "Agency", "Sandbox"],
