@@ -463,7 +463,7 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
   const cancel = useCallback(async () => {
     const agentClient = agentClientRef.current;
     if (!agentClient) return;
-    await agentClient.cancel();
+    await agentClient.action("cancel");
     await fetchState();
   }, [fetchState]);
 
@@ -472,11 +472,7 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     async (toolCallIds: string[], approved: boolean) => {
       const agentClient = agentClientRef.current;
       if (!agentClient) return;
-      // Cast to any since ApproveBody type may vary
-      await agentClient.approve({
-        toolCallIds,
-        approved,
-      } as Parameters<typeof agentClient.approve>[0]);
+      await agentClient.action("approve", { toolCallIds, approved });
       await fetchState();
     },
     [fetchState]

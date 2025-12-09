@@ -23,7 +23,7 @@ import type {
   ScheduleRun,
   CreateScheduleRequest,
   AgentScheduleType
-} from "../client";
+} from "@client";
 
 interface SettingsViewProps {
   agencyId: string | null;

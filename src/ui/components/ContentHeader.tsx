@@ -6,7 +6,7 @@ export type TabId = "chat" | "trace" | "files" | "todos";
 interface Tab {
   id: TabId;
   label: string;
-  icon: JSX.Element;
+  icon: React.ReactNode;
 }
 
 const TABS: Tab[] = [

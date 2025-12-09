@@ -4,7 +4,6 @@ import {
   CaretRight,
   CaretDown,
   Check,
-  Warning,
   Clock,
   Wrench,
   Robot,
@@ -13,7 +12,7 @@ import {
   XCircle,
   Brain,
   ArrowRight,
-  ArrowLeft
+  ArrowLeft,
 } from "./Icons";
 
 // ============================================================================
@@ -52,28 +51,28 @@ const FilterContext = createContext<Set<EventFilter>>(
 
 const FILTER_CONFIG: Record<
   EventFilter,
-  { label: string; icon: JSX.Element; events: string[] }
+  { label: string; icon: React.ReactNode; events: string[] }
 > = {
   model: {
     label: "Model",
     icon: <Brain size={12} />,
-    events: ["model.started"]
+    events: ["model.started"],
   },
   tool: {
     label: "Tools",
     icon: <Wrench size={12} />,
-    events: ["tool.output", "tool.error"]
+    events: ["tool.output", "tool.error"],
   },
   status: {
     label: "Status",
     icon: <Check size={12} />,
-    events: ["run.paused", "run.resumed", "agent.completed", "agent.error"]
+    events: ["run.paused", "run.resumed", "agent.completed", "agent.error"],
   },
   tick: {
     label: "Ticks",
     icon: <Play size={12} />,
-    events: ["run.tick"]
-  }
+    events: ["run.tick"],
+  },
 };
 
 // ============================================================================
@@ -83,7 +82,7 @@ const FILTER_CONFIG: Record<
 const EVENT_CONFIG: Record<
   string,
   {
-    icon: JSX.Element;
+    icon: React.ReactNode;
     color: string;
     bg: string;
     dotColor: string;
@@ -95,71 +94,71 @@ const EVENT_CONFIG: Record<
     color: "text-neutral-500",
     bg: "bg-neutral-100 dark:bg-neutral-800",
     dotColor: "bg-neutral-400",
-    label: "Tick"
+    label: "Tick",
   },
   "model.started": {
     icon: <Brain size={12} />,
     color: "text-emerald-600",
     bg: "bg-emerald-50 dark:bg-emerald-900/30",
     dotColor: "bg-emerald-500",
-    label: "Model"
+    label: "Model",
   },
   "tool.output": {
     icon: <Wrench size={12} />,
     color: "text-violet-600",
     bg: "bg-violet-50 dark:bg-violet-900/30",
     dotColor: "bg-violet-500",
-    label: "Tool"
+    label: "Tool",
   },
   "tool.error": {
     icon: <XCircle size={12} />,
     color: "text-red-600",
     bg: "bg-red-50 dark:bg-red-900/30",
     dotColor: "bg-red-500",
-    label: "Tool Error"
+    label: "Tool Error",
   },
   "run.paused": {
     icon: <Pause size={12} />,
     color: "text-yellow-600",
     bg: "bg-yellow-50 dark:bg-yellow-900/30",
     dotColor: "bg-yellow-500",
-    label: "Paused"
+    label: "Paused",
   },
   "run.resumed": {
     icon: <Play size={12} />,
     color: "text-blue-600",
     bg: "bg-blue-50 dark:bg-blue-900/30",
     dotColor: "bg-blue-500",
-    label: "Resumed"
+    label: "Resumed",
   },
   "agent.completed": {
     icon: <Check size={12} />,
     color: "text-green-600",
     bg: "bg-green-50 dark:bg-green-900/30",
     dotColor: "bg-green-500",
-    label: "Done"
+    label: "Done",
   },
   "agent.error": {
     icon: <XCircle size={12} />,
     color: "text-red-600",
     bg: "bg-red-50 dark:bg-red-900/30",
     dotColor: "bg-red-500",
-    label: "Error"
+    label: "Error",
   },
   "subagent.spawned": {
     icon: <ArrowRight size={12} />,
     color: "text-orange-600",
     bg: "bg-orange-50 dark:bg-orange-900/30",
     dotColor: "bg-orange-500",
-    label: "Spawn"
+    label: "Spawn",
   },
   "subagent.completed": {
     icon: <ArrowLeft size={12} />,
     color: "text-orange-600",
     bg: "bg-orange-50 dark:bg-orange-900/30",
     dotColor: "bg-orange-500",
-    label: "Returned"
-  }
+    label: "Returned",
+  },
 };
 
 const DEFAULT_EVENT_CONFIG = {
@@ -167,7 +166,7 @@ const DEFAULT_EVENT_CONFIG = {
   color: "text-neutral-500",
   bg: "bg-neutral-100 dark:bg-neutral-800",
   dotColor: "bg-neutral-400",
-  label: "Event"
+  label: "Event",
 };
 
 // ============================================================================
@@ -200,7 +199,7 @@ function formatTime(ts: string): string {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false
+    hour12: false,
   });
 }
 
@@ -258,7 +257,7 @@ function InlineAgentCard({
   depth,
   onEventClick,
   eventsByThread,
-  threadTypes
+  threadTypes,
 }: {
   threadId: string;
   agentType: string;
@@ -277,7 +276,7 @@ function InlineAgentCard({
     running: "border-l-blue-400",
     paused: "border-l-yellow-400",
     done: "border-l-green-400",
-    error: "border-l-red-400"
+    error: "border-l-red-400",
   };
 
   const statusBadge: Record<AgentStatus, string> = {
@@ -285,7 +284,7 @@ function InlineAgentCard({
     paused:
       "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300",
     done: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
-    error: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300"
+    error: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
   };
 
   // Build timeline with inline children
@@ -312,7 +311,7 @@ function InlineAgentCard({
           pendingChildren.push({
             childId,
             agentType: childType,
-            events: childEvents
+            events: childEvents,
           });
         }
       } else if (event.type !== "subagent.completed") {
@@ -327,7 +326,7 @@ function InlineAgentCard({
               type: "child",
               childId: child.childId,
               agentType: child.agentType,
-              events: child.events
+              events: child.events,
             });
           }
           pendingChildren.length = 0;
@@ -341,7 +340,7 @@ function InlineAgentCard({
         type: "child",
         childId: child.childId,
         agentType: child.agentType,
-        events: child.events
+        events: child.events,
       });
     }
 
@@ -497,7 +496,7 @@ function InlineAgentCard({
 function FilterButton({
   filter,
   enabled,
-  onToggle
+  onToggle,
 }: {
   filter: EventFilter;
   enabled: boolean;
@@ -527,7 +526,7 @@ function FilterButton({
 export function TraceView({
   events,
   threads = [],
-  onEventClick
+  onEventClick,
 }: TraceViewProps) {
   const [enabledFilters, setEnabledFilters] = useState<Set<EventFilter>>(
     new Set(["model", "tool", "status"])
@@ -617,7 +616,7 @@ export function TraceView({
         agentType: threadTypes.get(threadId) || "Agent",
         status,
         events: threadEvents,
-        duration
+        duration,
       };
     });
 
@@ -646,7 +645,7 @@ export function TraceView({
       rootAgents,
       eventsByThread,
       threadTypes,
-      stats: { totalAgents, totalEvents, completed, errors }
+      stats: { totalAgents, totalEvents, completed, errors },
     };
   }, [events, threads]);
 

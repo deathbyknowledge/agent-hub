@@ -22,7 +22,7 @@ interface TodosViewProps {
 
 const STATUS_CONFIG: Record<
   TodoStatus,
-  { icon: JSX.Element; label: string; color: string }
+  { icon: React.ReactNode; label: string; color: string }
 > = {
   pending: {
     icon: <Clock size={14} />,
