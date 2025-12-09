@@ -59,7 +59,7 @@ const blueprint: AgentBlueprint = {
   description:
     "Expert security analyst. Conducts deep-dive research on traffic and security events for a given Cloudflare zone, you must always provide the zone tag to the subagent. Give focused queries on specific topics - for multiple topics, call multiple agents in parallel using the task tool.",
   prompt: ANOMALYTICS_SUBAGENT_PROMPT,
-  capabilities: ["@security"]
+  capabilities: ["@security", "subagent_reporter"]
 };
 
 export default blueprint;

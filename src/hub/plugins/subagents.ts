@@ -15,23 +15,23 @@ import {
 } from "@runtime";
 import { getAgentByName } from "agents";
 
-export const SubagentEventType = {
+const SubagentEventType = {
   SPAWNED: "subagent.spawned",
   COMPLETED: "subagent.completed",
 } as const;
 
 
-export const TaskParams = z.object({
+const TaskParams = z.object({
   description: z.string().describe("Task description for the subagent"),
   subagentType: z.string().describe("Type of subagent to spawn")
 });
 
-export type SubagentRef = {
+type SubagentRef = {
   name: string;
   description: string;
 };
 
-export type SubagentsConfig = {
+type SubagentsConfig = {
   subagents?: {
     subagents: SubagentRef[];
   };
@@ -240,7 +240,7 @@ export const subagents = definePlugin<SubagentsConfig>({
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
               messages: [{ role: "user", content: String(description ?? "") }],
-              meta: {
+              vars: {
                 parent: {
                   threadId: ctx.agent.info.threadId,
                   token,
@@ -296,10 +296,10 @@ export const subagents = definePlugin<SubagentsConfig>({
     ctx.registerTool(taskTool);
   },
 
-  tags: ["subagents"],
+  tags: ["subagents", "default"],
 });
 
-export const TASK_SYSTEM_PROMPT = `## \`task\` (subagent spawner)
+const TASK_SYSTEM_PROMPT = `## \`task\` (subagent spawner)
 
 You have access to a \`task\` tool to launch short-lived subagents that handle isolated tasks. These agents are ephemeral — they live only for the duration of the task and return a single result.
 
@@ -328,10 +328,9 @@ When NOT to use the task tool:
 - You should use the \`task\` tool whenever you have a complex task that will take multiple steps, and is independent from other tasks that the agent needs to complete. These agents are highly competent and efficient.`;
 
 
-export const TASK_TOOL_DESCRIPTION = `Launch an ephemeral subagent to handle complex, multi-step independent tasks with isolated context windows. 
+const TASK_TOOL_DESCRIPTION = `Launch an ephemeral subagent to handle complex, multi-step independent tasks with isolated context windows. 
 
 Available agent types and the tools they have access to:
-- general-purpose: General-purpose agent for researching complex questions, searching for files and content, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you. This agent has access to all tools as the main agent.
 {other_agents}
 
 When using the Task tool, you must specify a subagentType parameter to select which agent type to use.

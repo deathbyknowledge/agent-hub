@@ -157,14 +157,14 @@ export const filesystem: AgentPlugin = {
 };
 
 
-export const LIST_FILES_TOOL_DESCRIPTION = `Lists all files in the local filesystem.
+const LIST_FILES_TOOL_DESCRIPTION = `Lists all files in the local filesystem.
 
 Usage:
 - The list_files tool will return a list of all files in the local filesystem.
 - This is very useful for exploring the file system and finding the right file to read or edit.
 - You should almost ALWAYS use this tool before using the Read or Edit tools.`;
 
-export const READ_FILE_TOOL_DESCRIPTION = `Reads a file from the local filesystem. You can access any file directly by using this tool.
+const READ_FILE_TOOL_DESCRIPTION = `Reads a file from the local filesystem. You can access any file directly by using this tool.
 Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
 
 Usage:
@@ -177,7 +177,7 @@ Usage:
 - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
 - You should ALWAYS make sure a file has been read before editing it.`;
 
-export const EDIT_FILE_TOOL_DESCRIPTION = `Performs exact string replacements in files. 
+const EDIT_FILE_TOOL_DESCRIPTION = `Performs exact string replacements in files. 
 
 Usage:
 - You must use your \`Read\` tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file. 
@@ -187,7 +187,7 @@ Usage:
 - The edit will FAIL if \`oldString\` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use \`replaceAll\` to change every instance of \`oldString\`. 
 - Use \`replaceAll\` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.`;
 
-export const WRITE_FILE_TOOL_DESCRIPTION = `Writes to a file in the local filesystem.
+const WRITE_FILE_TOOL_DESCRIPTION = `Writes to a file in the local filesystem.
 
 Usage:
 - The file_path parameter must be an absolute path, not a relative path
@@ -196,7 +196,7 @@ Usage:
 - Prefer to edit existing files over creating new ones when possible.`;
 
 
-export const FILESYSTEM_SYSTEM_PROMPT = `## Filesystem Tools \`ls\`, \`read_file\`, \`write_file\`, \`edit_file\`
+const FILESYSTEM_SYSTEM_PROMPT = `## Filesystem Tools \`ls\`, \`read_file\`, \`write_file\`, \`edit_file\`
 
 You have access to a shared filesystem which you can interact with using these tools.
 
@@ -220,7 +220,7 @@ You have access to a shared filesystem which you can interact with using these t
 
 
 
-export const ListFilesParams = z.object({
+const ListFilesParams = z.object({
   path: z
     .string()
     .optional()
@@ -229,7 +229,7 @@ export const ListFilesParams = z.object({
     )
 });
 
-export const ReadFileParams = z.object({
+const ReadFileParams = z.object({
   path: z
     .string()
     .describe(
@@ -244,7 +244,7 @@ export const ReadFileParams = z.object({
     .describe("Max number of lines to read")
 });
 
-export const WriteFileParams = z.object({
+const WriteFileParams = z.object({
   path: z
     .string()
     .describe(
@@ -253,7 +253,7 @@ export const WriteFileParams = z.object({
   content: z.string().describe("File contents")
 });
 
-export const EditFileParams = z.object({
+const EditFileParams = z.object({
   path: z
     .string()
     .describe(

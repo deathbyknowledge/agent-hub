@@ -8,23 +8,23 @@ import { definePlugin, type ToolCall } from "@runtime";
 import { AgentEventType } from "@runtime";
 
 /** Custom event types for HITL plugin */
-export const HitlEventType = {
+const HitlEventType = {
   INTERRUPT: "hitl.interrupt",
   RESUME: "hitl.resume",
 } as const;
 
-export type HitlConfig = {
+type HitlConfig = {
   hitl?: {
     tools: string[];
   };
 };
 
-export interface ApprovePayload {
+interface ApprovePayload {
   approved: boolean;
   modifiedToolCalls?: ToolCall[];
 }
 
-export const hitl = definePlugin<HitlConfig>({
+const hitl = definePlugin<HitlConfig>({
   name: "hitl",
 
   actions: {

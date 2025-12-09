@@ -2,7 +2,7 @@ import type { AgentPlugin, Todo } from "@runtime";
 import { tool } from "@runtime";
 import z from "zod";
 
-export const WRITE_TODOS_TOOL_DESCRIPTION = `Use this tool to create and manage a structured task list for your current work session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+const WRITE_TODOS_TOOL_DESCRIPTION = `Use this tool to create and manage a structured task list for your current work session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
 It also helps the user understand the progress of the task and overall progress of their requests.
 Only use this tool if you think it will be helpful in staying organized. If the user's request is trivial and takes less than 3 steps, it is better to NOT use this tool and just do the taks directly.
 
@@ -217,7 +217,7 @@ Remember: If you only need to make a few tool calls to complete a task, and it i
 `;
 
 
-export const WRITE_TODOS_SYSTEM_PROMPT = `## \`write_todos\`
+const WRITE_TODOS_SYSTEM_PROMPT = `## \`write_todos\`
 
 You have access to the \`write_todos\` tool to help you manage and plan complex objectives. 
 Use this tool for complex objectives to ensure that you are tracking each necessary step and giving the user visibility into your progress.
