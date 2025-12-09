@@ -87,7 +87,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
       }
 
       // ======================================================
-      // Root: Agency Management (KV-backed)
+      // Root: Agency Management
       // ======================================================
 
       // GET /agencies -> List all agencies
@@ -292,6 +292,67 @@ export const createHandler = (opts: HandlerOptions = {}) => {
           if (req.method === "GET" && scheduleAction === "/runs") {
             const res = await agencyStub.fetch(
               new Request(`http://do/schedules/${scheduleId}/runs`, req)
+            );
+            return withCors(res);
+          }
+        }
+
+        // --------------------------------------
+        // Agency Vars
+        // /agency/:id/vars/*
+        // --------------------------------------
+
+        // GET /agency/:id/vars
+        if (req.method === "GET" && subPath === "/vars") {
+          const res = await agencyStub.fetch(
+            new Request("http://do/vars", req)
+          );
+          return withCors(res);
+        }
+
+        // PUT /agency/:id/vars
+        if (req.method === "PUT" && subPath === "/vars") {
+          const res = await agencyStub.fetch(
+            new Request("http://do/vars", {
+              method: "PUT",
+              headers: { "content-type": "application/json" },
+              body: req.body
+            })
+          );
+          return withCors(res);
+        }
+
+        // Var-specific operations
+        const varMatch = subPath.match(/^\/vars\/([^/]+)$/);
+        if (varMatch) {
+          const varKey = varMatch[1];
+
+          // GET /agency/:id/vars/:key
+          if (req.method === "GET") {
+            const res = await agencyStub.fetch(
+              new Request(`http://do/vars/${varKey}`, req)
+            );
+            return withCors(res);
+          }
+
+          // PUT /agency/:id/vars/:key
+          if (req.method === "PUT") {
+            const res = await agencyStub.fetch(
+              new Request(`http://do/vars/${varKey}`, {
+                method: "PUT",
+                headers: { "content-type": "application/json" },
+                body: req.body
+              })
+            );
+            return withCors(res);
+          }
+
+          // DELETE /agency/:id/vars/:key
+          if (req.method === "DELETE") {
+            const res = await agencyStub.fetch(
+              new Request(`http://do/vars/${varKey}`, {
+                method: "DELETE"
+              })
             );
             return withCors(res);
           }

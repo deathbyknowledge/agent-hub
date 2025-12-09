@@ -79,6 +79,7 @@ export function useAgency(agencyId: string | null) {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [blueprints, setBlueprints] = useState<AgentBlueprint[]>([]);
   const [schedules, setSchedules] = useState<AgentSchedule[]>([]);
+  const [vars, setVars] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -131,13 +132,25 @@ export function useAgency(agencyId: string | null) {
     }
   }, [agencyClient]);
 
+  // Fetch vars
+  const refreshVars = useCallback(async () => {
+    if (!agencyClient) return;
+    try {
+      const { vars } = await agencyClient.getVars();
+      setVars(vars);
+    } catch (e) {
+      console.error("Failed to fetch vars:", e);
+    }
+  }, [agencyClient]);
+
   useEffect(() => {
     if (agencyClient) {
       refreshAgents();
       refreshBlueprints();
       refreshSchedules();
+      refreshVars();
     }
-  }, [agencyClient, refreshAgents, refreshBlueprints, refreshSchedules]);
+  }, [agencyClient, refreshAgents, refreshBlueprints, refreshSchedules, refreshVars]);
 
   const spawnAgent = useCallback(
     async (agentType: string) => {
@@ -223,11 +236,31 @@ export function useAgency(agencyId: string | null) {
     [agencyClient]
   );
 
+  // Vars operations
+  const setVar = useCallback(
+    async (key: string, value: unknown) => {
+      if (!agencyClient) throw new Error("No agency selected");
+      await agencyClient.setVar(key, value);
+      await refreshVars();
+    },
+    [agencyClient, refreshVars]
+  );
+
+  const deleteVar = useCallback(
+    async (key: string) => {
+      if (!agencyClient) throw new Error("No agency selected");
+      await agencyClient.deleteVar(key);
+      await refreshVars();
+    },
+    [agencyClient, refreshVars]
+  );
+
   return {
     agencyClient,
     agents,
     blueprints,
     schedules,
+    vars,
     loading,
     error,
     refreshAgents,
@@ -242,6 +275,9 @@ export function useAgency(agencyId: string | null) {
     resumeSchedule,
     triggerSchedule,
     getScheduleRuns,
+    refreshVars,
+    setVar,
+    deleteVar,
   };
 }
 

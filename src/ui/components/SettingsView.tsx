@@ -15,7 +15,13 @@ import {
   Timer,
   ArrowClockwise,
   CaretDown,
-  CaretRight
+  CaretRight,
+  Key,
+  Eye,
+  EyeSlash,
+  Pencil,
+  Check,
+  X
 } from "./Icons";
 import type {
   AgentBlueprint,
@@ -30,6 +36,7 @@ interface SettingsViewProps {
   agencyName?: string;
   blueprints?: AgentBlueprint[];
   schedules?: AgentSchedule[];
+  vars?: Record<string, unknown>;
   onCreateSchedule?: (request: CreateScheduleRequest) => Promise<AgentSchedule>;
   onDeleteSchedule?: (id: string) => Promise<void>;
   onPauseSchedule?: (id: string) => Promise<void>;
@@ -37,6 +44,8 @@ interface SettingsViewProps {
   onTriggerSchedule?: (id: string) => Promise<ScheduleRun>;
   onGetScheduleRuns?: (id: string) => Promise<ScheduleRun[]>;
   onRefreshSchedules?: () => Promise<void>;
+  onSetVar?: (key: string, value: unknown) => Promise<void>;
+  onDeleteVar?: (key: string) => Promise<void>;
 }
 
 // Format relative time
@@ -527,18 +536,200 @@ function ScheduleRunsModal({
   );
 }
 
+// Vars editor component
+function VarsEditor({
+  vars,
+  onSetVar,
+  onDeleteVar
+}: {
+  vars: Record<string, unknown>;
+  onSetVar: (key: string, value: unknown) => Promise<void>;
+  onDeleteVar: (key: string) => Promise<void>;
+}) {
+  const [newKey, setNewKey] = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+
+  const entries = Object.entries(vars);
+  const isSecret = (key: string) =>
+    key.toLowerCase().includes("key") ||
+    key.toLowerCase().includes("secret") ||
+    key.toLowerCase().includes("token") ||
+    key.toLowerCase().includes("password");
+
+  const handleAdd = async () => {
+    if (!newKey.trim()) return;
+    try {
+      const parsed =
+        newValue.startsWith("{") || newValue.startsWith("[")
+          ? JSON.parse(newValue)
+          : newValue;
+      await onSetVar(newKey.trim(), parsed);
+      setNewKey("");
+      setNewValue("");
+    } catch {
+      await onSetVar(newKey.trim(), newValue);
+      setNewKey("");
+      setNewValue("");
+    }
+  };
+
+  const handleEdit = async (key: string) => {
+    try {
+      const parsed =
+        editValue.startsWith("{") || editValue.startsWith("[")
+          ? JSON.parse(editValue)
+          : editValue;
+      await onSetVar(key, parsed);
+      setEditingKey(null);
+    } catch {
+      await onSetVar(key, editValue);
+      setEditingKey(null);
+    }
+  };
+
+  const startEdit = (key: string, value: unknown) => {
+    setEditingKey(key);
+    setEditValue(
+      typeof value === "string" ? value : JSON.stringify(value, null, 2)
+    );
+  };
+
+  const displayValue = (key: string, value: unknown): string => {
+    const str = typeof value === "string" ? value : JSON.stringify(value);
+    if (isSecret(key) && !showSecrets[key]) {
+      return "•".repeat(Math.min(str.length, 20));
+    }
+    return str;
+  };
+
+  return (
+    <div className="space-y-3">
+      {entries.length === 0 ? (
+        <p className="text-sm text-neutral-400 py-4 text-center">
+          No variables configured. Add API keys, tool configs, etc.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {entries.map(([key, value]) => (
+            <div
+              key={key}
+              className="flex items-center gap-2 p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900"
+            >
+              <Key size={14} className="text-neutral-400 shrink-0" />
+              <span className="font-mono text-sm text-neutral-700 dark:text-neutral-300 min-w-[120px]">
+                {key}
+              </span>
+
+              {editingKey === key ? (
+                <>
+                  <input
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="flex-1 px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 font-mono"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => handleEdit(key)}
+                    className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600"
+                  >
+                    <Check size={14} />
+                  </button>
+                  <button
+                    onClick={() => setEditingKey(null)}
+                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
+                  >
+                    <X size={14} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 font-mono text-sm text-neutral-500 truncate">
+                    {displayValue(key, value)}
+                  </span>
+                  {isSecret(key) && (
+                    <button
+                      onClick={() =>
+                        setShowSecrets((s) => ({ ...s, [key]: !s[key] }))
+                      }
+                      className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
+                      title={showSecrets[key] ? "Hide" : "Show"}
+                    >
+                      {showSecrets[key] ? (
+                        <EyeSlash size={14} />
+                      ) : (
+                        <Eye size={14} />
+                      )}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => startEdit(key, value)}
+                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
+                    title="Edit"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => onDeleteVar(key)}
+                    className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-600"
+                    title="Delete"
+                  >
+                    <Trash size={14} />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add new var */}
+      <div className="flex items-center gap-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+        <input
+          type="text"
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value)}
+          placeholder="Key (e.g., OPENAI_API_KEY)"
+          className="w-40 px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 font-mono"
+        />
+        <input
+          type="text"
+          value={newValue}
+          onChange={(e) => setNewValue(e.target.value)}
+          placeholder="Value"
+          className="flex-1 px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800"
+        />
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleAdd}
+          disabled={!newKey.trim()}
+        >
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsView({
   agencyId,
   agencyName,
   blueprints = [],
   schedules = [],
+  vars = {},
   onCreateSchedule,
   onDeleteSchedule,
   onPauseSchedule,
   onResumeSchedule,
   onTriggerSchedule,
   onGetScheduleRuns,
-  onRefreshSchedules
+  onRefreshSchedules,
+  onSetVar,
+  onDeleteVar
 }: SettingsViewProps) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedSchedule, setSelectedSchedule] =
@@ -603,6 +794,29 @@ export function SettingsView({
               </div>
             </div>
           </div>
+        </LayerCardContent>
+      </LayerCard>
+
+      {/* Agency Vars */}
+      <LayerCard>
+        <LayerCardFooter className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Key size={16} className="text-purple-500" />
+            <span className="font-medium text-neutral-900 dark:text-neutral-100">
+              Variables
+            </span>
+          </div>
+        </LayerCardFooter>
+        <LayerCardContent>
+          <VarsEditor
+            vars={vars}
+            onSetVar={async (key, value) => {
+              await onSetVar?.(key, value);
+            }}
+            onDeleteVar={async (key) => {
+              await onDeleteVar?.(key);
+            }}
+          />
         </LayerCardContent>
       </LayerCard>
 

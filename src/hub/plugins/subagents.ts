@@ -233,6 +233,8 @@ export const subagents = definePlugin<SubagentsConfig>({
 
         if (!initRes.ok) return "Error: Failed to initialize subagent";
 
+        const vars = toolCtx.agent.vars;
+
         // Invoke with parent info in meta
         const res = await subagent.fetch(
           new Request("http://do/invoke", {
@@ -245,7 +247,8 @@ export const subagents = definePlugin<SubagentsConfig>({
                   threadId: ctx.agent.info.threadId,
                   token,
                 },
-              },
+                ...vars
+              }
             }),
           })
         );

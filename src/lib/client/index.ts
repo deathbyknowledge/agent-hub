@@ -154,6 +154,29 @@ export interface DeleteFileResponse {
   path: string;
 }
 
+// ============================================================================
+// Agency Vars Types
+// ============================================================================
+
+/** Response from GET /agency/:id/vars */
+export interface GetVarsResponse {
+  vars: Record<string, unknown>;
+}
+
+/** Response from GET /agency/:id/vars/:key */
+export interface GetVarResponse {
+  key: string;
+  value: unknown;
+}
+
+/** Response from PUT /agency/:id/vars or vars/:key */
+export interface SetVarResponse {
+  ok: boolean;
+  key?: string;
+  value?: unknown;
+  vars?: Record<string, unknown>;
+}
+
 /** Response from GET /agencies */
 export interface ListAgenciesResponse {
   agencies: AgencyMeta[];
@@ -781,6 +804,45 @@ export class AgencyClient {
     }
 
     return res.json();
+  }
+
+  // ==========================================================================
+  // Agency Vars
+  // ==========================================================================
+
+  /**
+   * Get all agency-level vars.
+   */
+  async getVars(): Promise<GetVarsResponse> {
+    return this.request<GetVarsResponse>("GET", "/vars");
+  }
+
+  /**
+   * Set all agency-level vars (replaces existing).
+   */
+  async setVars(vars: Record<string, unknown>): Promise<SetVarResponse> {
+    return this.request<SetVarResponse>("PUT", "/vars", vars);
+  }
+
+  /**
+   * Get a specific var by key.
+   */
+  async getVar(key: string): Promise<GetVarResponse> {
+    return this.request<GetVarResponse>("GET", `/vars/${encodeURIComponent(key)}`);
+  }
+
+  /**
+   * Set a specific var.
+   */
+  async setVar(key: string, value: unknown): Promise<SetVarResponse> {
+    return this.request<SetVarResponse>("PUT", `/vars/${encodeURIComponent(key)}`, { value });
+  }
+
+  /**
+   * Delete a specific var.
+   */
+  async deleteVar(key: string): Promise<OkResponse> {
+    return this.request<OkResponse>("DELETE", `/vars/${encodeURIComponent(key)}`);
   }
 
   /** The agency ID */

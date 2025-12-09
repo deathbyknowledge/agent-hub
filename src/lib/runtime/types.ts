@@ -111,6 +111,8 @@ export interface ThreadMetadata {
   parent?: ParentInfo;
   agentType: string;
   agencyId: string;
+  /** Agency-level vars to inherit (merged with lower priority than agent vars) */
+  vars?: Record<string, unknown>;
 }
 
 export interface CreateThreadRequest {

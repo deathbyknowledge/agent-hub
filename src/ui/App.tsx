@@ -460,6 +460,7 @@ export default function App() {
     agents: realAgents,
     blueprints,
     schedules,
+    vars,
     spawnAgent,
     listDirectory,
     readFile,
@@ -470,6 +471,8 @@ export default function App() {
     resumeSchedule,
     triggerSchedule,
     getScheduleRuns,
+    setVar,
+    deleteVar,
   } = useAgency(selectedAgencyId);
   const {
     state: agentState,
@@ -783,6 +786,7 @@ export default function App() {
                 agencyName={selectedAgency?.name}
                 blueprints={blueprints}
                 schedules={schedules}
+                vars={vars}
                 onCreateSchedule={createSchedule}
                 onDeleteSchedule={deleteSchedule}
                 onPauseSchedule={pauseSchedule}
@@ -790,6 +794,8 @@ export default function App() {
                 onTriggerSchedule={triggerSchedule}
                 onGetScheduleRuns={getScheduleRuns}
                 onRefreshSchedules={refreshSchedules}
+                onSetVar={setVar}
+                onDeleteVar={deleteVar}
               />
             </div>
           </>

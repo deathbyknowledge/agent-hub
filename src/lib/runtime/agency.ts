@@ -6,6 +6,7 @@ import type {
   ThreadRequestContext,
   AgentEnv
 } from "./types";
+import { PersistedObject } from "./config";
 
 // ============================================================
 // Schedule Types
@@ -110,6 +111,8 @@ const AGENCY_NAME_KEY = "_agency_name";
 
 export class Agency extends Agent<AgentEnv> {
   private _cachedAgencyName: string | null = null;
+  /** Agency-level vars inherited by all spawned agents */
+  readonly vars: Record<string, unknown>;
 
   /**
    * Get the agency name. Prefers in-memory name (set via getAgentByName),
@@ -146,6 +149,11 @@ export class Agency extends Agent<AgentEnv> {
 
   constructor(ctx: AgentContext, env: AgentEnv) {
     super(ctx, env);
+
+    // Initialize vars
+    this.vars = PersistedObject<Record<string, unknown>>(ctx.storage.kv, {
+      prefix: "_vars:"
+    });
 
     // Initialize tables
     this.sql`
@@ -285,6 +293,43 @@ export class Agency extends Agent<AgentEnv> {
     }
 
     // --------------------------------------------------
+    // Agency Vars
+    // --------------------------------------------------
+
+    if (req.method === "GET" && path === "/vars") {
+      return Response.json({ vars: { ...this.vars } });
+    }
+
+    if (req.method === "PUT" && path === "/vars") {
+      const body = (await req.json()) as Record<string, unknown>;
+      // Clear existing and set new
+      for (const key of Object.keys(this.vars)) {
+        delete this.vars[key];
+      }
+      for (const [key, value] of Object.entries(body)) {
+        this.vars[key] = value;
+      }
+      return Response.json({ ok: true, vars: { ...this.vars } });
+    }
+
+    const varMatch = path.match(/^\/vars\/([^/]+)$/);
+    if (varMatch) {
+      const key = decodeURIComponent(varMatch[1]);
+      if (req.method === "GET") {
+        return Response.json({ key, value: this.vars[key] });
+      }
+      if (req.method === "PUT") {
+        const body = (await req.json()) as { value: unknown };
+        this.vars[key] = body.value;
+        return Response.json({ ok: true, key, value: body.value });
+      }
+      if (req.method === "DELETE") {
+        delete this.vars[key];
+        return Response.json({ ok: true, key });
+      }
+    }
+
+    // --------------------------------------------------
     // Filesystem
     // --------------------------------------------------
 
@@ -417,7 +462,8 @@ export class Agency extends Agent<AgentEnv> {
       agentType,
       request: requestContext ?? {},
       parent: undefined,
-      agencyId: this.agencyName
+      agencyId: this.agencyName,
+      vars: { ...this.vars }
     };
 
     const res = await stub.fetch(

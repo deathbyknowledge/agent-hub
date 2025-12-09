@@ -196,6 +196,16 @@ export abstract class HubAgent<
         this.info.agentType = metadata.agentType;
       }
 
+      // Merge agency vars into agent vars (agency vars as defaults)
+      if (metadata.vars) {
+        for (const [key, value] of Object.entries(metadata.vars)) {
+          // Only set if not already defined (agent-level overrides agency-level)
+          if (!(key in this.vars)) {
+            this.vars[key] = value;
+          }
+        }
+      }
+
       // Call onRegister hook to fetch blueprint and initialize
       await this.onRegister(metadata);
 

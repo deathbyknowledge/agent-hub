@@ -370,8 +370,12 @@ export const getTopNTextTool = tool({
     if (!validDimension(dimension))
       throw new Error(`Invalid dimension: ${dimension}`);
 
+    const token = ctx.agent.vars.CF_TOKEN;
+    
+    if (!token) throw new Error("Cloudflare API token not found. Stop execution and report error to user immediately.");
+
     return await getCustomTopNText({
-      apiToken: ctx.env.CF_API_TOKEN,
+      apiToken: token as string,
       zoneTag,
       start: new Date(startISO),
       end: new Date(endISO),
@@ -437,8 +441,12 @@ export const getTimeseriesTextTool = tool({
     },
     ctx
   ) => {
+    const token = ctx.agent.vars.CF_TOKEN;
+    
+    if (!token) throw new Error("Cloudflare API token not found. Stop execution and report error to user immediately.");
+
     return await getCustomStatTimeseriesText({
-      apiToken: ctx.env.CF_API_TOKEN,
+      apiToken: token as string,
       zoneTag,
       start: new Date(startISO),
       end: new Date(endISO),
