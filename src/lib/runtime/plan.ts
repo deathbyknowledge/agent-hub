@@ -1,6 +1,6 @@
-import type { ModelRequest } from "../types";
-import type { HubAgent } from "../agent";
-import { getToolMeta } from "..";
+import type { ModelRequest } from "./types";
+import type { HubAgent } from "./agent";
+import { getToolMeta } from "./tools";
 
 export class ModelPlanBuilder {
   private sysParts: string[] = [];

@@ -192,7 +192,6 @@ export interface SpawnAgentResponse extends ThreadMetadata {}
 
 /** Response from POST /invoke */
 export interface InvokeResponse {
-  runId: string;
   status: string;
 }
 
@@ -372,17 +371,10 @@ export class AgentClient {
   }
 
   /**
-   * Approve or reject pending tool calls (Human-in-the-Loop).
+   * Actions are generic toolbacks registered by middleware
    */
-  async approve(request: ApproveRequest): Promise<OkResponse> {
-    return this.request<OkResponse>("POST", "/approve", request);
-  }
-
-  /**
-   * Cancel the current agent run.
-   */
-  async cancel(): Promise<OkResponse> {
-    return this.request<OkResponse>("POST", "/cancel");
+  async action<T = unknown>(type: string, payload: Record<string, unknown> = {}): Promise<T> {
+    return this.request<T>("POST", "/action", { type, ...payload });
   }
 
   /**

@@ -15,8 +15,7 @@
  */
 
 import { z } from "zod";
-import { tool } from "./tools";
-import type { AgentMiddleware } from "../types";
+import { tool, type AgentMiddleware } from "@runtime";
 
 // ============================================================================
 // Schemas

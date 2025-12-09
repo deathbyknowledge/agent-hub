@@ -1,5 +1,5 @@
 import type { env } from "cloudflare:workers";
-import type { ModelPlanBuilder } from "./middleware/plan";
+import type { ModelPlanBuilder } from "./plan";
 import type { HubAgent } from "./agent";
 import type { Provider } from "./providers";
 import type { Agency } from "./agent/agency";
@@ -14,7 +14,6 @@ export type RunStatus =
   | "error";
 
 export type RunState = {
-  runId: string;
   status: RunStatus;
   step: number; // how many steps executed
   reason?: string; // pause/cancel reason
@@ -68,7 +67,10 @@ export interface InvokeBody {
   files?: Record<string, string>; // optional files to merge into VFS
   idempotencyKey?: string; // dedupe protection
   agentType?: string; // optional subagent type
-  parent?: ParentInfo; // optional parent thread info
+  /** Dynamic middleware tags for this invocation */
+  tags?: string[];
+  /** Arbitrary metadata accessible to middlewares */
+  vars?: Record<string, unknown>;
 }
 
 export interface ModelRequest {
@@ -84,6 +86,11 @@ export interface ModelRequest {
   stop?: string[];
 }
 
+/**
+ * Parent info for subagent relationships.
+ * NOTE: This is now populated by consumer middleware (subagents/subagent-reporter),
+ * not by the core runtime.
+ */
 export interface ParentInfo {
   threadId: string;
   token: string;
@@ -162,6 +169,11 @@ export type MWContext = {
 
 // Middleware lifecycle
 export interface AgentMiddleware<TConfig = unknown> {
+  actions?: Record<
+    string,
+    (ctx: MWContext, payload: unknown) => Promise<unknown>
+  >;
+
   name: string;
   // Helper to infer the config type in the builder, not used at runtime
   __configType?: TConfig;
@@ -182,14 +194,10 @@ export interface AgentMiddleware<TConfig = unknown> {
   onToolError?(ctx: MWContext, call: ToolCall, error: Error): Promise<void>;
 
   onResume?(ctx: MWContext, reason: string, payload: unknown): Promise<void>;
-  onChildReport?(
-    ctx: MWContext,
-    child: {
-      threadId: string;
-      token: string;
-      report?: string;
-    }
-  ): Promise<void>;
+
+  /** Called when agent run completes */
+  onRunComplete?(ctx: MWContext, result: { final: string }): Promise<void>;
+
   tags: string[];
 }
 

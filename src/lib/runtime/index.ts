@@ -1,10 +1,11 @@
 export * from "./types";
-export * from "./middleware";
+export * from "./plugin";
 export * from "./providers";
 export * from "./worker";
 export * from "./agent";
 export * from "./events";
 export * from "./system";
+export * from "./plugin";
+export * from "./tools";
 
-// CLI utilities (for programmatic use)
 export { generate, discoverModules } from "./cli";

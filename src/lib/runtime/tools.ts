@@ -4,8 +4,7 @@
  */
 import { type ZodType } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import type { ToolContext, ToolMeta, ToolJsonSchema } from "../types";
-export type { ToolContext } from "../types";
+import type { ToolContext, ToolMeta, ToolJsonSchema } from "./types";
 
 // ============================================================
 // Types

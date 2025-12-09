@@ -1,4 +1,6 @@
-// events.ts
+/**
+ * Core runtime event types.
+ */
 export enum AgentEventType {
   THREAD_CREATED = "thread.created",
   REQUEST_ACCEPTED = "request.accepted",
@@ -25,35 +27,40 @@ export enum AgentEventType {
   TOOL_STARTED = "tool.started",
   TOOL_OUTPUT = "tool.output",
   TOOL_ERROR = "tool.error",
-
-  HITL_INTERRUPT = "hitl.interrupt",
-  HITL_RESUME = "hitl.resume",
-
-  SUBAGENT_SPAWNED = "subagent.spawned",
-  SUBAGENT_COMPLETED = "subagent.completed"
 }
 
+/**
+ * Base event structure. All events have threadId, timestamp, and sequence.
+ */
 export type AgentEvent = {
   threadId: string;
   ts: string;
   seq?: number;
-} & AgentEventData;
+} & (AgentEventData | CustomEventData);
+
+/**
+ * Custom event data for middleware-defined events.
+ * Middleware can emit any string type with arbitrary data.
+ */
+export type CustomEventData = {
+  type: string;
+  data: Record<string, unknown>;
+};
 
 // TODO: Allow extension of event data, so tools/mws can add their own
 export type AgentEventData =
   | { type: AgentEventType.THREAD_CREATED; data: { threadId: string } }
   | { type: AgentEventType.REQUEST_ACCEPTED; data: { idempotencyKey: string } }
-  | { type: AgentEventType.RUN_STARTED; data: { runId: string } }
-  | { type: AgentEventType.RUN_TICK; data: { runId: string; step: number } }
+  | { type: AgentEventType.RUN_STARTED; data: Record<string, never> }
+  | { type: AgentEventType.RUN_TICK; data: { step: number } }
   | {
       type: AgentEventType.RUN_PAUSED;
       data: {
-        runId: string;
         reason: "hitl" | "error" | "exhausted" | "subagent";
       };
     }
-  | { type: AgentEventType.RUN_RESUMED; data: { runId: string } }
-  | { type: AgentEventType.RUN_CANCELED; data: { runId: string } }
+  | { type: AgentEventType.RUN_RESUMED; data: Record<string, never> }
+  | { type: AgentEventType.RUN_CANCELED; data: Record<string, never> }
   | { type: AgentEventType.AGENT_STARTED; data: Record<string, never> }
   | { type: AgentEventType.AGENT_COMPLETED; data: { result?: unknown } }
   | {
@@ -89,25 +96,4 @@ export type AgentEventData =
   | {
       type: AgentEventType.TOOL_ERROR;
       data: { toolName: string; error: string };
-    }
-  | {
-      type: AgentEventType.HITL_INTERRUPT;
-      data: {
-        proposedToolCalls: Array<{ toolName: string; args: unknown }>;
-      };
-    }
-  | {
-      type: AgentEventType.HITL_RESUME;
-      data: {
-        approved: boolean;
-        modifiedToolCalls?: Array<{ toolName: string; args: unknown }>;
-      };
-    }
-  | {
-      type: AgentEventType.SUBAGENT_SPAWNED;
-      data: { childThreadId: string; agentType?: string };
-    }
-  | {
-      type: AgentEventType.SUBAGENT_COMPLETED;
-      data: { childThreadId: string; result?: unknown };
     };

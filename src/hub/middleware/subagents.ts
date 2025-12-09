@@ -1,4 +1,304 @@
-// These amazing prompts came from the LangChain folks (https://github.com/langchain-ai/deepagents/blob/master/src/deepagents/prompts.py)
+/**
+ * Subagents plugin
+ *
+ * This plugin allows agents to spawn child agents to handle subtasks synchronously.
+ * Once the agent has called the `task` tool, it waits for the subagent(s) to complete before
+ * continuing its own execution.
+ * It manages its own waiting_subagents table and handles completion via actions.
+ */
+import {
+  defineMiddleware,
+  tool,
+  z,
+  type AgentEnv,
+  AgentEventType,
+} from "@runtime";
+import { getAgentByName } from "agents";
+
+export const SubagentEventType = {
+  SPAWNED: "subagent.spawned",
+  COMPLETED: "subagent.completed",
+} as const;
+
+
+export const TaskParams = z.object({
+  description: z.string().describe("Task description for the subagent"),
+  subagentType: z.string().describe("Type of subagent to spawn")
+});
+
+export type SubagentRef = {
+  name: string;
+  description: string;
+};
+
+export type SubagentsConfig = {
+  subagents?: {
+    subagents: SubagentRef[];
+  };
+};
+
+function renderOtherAgents(subagents: SubagentRef[]) {
+  return subagents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
+}
+
+export const subagents = defineMiddleware<SubagentsConfig>({
+  name: "subagents",
+
+  async onInit(ctx) {
+    // Create our own tables for tracking subagents
+    ctx.agent.store.sql.exec(`
+      CREATE TABLE IF NOT EXISTS mw_waiting_subagents (
+        token TEXT PRIMARY KEY,
+        child_thread_id TEXT NOT NULL,
+        tool_call_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS mw_subagent_links (
+        child_thread_id TEXT PRIMARY KEY,
+        token TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('waiting','completed','canceled')),
+        created_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        report TEXT,
+        tool_call_id TEXT
+      );
+    `);
+  },
+
+  actions: {
+    /**
+     * Handle subagent completion report
+     */
+    async subagent_result(ctx, payload: unknown) {
+      const { token, childThreadId, report } = payload as {
+        token: string;
+        childThreadId: string;
+        report?: string;
+      };
+
+      const sql = ctx.agent.store.sql;
+
+      // Pop waiter
+      const rows = sql
+        .exec(
+          `SELECT tool_call_id FROM mw_waiting_subagents WHERE token = ? AND child_thread_id = ?`,
+          token,
+          childThreadId
+        )
+        .toArray();
+
+      if (!rows.length) {
+        throw new Error("unknown token");
+      }
+
+      const toolCallId = String(rows[0].tool_call_id);
+      sql.exec(`DELETE FROM mw_waiting_subagents WHERE token = ?`, token);
+
+      // Update link status
+      sql.exec(
+        `UPDATE mw_subagent_links SET status='completed', completed_at=?, report=? WHERE child_thread_id = ?`,
+        Date.now(),
+        report ?? null,
+        childThreadId
+      );
+
+      // Append tool result
+      ctx.agent.store.appendToolResult(toolCallId, report ?? "");
+
+      ctx.agent.emit(SubagentEventType.COMPLETED, {
+        childThreadId,
+        result: report,
+      });
+
+      // Check if all done
+      const remaining = sql
+        .exec(`SELECT COUNT(*) as c FROM mw_waiting_subagents`)
+        .toArray();
+
+      if (Number(remaining[0]?.c ?? 0) === 0) {
+        ctx.agent.runState.status = "running";
+        ctx.agent.runState.reason = undefined;
+        ctx.agent.emit(AgentEventType.RUN_RESUMED, {});
+        await ctx.agent.ensureScheduled();
+      }
+
+      return { ok: true };
+    },
+
+    /**
+     * Cancel all waiting subagents
+     */
+    async cancel_subagents(ctx) {
+      const sql = ctx.agent.store.sql;
+      const waiters = sql
+        .exec(`SELECT token, child_thread_id FROM mw_waiting_subagents`)
+        .toArray();
+
+      for (const w of waiters) {
+        try {
+          const childAgent = await getAgentByName(
+            (ctx.env as AgentEnv).HUB_AGENT,
+            String(w.child_thread_id)
+          );
+          // Send cancel action to child
+          await childAgent.fetch(
+            new Request("http://do/action", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ type: "cancel" }),
+            })
+          );
+        } catch (e) {
+          console.error(`Failed to cancel subagent ${w.child_thread_id}:`, e);
+        }
+
+        // Mark as canceled
+        sql.exec(
+          `UPDATE mw_subagent_links SET status='canceled', completed_at=? WHERE child_thread_id = ?`,
+          Date.now(),
+          String(w.child_thread_id)
+        );
+      }
+
+      // Clear all waiters
+      sql.exec(`DELETE FROM mw_waiting_subagents`);
+
+      return { ok: true };
+    },
+  },
+
+  state(ctx) {
+    // Expose subagent links in agent state
+    const sql = ctx.agent.store.sql;
+    const rows = sql
+      .exec(
+        `SELECT child_thread_id, token, status, created_at, completed_at, report, tool_call_id
+         FROM mw_subagent_links ORDER BY created_at ASC`
+      )
+      .toArray();
+
+    const subagents = rows.map((r) => ({
+      childThreadId: String(r.child_thread_id),
+      token: String(r.token ?? ""),
+      status: String(r.status),
+      createdAt: Number(r.created_at ?? Date.now()),
+      completedAt: r.completed_at ? Number(r.completed_at) : undefined,
+      report: r.report ? String(r.report) : undefined,
+      toolCallId: r.tool_call_id ? String(r.tool_call_id) : undefined,
+    }));
+
+    return { subagents };
+  },
+
+  async beforeModel(ctx, plan) {
+    plan.addSystemPrompt(TASK_SYSTEM_PROMPT);
+    const config = ctx.agent.config as SubagentsConfig;
+    const otherAgents = renderOtherAgents(config.subagents?.subagents ?? []);
+    const taskDesc = TASK_TOOL_DESCRIPTION.replace(
+      "{other_agents}",
+      otherAgents
+    );
+
+    const taskTool = tool({
+      name: "task",
+      description: taskDesc,
+      inputSchema: TaskParams,
+      execute: async (p, toolCtx) => {
+        const { description, subagentType } = p;
+        const token = crypto.randomUUID();
+        const childId = crypto.randomUUID();
+        const sql = ctx.agent.store.sql;
+
+        // Spawn child
+        const subagent = await getAgentByName(
+          (toolCtx.env as AgentEnv).HUB_AGENT,
+          childId
+        );
+
+        // Register with parent info in meta
+        const initRes = await subagent.fetch(
+          new Request("http://do/register", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              id: childId,
+              createdAt: new Date().toISOString(),
+              agentType: subagentType,
+              request: ctx.agent.info.request,
+              agencyId: ctx.agent.info.agencyId,
+            }),
+          })
+        );
+
+        if (!initRes.ok) return "Error: Failed to initialize subagent";
+
+        // Invoke with parent info in meta
+        const res = await subagent.fetch(
+          new Request("http://do/invoke", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              messages: [{ role: "user", content: String(description ?? "") }],
+              meta: {
+                parent: {
+                  threadId: ctx.agent.info.threadId,
+                  token,
+                },
+              },
+            }),
+          })
+        );
+
+        if (!res.ok) {
+          return "Error: Failed to spawn subagent";
+        }
+
+        // Fire event
+        ctx.agent.emit(SubagentEventType.SPAWNED, {
+          childThreadId: childId,
+          agentType: subagentType,
+        });
+
+        // Record in our tables
+        sql.exec(
+          `INSERT INTO mw_waiting_subagents (token, child_thread_id, tool_call_id, created_at)
+           VALUES (?, ?, ?, ?)`,
+          token,
+          childId,
+          toolCtx.callId,
+          Date.now()
+        );
+
+        sql.exec(
+          `INSERT INTO mw_subagent_links (child_thread_id, token, status, created_at, tool_call_id)
+           VALUES (?, ?, 'waiting', ?, ?)`,
+          childId,
+          token,
+          Date.now(),
+          toolCtx.callId
+        );
+
+        // Pause the parent
+        const runState = ctx.agent.runState;
+        if (runState && runState.status === "running") {
+          runState.status = "paused";
+          runState.reason = "subagent";
+          ctx.agent.emit(AgentEventType.RUN_PAUSED, {
+            reason: "subagent",
+          });
+        }
+
+        return null; // Don't add tool result yet - will come from subagent_result action
+      },
+    });
+
+    ctx.registerTool(taskTool);
+  },
+
+  tags: ["subagents"],
+});
+
 export const TASK_SYSTEM_PROMPT = `## \`task\` (subagent spawner)
 
 You have access to a \`task\` tool to launch short-lived subagents that handle isolated tasks. These agents are ephemeral — they live only for the duration of the task and return a single result.
@@ -138,9 +438,3 @@ Since the user is greeting, use the greeting-responder agent to respond with a f
 </commentary>
 assistant: "I'm going to use the Task tool to launch with the greeting-responder agent"
 </example>`;
-
-
-
-export const BASE_AGENT_PROMPT = `
-In order to complete the objective that the user asks of you, you have access to a number of standard tools.
-`;

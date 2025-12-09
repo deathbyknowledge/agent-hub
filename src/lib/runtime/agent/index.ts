@@ -2,41 +2,37 @@ import { type Provider } from "../providers";
 import type {
   AgentMiddleware,
   ToolHandler,
-  ApproveBody,
   ToolCall,
   InvokeBody,
   MWContext,
   ThreadMetadata,
   AgentState,
-  ParentInfo,
   ThreadRequestContext,
   RunState,
   AgentConfig,
   AgentBlueprint,
-  AgentEnv
+  AgentEnv,
 } from "../types";
-import { Agent, getAgentByName, type AgentContext } from "agents";
-import { getToolMeta } from "../middleware";
+import { Agent, type AgentContext } from "agents";
+import { getToolMeta } from "../tools";
 import { type AgentEvent, AgentEventType } from "../events";
 import { step } from "./step";
 import { Store } from "./store";
 import { PersistedObject } from "./config";
-import { AgentFileSystem } from "../middleware/fs";
+import { AgentFileSystem } from "../fs";
 
-// I rather name this State but the name's taken
 export type Info = {
   threadId: string;
   agencyId: string;
   createdAt: string;
   request: ThreadRequestContext;
   agentType: string;
-  parentInfo?: ParentInfo;
   pendingToolCalls?: ToolCall[];
   blueprint?: AgentBlueprint;
 };
 
 export abstract class HubAgent<
-  Env extends AgentEnv = AgentEnv
+  Env extends AgentEnv = AgentEnv,
 > extends Agent<Env> {
   protected _tools: Record<string, ToolHandler> = {};
   private _fs: AgentFileSystem | null = null;
@@ -44,6 +40,8 @@ export abstract class HubAgent<
   // State
   readonly info: Info;
   readonly runState: RunState;
+  /** Open-typed persisted metadata, accessible to all middleware */
+  readonly vars: Record<string, unknown>;
   store: Store;
   observability = undefined;
 
@@ -56,8 +54,12 @@ export abstract class HubAgent<
     this.runState = PersistedObject<RunState>(kv, {
       prefix: "_runState",
       defaults: {
-        status: "registered"
-      }
+        status: "registered",
+      },
+    });
+    // Open-typed persisted metadata for middleware use
+    this.vars = PersistedObject<Record<string, unknown>>(kv, {
+      prefix: "_vars",
     });
   }
 
@@ -105,16 +107,12 @@ export abstract class HubAgent<
         if (!name) throw new Error("Tool missing name: use defineTool(...)");
 
         this._tools[name] = tool;
-      }
+      },
     };
   }
 
   get isPaused(): boolean {
     return this.runState.status === "paused";
-  }
-
-  get isWaitingSubagents(): boolean {
-    return this.isPaused && this.store.waitingSubagents.length > 0;
   }
 
   get isDone(): boolean {
@@ -127,12 +125,15 @@ export abstract class HubAgent<
     );
   }
 
-  emit(type: AgentEventType, data: unknown) {
+  /**
+   * Emit an event. Accepts core AgentEventType or custom string types for middleware events.
+   */
+  emit(type: AgentEventType | string, data: Record<string, unknown>) {
     const evt = {
       type,
       data,
       threadId: this.info.threadId || this.ctx.id.toString(),
-      ts: new Date().toISOString()
+      ts: new Date().toISOString(),
     } as AgentEvent;
 
     const seq = this.store.addEvent(evt);
@@ -141,29 +142,38 @@ export abstract class HubAgent<
     this.broadcast(JSON.stringify({ ...evt, seq }));
   }
 
-  // callback exposed by Agent class
   async onRequest(req: Request) {
     const url = new URL(req.url);
-    // TODO: Should MWs be able to define handlers?
     switch (url.pathname) {
       case "/invoke":
         return this.invoke(req);
-      case "/approve":
-        return this.approve(req);
-      case "/cancel":
-        return this.cancel(req);
+      case "/action":
+        return this.action(req);
       case "/state":
         return this.getState(req);
       case "/events":
         return this.getEvents(req);
-      case "/child_result":
-        return this.childResult(req);
       case "/register":
         if (req.method === "POST") return this.registerThread(req);
         return new Response("method not allowed", { status: 405 });
       default:
         return new Response("not found", { status: 404 });
     }
+  }
+
+  async action(req: Request) {
+    const { type, ...payload } = await req.json<{
+      type: string;
+      payload: object;
+    }>();
+
+    for (const mw of this.middleware) {
+      if (mw.actions?.[type]) {
+        const result = await mw.actions[type](this.mwContext, payload);
+        return Response.json(result);
+      }
+    }
+    return new Response(`unknown action: ${type}`, { status: 400 });
   }
 
   // TODO: revisit registration/init
@@ -188,11 +198,6 @@ export abstract class HubAgent<
         this.info.agentType = metadata.agentType;
       }
 
-      // If this is a subagent, persist parent info immediately
-      if (metadata.parent) {
-        this.info.parentInfo = metadata.parent;
-      }
-
       // Call onRegister hook to fetch blueprint and initialize
       await this.onRegister(metadata);
 
@@ -207,11 +212,25 @@ export abstract class HubAgent<
     try {
       const body = (await req.json().catch(() => ({}))) as InvokeBody;
 
+      // Merge invoke meta into persisted meta
+      if (body.vars) {
+        Object.assign(this.vars, body.vars);
+      }
+
       // Merge input into state
       if (body.messages?.length) this.store.appendMessages(body.messages);
-      if (body.files) this.store.mergeFiles(body.files);
 
-      let runState = this.runState;
+      // Add files into agent's home folder.
+      // TODO: allow any byte stream?
+      if (body.files && Array.isArray(body.files)) {
+        await Promise.all(
+          Object.entries(body.files).map(([filename, content]) =>
+            this.fs?.writeFile(`~/${filename}`, content)
+          )
+        );
+      }
+
+      const runState = this.runState;
       // Start or continue run
       if (
         !runState ||
@@ -219,20 +238,17 @@ export abstract class HubAgent<
           runState.status
         )
       ) {
-        runState.runId = this.runState?.runId ?? crypto.randomUUID();
         runState.status = "running";
         runState.step = this.runState?.step ?? 0;
         runState.nextAlarmAt = null;
-        this.emit(AgentEventType.RUN_STARTED, {
-          runId: runState.runId
-        });
+        this.emit(AgentEventType.RUN_STARTED, {});
       } else if (runState.status === "paused") {
         // remains paused; client may be trying to push more messages—fine.
       }
 
       await this.ensureScheduled();
-      const { runId, status } = runState;
-      return Response.json({ runId, status }, { status: 202 });
+      const { status } = runState;
+      return Response.json({ status }, { status: 202 });
     } catch (error: unknown) {
       const err = error as Error;
       return Response.json(
@@ -242,90 +258,14 @@ export abstract class HubAgent<
     }
   }
 
-  async approve(req: Request) {
-    const body = await req.json<ApproveBody>();
-    const runState = this.runState;
-    if (!runState) return new Response("no run", { status: 400 });
-
-    // Apply approval to pending tool calls
-    const pending = this.info.pendingToolCalls ?? [];
-    if (!pending.length)
-      return new Response("no pending tool calls", { status: 400 });
-
-    const decided = body.modifiedToolCalls ?? pending;
-    this.info.pendingToolCalls = decided;
-
-    // Resume run
-    runState.status = "running";
-    runState.reason = undefined;
-    this.emit(AgentEventType.HITL_RESUME, {
-      approved: body.approved,
-      modifiedToolCalls: decided
-    });
-    this.emit(AgentEventType.RUN_RESUMED, {
-      runId: runState.runId
-    });
-
-    const ctx = this.mwContext;
-    for (const m of this.middleware) m.onResume?.(ctx, "hitl", body);
-
-    await this.ensureScheduled();
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
-  }
-
-  async cancel(_req: Request) {
-    const runState = this.runState;
-    if (runState && runState.status !== "completed") {
-      // Cancel all waiting subagents first
-      const waitingSubagents = this.store.waitingSubagents;
-      if (waitingSubagents.length > 0) {
-        await Promise.all(
-          waitingSubagents.map(async (subagent) => {
-            try {
-              const childAgent = await getAgentByName(
-                this.env.HUB_AGENT,
-                subagent.childThreadId
-              );
-              await childAgent.fetch(
-                new Request("http://do/cancel", {
-                  method: "POST"
-                })
-              );
-            } catch (error) {
-              // Log error but continue canceling other subagents
-              console.error(
-                `Failed to cancel subagent ${subagent.childThreadId}:`,
-                error
-              );
-            }
-          })
-        );
-        // Clear waiting subagents from the database
-        for (const subagent of waitingSubagents) {
-          this.store.popWaitingSubagent(subagent.token, subagent.childThreadId);
-          this.store.markSubagentCanceled(subagent.childThreadId);
-        }
-      }
-
-      runState.status = "canceled";
-      runState.reason = "user";
-      this.emit(AgentEventType.RUN_CANCELED, {
-        runId: runState.runId
-      });
-    }
-    return new Response(JSON.stringify({ ok: true }));
-  }
-
   getState(_req: Request) {
-    const { threadId, agencyId, agentType, parentInfo, request, createdAt } =
-      this.info;
+    const { threadId, agencyId, agentType, request, createdAt } = this.info;
     const { model } = this;
     const tools = Object.values(this.tools).map((tool) => {
       const meta = getToolMeta(tool);
       if (!meta) throw new Error(`Tool ${tool.name} has no metadata`);
       return meta;
     });
-    const subagentLinks = this.store.listSubagentLinks();
     let state: AgentState = {
       messages: this.store.listMessages(),
       threadId,
@@ -335,18 +275,12 @@ export abstract class HubAgent<
       thread: {
         id: threadId,
         request,
-        parent: parentInfo,
         createdAt,
         agentType,
-        agencyId
-      }
+        agencyId,
+      },
     };
-    if (parentInfo) {
-      state = { ...state, parent: parentInfo };
-    }
-    if (subagentLinks.length) {
-      state = { ...state, subagents: subagentLinks };
-    }
+    // Let middlewares add their own state
     for (const m of this.middleware) {
       if (m.state) {
         state = { ...state, ...m.state(this.mwContext) };
@@ -395,7 +329,7 @@ export abstract class HubAgent<
       toolBatch.map(async (call) => {
         this.emit(AgentEventType.TOOL_STARTED, {
           toolName: call.name,
-          args: call.args
+          args: call.args,
         });
         try {
           if (!tools[call.name]) {
@@ -405,14 +339,14 @@ export abstract class HubAgent<
           const out = await tools[call.name](call.args, {
             agent: this,
             env: this.env,
-            callId: call.id
+            callId: call.id,
           });
 
           if (out === null) return { call, out };
           // Regular tool result
           this.emit(AgentEventType.TOOL_OUTPUT, {
             toolName: call.name,
-            output: out
+            output: out,
           });
           return { call, out };
         } catch (e: unknown) {
@@ -427,7 +361,7 @@ export abstract class HubAgent<
           const { error, call } = r;
           this.emit(AgentEventType.TOOL_ERROR, {
             toolName: call.name,
-            error: String(error instanceof Error ? error.message : error)
+            error: String(error instanceof Error ? error.message : error),
           });
           await Promise.all(
             mws.map((m) =>
@@ -454,7 +388,7 @@ export abstract class HubAgent<
         return {
           role: "tool" as const,
           content,
-          toolCallId: call.id
+          toolCallId: call.id,
         };
       });
     this.store.appendMessages(messages);
@@ -470,15 +404,13 @@ export abstract class HubAgent<
     const TOOLS_PER_TICK = 25;
 
     this.emit(AgentEventType.RUN_TICK, {
-      runId: runState.runId,
-      step: runState.step
+      step: runState.step,
     });
     runState.step += 1;
 
     const hasPendingTools = (this.info.pendingToolCalls ?? []).length > 0;
 
-    // Skip calling the model if we have pending tools or waiting for subagents
-    if (!hasPendingTools && !this.isWaitingSubagents) {
+    if (!hasPendingTools && !this.isPaused) {
       try {
         await step(this.middleware, this.mwContext);
       } catch (error: unknown) {
@@ -488,7 +420,7 @@ export abstract class HubAgent<
         );
         this.emit(AgentEventType.AGENT_ERROR, {
           error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
+          stack: error instanceof Error ? error.stack : undefined,
         });
         return;
       }
@@ -496,34 +428,16 @@ export abstract class HubAgent<
       if (this.isPaused) return;
 
       // If the agent didn't call any more tools, we consider the run complete.
-      // If it was a subagent, we also report back to the parent.
       if (this.isDone) {
         runState.status = "completed";
         const last = this.store.lastAssistant();
-        this.emit(AgentEventType.AGENT_COMPLETED, { result: last });
+        const final = last && "content" in last ? last.content : "";
 
-        const parent = this.info.parentInfo;
-        // If it's a subagent, report back to the parent on completion
-        if (parent?.threadId && parent?.token) {
-          const parentAgent = await getAgentByName(
-            this.env.HUB_AGENT,
-            parent.threadId
-          );
-          const final = last && "content" in last ? last.content : "";
-          await this.onDone({ agent: this, final });
-          await parentAgent.fetch(
-            new Request("http://do/child_result", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                token: parent.token,
-                childThreadId: this.info.threadId || this.ctx.id.toString(),
-                report: final
-              })
-            })
-          );
+        for (const mw of this.middleware) {
+          await mw.onRunComplete?.(this.mwContext, { final });
         }
 
+        this.emit(AgentEventType.AGENT_COMPLETED, { result: last });
         return;
       }
     }
@@ -531,8 +445,8 @@ export abstract class HubAgent<
     // Execute pending tools
     await this.executePendingTools(TOOLS_PER_TICK);
 
-    // If we're still waiting for subagents, don't proceed further
-    if (this.isWaitingSubagents) {
+    // If paused (by middleware), don't proceed further
+    if (this.isPaused) {
       return;
     }
 
@@ -555,44 +469,4 @@ export abstract class HubAgent<
     runState.nextAlarmAt = now.getTime();
     await this.schedule(now, "run");
   }
-
-  async childResult(req: Request) {
-    return this.ctx.blockConcurrencyWhile(async () => {
-      const body = (await req.json()) as {
-        token: string;
-        childThreadId: string;
-        report?: string;
-      };
-      const hit = this.store.popWaitingSubagent(body.token, body.childThreadId);
-      if (!hit) return new Response("unknown token", { status: 400 });
-
-      // append tool message with the subagent's report
-      const content = body.report ?? "";
-      this.store.appendToolResult(hit.toolCallId, content);
-      this.store.markSubagentCompleted(body.childThreadId, content);
-
-      // events
-      this.emit(AgentEventType.SUBAGENT_COMPLETED, {
-        childThreadId: body.childThreadId,
-        result: content
-      });
-
-      // Only resume if ALL waiting subagents have completed
-      const remainingWaits = this.store.waitingSubagents;
-      const runState = this.runState;
-
-      // Resume run if all waiting subagents have completed
-      if (runState && remainingWaits.length === 0) {
-        runState.status = "running";
-        runState.reason = undefined;
-        this.emit(AgentEventType.RUN_RESUMED, {
-          runId: runState.runId
-        });
-        await this.ensureScheduled();
-      }
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
-    });
-  }
-
-  abstract onDone(ctx: { agent: HubAgent; final: string }): Promise<void>;
 }

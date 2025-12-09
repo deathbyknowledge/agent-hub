@@ -1,5 +1,5 @@
 import type { AgentMiddleware, MWContext } from "../types";
-import { ModelPlanBuilder } from "../middleware/plan";
+import { ModelPlanBuilder } from "../plan";
 
 export async function step(
   mws: AgentMiddleware[],
