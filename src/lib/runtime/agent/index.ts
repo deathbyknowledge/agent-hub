@@ -1,7 +1,7 @@
 import { type Provider } from "../providers";
 import type {
   AgentPlugin,
-  ToolHandler,
+  Tool,
   ToolCall,
   InvokeBody,
   PluginContext,
@@ -14,7 +14,6 @@ import type {
   AgentEnv,
 } from "../types";
 import { Agent, type AgentContext } from "agents";
-import { getToolMeta } from "../tools";
 import { type AgentEvent, AgentEventType } from "../events";
 import { step } from "./step";
 import { Store } from "./store";
@@ -34,7 +33,7 @@ export type Info = {
 export abstract class HubAgent<
   Env extends AgentEnv = AgentEnv,
 > extends Agent<Env> {
-  protected _tools: Record<string, ToolHandler> = {};
+  protected _tools: Record<string, Tool<any>> = {};
   private _fs: AgentFileSystem | null = null;
 
   // State
@@ -65,7 +64,8 @@ export abstract class HubAgent<
 
   abstract get blueprint(): AgentBlueprint;
   abstract get plugins(): AgentPlugin[];
-  abstract get tools(): Record<string, ToolHandler>;
+  // biome-ignore lint/suspicious/noExplicitAny: tools have varying input types
+  abstract get tools(): Record<string, Tool<any>>;
   abstract get systemPrompt(): string;
   abstract get model(): string;
   abstract get config(): AgentConfig;
@@ -102,11 +102,9 @@ export abstract class HubAgent<
       agent: this,
       provider: this.provider,
       env: this.env,
-      registerTool: (tool: ToolHandler) => {
-        const name = getToolMeta(tool)?.name;
-        if (!name) throw new Error("Tool missing name: use defineTool(...)");
-
-        this._tools[name] = tool;
+      registerTool: <T>(tool: Tool<T>) => {
+        // biome-ignore lint/suspicious/noExplicitAny: tools have varying input types
+        this._tools[tool.meta.name] = tool as Tool<any>;
       },
     };
   }
@@ -261,11 +259,7 @@ export abstract class HubAgent<
   getState(_req: Request) {
     const { threadId, agencyId, agentType, request, createdAt } = this.info;
     const { model } = this;
-    const tools = Object.values(this.tools).map((tool) => {
-      const meta = getToolMeta(tool);
-      if (!meta) throw new Error(`Tool ${tool.name} has no metadata`);
-      return meta;
-    });
+    const tools = Object.values(this.tools).map((tool) => tool.meta);
     let state: AgentState = {
       messages: this.store.listMessages(),
       threadId,
@@ -335,7 +329,7 @@ export abstract class HubAgent<
             return { call, error: new Error(`Tool ${call.name} not found`) };
           }
 
-          const out = await tools[call.name](call.args, {
+          const out = await tools[call.name].execute(call.args, {
             agent: this,
             env: this.env,
             callId: call.id,

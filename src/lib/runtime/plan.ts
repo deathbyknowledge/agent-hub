@@ -1,6 +1,5 @@
 import type { ModelRequest } from "./types";
 import type { HubAgent } from "./agent";
-import { getToolMeta } from "./tools";
 
 export class ModelPlanBuilder {
   private sysParts: string[] = [];
@@ -40,11 +39,7 @@ export class ModelPlanBuilder {
       .filter(Boolean)
       .join("\n\n");
 
-    const toolDefs = Object.values(this.agent.tools).map((tool) => {
-      const meta = getToolMeta(tool);
-      if (!meta) throw new Error(`Tool ${tool.name} has no metadata`);
-      return meta;
-    });
+    const toolDefs = Object.values(this.agent.tools).map((tool) => tool.meta);
 
     const messages = this.agent.messages.filter((m) => m.role !== "system");
     return {

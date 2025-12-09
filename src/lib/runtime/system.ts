@@ -7,10 +7,9 @@ import { getAgentByName } from "agents";
 import { HubAgent } from "./agent";
 import { Agency } from "./agency";
 import { AgentEventType } from "./events";
-import { getToolMeta } from "./tools";
 import { makeOpenAI, type Provider } from "./providers";
 import type {
-  ToolHandler,
+  Tool,
   AgentPlugin,
   AgentBlueprint,
   AgentConfig,
@@ -26,11 +25,11 @@ type AgentHubOptions = {
 };
 
 class ToolRegistry {
-  private tools = new Map<string, ToolHandler>();
-  private tags = new Map<string, string[]>(); // Map<tag, toolNames>
+  private tools = new Map<string, Tool<any>>();
+  private tags = new Map<string, string[]>();
 
-  addTool(name: string, handler: ToolHandler, tags?: string[]) {
-    this.tools.set(name, handler);
+  addTool<T>(name: string, tool: Tool<T>, tags?: string[]) {
+    this.tools.set(name, tool);
     if (tags) {
       for (const tag of tags) {
         const existing = this.tags.get(tag) || [];
@@ -45,9 +44,9 @@ class ToolRegistry {
    * - `@tag` selects all tools with that tag
    * - `name` selects a specific tool by name
    */
-  selectByCapabilities(capabilities: string[]): ToolHandler[] {
+  selectByCapabilities(capabilities: string[]): Tool<any>[] {
     const seen = new Set<string>();
-    const selected: ToolHandler[] = [];
+    const selected: Tool<any>[] = [];
 
     for (const cap of capabilities) {
       if (cap.startsWith("@")) {
@@ -132,11 +131,8 @@ export class AgentHub<TConfig = Record<string, unknown>> {
 
   constructor(private options: AgentHubOptions) {}
 
-  addTool(handler: ToolHandler, tags?: string[]): AgentHub<TConfig> {
-    const toolName = getToolMeta(handler)?.name;
-    if (!toolName) throw new Error("Tool missing name: use defineTool(...)");
-    this.toolRegistry.addTool(toolName, handler, tags);
-
+  addTool<T>(tool: Tool<T>, tags?: string[]): AgentHub<TConfig> {
+    this.toolRegistry.addTool(tool.meta.name, tool, tags);
     return this;
   }
 
@@ -220,7 +216,7 @@ export class AgentHub<TConfig = Record<string, unknown>> {
         const tools = toolRegistry.selectByCapabilities(blueprint.capabilities);
         return {
           ...Object.fromEntries(
-            tools.map((t) => [getToolMeta(t)!.name, t] as const)
+            tools.map((t) => [t.meta.name, t] as const)
           ),
           ...this._tools
         };

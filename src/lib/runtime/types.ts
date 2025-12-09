@@ -164,7 +164,7 @@ export type PluginContext = {
   provider: Provider;
   agent: HubAgent;
   env: AgentEnv;
-  registerTool: (handler: ToolHandler) => void;
+  registerTool: <T>(tool: Tool<T>) => void;
 };
 
 export interface AgentPlugin<TConfig = unknown> {
@@ -197,12 +197,10 @@ export interface AgentPlugin<TConfig = unknown> {
   tags: string[];
 }
 
-// TODO: rethink this as we now have proper `tool`
-export type ToolHandler = ((
-  // biome-ignore lint/suspicious/noExplicitAny: need to think this proper
-  input: any, // TODO: type this
-  ctx: ToolContext
-) => Promise<string | object | null>) & { __tool?: ToolMeta };
+export interface Tool<TInput = unknown> {
+  meta: ToolMeta;
+  execute: (input: TInput, ctx: ToolContext) => Promise<string | object | null>;
+}
 
 export type ToolContext = {
   agent: HubAgent;
