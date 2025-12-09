@@ -2,7 +2,7 @@ import { getAgentByName } from "agents";
 import type { AgentBlueprint, ThreadRequestContext } from "./types";
 import type { KVNamespace } from "@cloudflare/workers-types";
 import type { HubAgent } from "./agent";
-import type { Agency } from "./agent/agency";
+import type { Agency } from "./agency";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",

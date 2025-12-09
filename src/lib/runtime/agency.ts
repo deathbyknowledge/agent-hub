@@ -5,7 +5,7 @@ import type {
   ThreadMetadata,
   ThreadRequestContext,
   AgentEnv
-} from "../types";
+} from "./types";
 
 // ============================================================
 // Schedule Types

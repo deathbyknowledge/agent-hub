@@ -18,7 +18,7 @@ import { getToolMeta } from "../tools";
 import { type AgentEvent, AgentEventType } from "../events";
 import { step } from "./step";
 import { Store } from "./store";
-import { PersistedObject } from "./config";
+import { PersistedObject } from "../config";
 import { AgentFileSystem } from "../fs";
 
 export type Info = {

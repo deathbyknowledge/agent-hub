@@ -5,7 +5,7 @@
 
 import { getAgentByName } from "agents";
 import { HubAgent } from "./agent";
-import { Agency } from "./agent/agency";
+import { Agency } from "./agency";
 import { AgentEventType } from "./events";
 import { getToolMeta } from "./tools";
 import { makeOpenAI, type Provider } from "./providers";

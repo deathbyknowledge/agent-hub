@@ -2,7 +2,7 @@ import type { env } from "cloudflare:workers";
 import type { ModelPlanBuilder } from "./plan";
 import type { HubAgent } from "./agent";
 import type { Provider } from "./providers";
-import type { Agency } from "./agent/agency";
+import type { Agency } from "./agency";
 
 export type RunStatus =
   | "idle"
