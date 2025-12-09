@@ -1,12 +1,6 @@
-import type { AgentMiddleware, Todo } from "@runtime";
+import type { AgentPlugin, Todo } from "@runtime";
 import { tool } from "@runtime";
 import z from "zod";
-
-export function defineMiddleware<TConfig>(
-  mw: Omit<AgentMiddleware<TConfig>, "__configType">
-): AgentMiddleware<TConfig> {
-  return mw as AgentMiddleware<TConfig>;
-}
 
 export const WRITE_TODOS_TOOL_DESCRIPTION = `Use this tool to create and manage a structured task list for your current work session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
 It also helps the user understand the progress of the task and overall progress of their requests.
@@ -278,7 +272,7 @@ const write_todos = tool({
   },
 });
 
-export const planning: AgentMiddleware = {
+export const planning: AgentPlugin = {
   name: "planning",
   async onInit(ctx) {
     ctx.agent.store.sql.exec(`

@@ -19,7 +19,7 @@ export interface DiscoveredModule {
 export interface DiscoveryResult {
   agents: DiscoveredModule[];
   tools: DiscoveredModule[];
-  middleware: DiscoveredModule[];
+  plugins: DiscoveredModule[];
 }
 
 const TS_EXTENSIONS = [".ts", ".tsx"];
@@ -127,13 +127,13 @@ export function discoverModules(srcDir: string): DiscoveryResult {
   const result: DiscoveryResult = {
     agents: [],
     tools: [],
-    middleware: []
+    plugins: []
   };
 
   const categories = [
     { key: "agents" as const, dir: "agents" },
     { key: "tools" as const, dir: "tools" },
-    { key: "middleware" as const, dir: "middleware" }
+    { key: "plugins" as const, dir: "plugins" }
   ];
 
   for (const { key, dir } of categories) {

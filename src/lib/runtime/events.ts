@@ -21,8 +21,8 @@ export enum AgentEventType {
   MODEL_DELTA = "model.delta",
   MODEL_COMPLETED = "model.completed",
 
-  MIDDLEWARE_BEFORE_MODEL = "middleware.before_model",
-  MIDDLEWARE_AFTER_MODEL = "middleware.after_model",
+  PLUGIN_BEFORE_MODEL = "plugin.before_model",
+  PLUGIN_AFTER_MODEL = "plugin.after_model",
 
   TOOL_STARTED = "tool.started",
   TOOL_OUTPUT = "tool.output",
@@ -39,15 +39,15 @@ export type AgentEvent = {
 } & (AgentEventData | CustomEventData);
 
 /**
- * Custom event data for middleware-defined events.
- * Middleware can emit any string type with arbitrary data.
+ * Custom event data for plugin-defined events.
+ * Plugins can emit any string type with arbitrary data.
  */
 export type CustomEventData = {
   type: string;
   data: Record<string, unknown>;
 };
 
-// TODO: Allow extension of event data, so tools/mws can add their own
+// TODO: Allow extension of event data, so tools/plugins can add their own
 export type AgentEventData =
   | { type: AgentEventType.THREAD_CREATED; data: { threadId: string } }
   | { type: AgentEventType.REQUEST_ACCEPTED; data: { idempotencyKey: string } }
@@ -78,12 +78,12 @@ export type AgentEventData =
       data: { usage?: { inputTokens: number; outputTokens: number } };
     }
   | {
-      type: AgentEventType.MIDDLEWARE_BEFORE_MODEL;
-      data: { middlewareName: string };
+      type: AgentEventType.PLUGIN_BEFORE_MODEL;
+      data: { pluginName: string };
     }
   | {
-      type: AgentEventType.MIDDLEWARE_AFTER_MODEL;
-      data: { middlewareName: string };
+      type: AgentEventType.PLUGIN_AFTER_MODEL;
+      data: { pluginName: string };
     }
   | {
       type: AgentEventType.TOOL_STARTED;

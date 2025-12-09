@@ -11,7 +11,7 @@ import { getToolMeta } from "./tools";
 import { makeOpenAI, type Provider } from "./providers";
 import type {
   ToolHandler,
-  AgentMiddleware,
+  AgentPlugin,
   AgentBlueprint,
   AgentConfig,
   ThreadMetadata,
@@ -79,12 +79,12 @@ class ToolRegistry {
   }
 }
 
-class MiddlewareRegistry {
-  private middlewares = new Map<string, AgentMiddleware>();
-  private tags = new Map<string, string[]>(); // Map<tag, middlewareNames>
+class PluginRegistry {
+  private plugins = new Map<string, AgentPlugin>();
+  private tags = new Map<string, string[]>();
 
-  addMiddleware(name: string, handler: AgentMiddleware, tags?: string[]) {
-    this.middlewares.set(name, handler);
+  addPlugin(name: string, handler: AgentPlugin, tags?: string[]) {
+    this.plugins.set(name, handler);
     if (tags) {
       for (const tag of tags) {
         const existing = this.tags.get(tag) || [];
@@ -94,36 +94,28 @@ class MiddlewareRegistry {
     }
   }
 
-  /**
-   * Select middleware by capabilities.
-   * - `@tag` selects all middleware with that tag
-   * - `name` selects a specific middleware by name
-   */
-  selectByCapabilities(capabilities: string[]): AgentMiddleware[] {
+  selectByCapabilities(capabilities: string[]): AgentPlugin[] {
     const seen = new Set<string>();
-    const selected: AgentMiddleware[] = [];
+    const selected: AgentPlugin[] = [];
 
     for (const cap of capabilities) {
       if (cap.startsWith("@")) {
-        // Tag: select all middleware with this tag
         const tag = cap.slice(1);
-        const mwNames = this.tags.get(tag) || [];
-        for (const name of mwNames) {
+        const pluginNames = this.tags.get(tag) || [];
+        for (const name of pluginNames) {
           if (!seen.has(name)) {
             seen.add(name);
-            const handler = this.middlewares.get(name);
+            const handler = this.plugins.get(name);
             if (handler) selected.push(handler);
           }
         }
       } else {
-        // Direct middleware name
         if (!seen.has(cap)) {
           seen.add(cap);
-          const handler = this.middlewares.get(cap);
+          const handler = this.plugins.get(cap);
           if (handler) {
             selected.push(handler);
           }
-          // Don't warn for middleware - it might be a tool name
         }
       }
     }
@@ -134,10 +126,9 @@ class MiddlewareRegistry {
 
 export class AgentHub<TConfig = Record<string, unknown>> {
   toolRegistry = new ToolRegistry();
-  middlewareRegistry = new MiddlewareRegistry();
+  pluginRegistry = new PluginRegistry();
   agentRegistry = new Map<string, AgentBlueprint>();
   config: Record<string, AgentConfig> = {};
-  // private defaultMiddlewares: AgentMiddleware[] = [];
 
   constructor(private options: AgentHubOptions) {}
 
@@ -150,11 +141,11 @@ export class AgentHub<TConfig = Record<string, unknown>> {
   }
 
   use<TNewConfig>(
-    mw: AgentMiddleware<TNewConfig>,
+    plugin: AgentPlugin<TNewConfig>,
     tags?: string[]
   ): AgentHub<TConfig & TNewConfig> {
-    const uniqueTags = Array.from(new Set([...(tags || []), ...mw.tags]));
-    this.middlewareRegistry.addMiddleware(mw.name, mw, uniqueTags);
+    const uniqueTags = Array.from(new Set([...(tags || []), ...plugin.tags]));
+    this.pluginRegistry.addPlugin(plugin.name, plugin, uniqueTags);
     return this as unknown as AgentHub<TConfig & TNewConfig>;
   }
 
@@ -168,7 +159,7 @@ export class AgentHub<TConfig = Record<string, unknown>> {
     Agency: typeof Agency;
     handler: ReturnType<typeof createHandler>;
   } {
-    const { toolRegistry, middlewareRegistry, agentRegistry } = this;
+    const { toolRegistry, pluginRegistry, agentRegistry } = this;
     const options = this.options; // biome bug, if I put it above the biome things its not used anywhere
     class ConfiguredHubAgent extends HubAgent<AgentEnv> {
       async onDone(_ctx: { agent: HubAgent; final: string }): Promise<void> {
@@ -219,9 +210,8 @@ export class AgentHub<TConfig = Record<string, unknown>> {
         // 3. Persist blueprint locally
         this.info.blueprint = bp;
 
-        // Initialize middleware for this blueprint
-        for (const m of this.middleware) {
-          await m.onInit?.(this.mwContext);
+          for (const p of this.plugins) {
+          await p.onInit?.(this.pluginContext);
         }
       }
 
@@ -236,9 +226,9 @@ export class AgentHub<TConfig = Record<string, unknown>> {
         };
       }
 
-      get middleware() {
+      get plugins() {
         const blueprint = this.blueprint;
-        return middlewareRegistry.selectByCapabilities(blueprint.capabilities);
+        return pluginRegistry.selectByCapabilities(blueprint.capabilities);
       }
 
       get model() {
@@ -250,7 +240,7 @@ export class AgentHub<TConfig = Record<string, unknown>> {
       }
 
       get config(): AgentConfig {
-        return this.blueprint.config ?? { middleware: {}, tools: {} };
+        return this.blueprint.config ?? { plugins: {}, tools: {} };
       }
 
       get provider(): Provider {

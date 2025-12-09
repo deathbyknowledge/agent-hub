@@ -1,10 +1,10 @@
 /**
- * Subagent Reporter Middleware (Child Side)
+ * Subagent Reporter Plugin (Child Side)
  *
- * This middleware is dynamically added to child agents and reports
+ * This plugin is dynamically added to child agents and reports
  * completion back to the parent via the subagent_result action.
  */
-import { defineMiddleware, type AgentEnv } from "@runtime";
+import { definePlugin, type AgentEnv } from "@runtime";
 import { getAgentByName } from "agents";
 
 interface ParentInfo {
@@ -12,7 +12,7 @@ interface ParentInfo {
   token: string;
 }
 
-export const subagentReporter = defineMiddleware({
+export const subagentReporter = definePlugin({
   name: "subagent_reporter",
 
   async onRunComplete(ctx, { final }) {

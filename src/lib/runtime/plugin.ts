@@ -1,7 +1,7 @@
-import type { AgentMiddleware } from "./types";
+import type { AgentPlugin } from "./types";
 
-export function defineMiddleware<TConfig>(
-  mw: Omit<AgentMiddleware<TConfig>, "__configType">
-): AgentMiddleware<TConfig> {
-  return mw as AgentMiddleware<TConfig>;
+export function definePlugin<TConfig>(
+  plugin: Omit<AgentPlugin<TConfig>, "__configType">
+): AgentPlugin<TConfig> {
+  return plugin as AgentPlugin<TConfig>;
 }

@@ -7,7 +7,7 @@
  * It manages its own waiting_subagents table and handles completion via actions.
  */
 import {
-  defineMiddleware,
+  definePlugin,
   tool,
   z,
   type AgentEnv,
@@ -41,7 +41,7 @@ function renderOtherAgents(subagents: SubagentRef[]) {
   return subagents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
 }
 
-export const subagents = defineMiddleware<SubagentsConfig>({
+export const subagents = definePlugin<SubagentsConfig>({
   name: "subagents",
 
   async onInit(ctx) {

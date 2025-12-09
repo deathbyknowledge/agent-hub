@@ -67,9 +67,9 @@ export interface InvokeBody {
   files?: Record<string, string>; // optional files to merge into VFS
   idempotencyKey?: string; // dedupe protection
   agentType?: string; // optional subagent type
-  /** Dynamic middleware tags for this invocation */
+  /** Dynamic plugin tags for this invocation */
   tags?: string[];
-  /** Arbitrary metadata accessible to middlewares */
+  /** Arbitrary vars accessible to plugins */
   vars?: Record<string, unknown>;
 }
 
@@ -88,7 +88,7 @@ export interface ModelRequest {
 
 /**
  * Parent info for subagent relationships.
- * NOTE: This is now populated by consumer middleware (subagents/subagent-reporter),
+ * NOTE: This is now populated by consumer plugins (subagents/subagent-reporter),
  * not by the core runtime.
  */
 export interface ParentInfo {
@@ -137,9 +137,9 @@ export type AgentBlueprint<TConfig = Record<string, unknown>> = {
   description: string;
   prompt: string;
   /**
-   * Capabilities determine which tools and middleware are available to this agent.
-   * - `@tag` - includes all tools/middleware with that tag (e.g., `@security`, `@default`)
-   * - `name` - includes a specific tool/middleware by name (e.g., `write_file`, `planning`)
+   * Capabilities determine which tools and plugins are available to this agent.
+   * - `@tag` - includes all tools/plugins with that tag (e.g., `@security`, `@default`)
+   * - `name` - includes a specific tool/plugin by name (e.g., `write_file`, `planning`)
    */
   capabilities: string[];
   model?: string;
@@ -160,43 +160,39 @@ export interface AgentEnv {
   SANDBOX?: DurableObjectNamespace;
 }
 
-export type MWContext = {
+export type PluginContext = {
   provider: Provider;
   agent: HubAgent;
   env: AgentEnv;
   registerTool: (handler: ToolHandler) => void;
 };
 
-// Middleware lifecycle
-export interface AgentMiddleware<TConfig = unknown> {
+export interface AgentPlugin<TConfig = unknown> {
   actions?: Record<
     string,
-    (ctx: MWContext, payload: unknown) => Promise<unknown>
+    (ctx: PluginContext, payload: unknown) => Promise<unknown>
   >;
 
   name: string;
-  // Helper to infer the config type in the builder, not used at runtime
   __configType?: TConfig;
 
-  // optional, to inject into shared state
-  state?: (ctx: MWContext) => Record<string, unknown>;
+  state?: (ctx: PluginContext) => Record<string, unknown>;
 
-  onInit?(ctx: MWContext): Promise<void>; // optional, run once per DO
+  onInit?(ctx: PluginContext): Promise<void>;
 
-  onTick?(ctx: MWContext): Promise<void>; // before building the model request
+  onTick?(ctx: PluginContext): Promise<void>;
 
-  beforeModel?(ctx: MWContext, plan: ModelPlanBuilder): Promise<void>;
+  beforeModel?(ctx: PluginContext, plan: ModelPlanBuilder): Promise<void>;
 
-  onModelResult?(ctx: MWContext, res: { message: ChatMessage }): Promise<void>;
+  onModelResult?(ctx: PluginContext, res: { message: ChatMessage }): Promise<void>;
 
-  onToolStart?(ctx: MWContext, call: ToolCall): Promise<void>;
-  onToolResult?(ctx: MWContext, call: ToolCall, result: unknown): Promise<void>;
-  onToolError?(ctx: MWContext, call: ToolCall, error: Error): Promise<void>;
+  onToolStart?(ctx: PluginContext, call: ToolCall): Promise<void>;
+  onToolResult?(ctx: PluginContext, call: ToolCall, result: unknown): Promise<void>;
+  onToolError?(ctx: PluginContext, call: ToolCall, error: Error): Promise<void>;
 
-  onResume?(ctx: MWContext, reason: string, payload: unknown): Promise<void>;
+  onResume?(ctx: PluginContext, reason: string, payload: unknown): Promise<void>;
 
-  /** Called when agent run completes */
-  onRunComplete?(ctx: MWContext, result: { final: string }): Promise<void>;
+  onRunComplete?(ctx: PluginContext, result: { final: string }): Promise<void>;
 
   tags: string[];
 }

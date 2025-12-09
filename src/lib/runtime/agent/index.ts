@@ -1,10 +1,10 @@
 import { type Provider } from "../providers";
 import type {
-  AgentMiddleware,
+  AgentPlugin,
   ToolHandler,
   ToolCall,
   InvokeBody,
-  MWContext,
+  PluginContext,
   ThreadMetadata,
   AgentState,
   ThreadRequestContext,
@@ -40,7 +40,7 @@ export abstract class HubAgent<
   // State
   readonly info: Info;
   readonly runState: RunState;
-  /** Open-typed persisted metadata, accessible to all middleware */
+  /** Open-typed persisted metadata, accessible to all plugins */
   readonly vars: Record<string, unknown>;
   store: Store;
   observability = undefined;
@@ -57,14 +57,14 @@ export abstract class HubAgent<
         status: "registered",
       },
     });
-    // Open-typed persisted metadata for middleware use
+    // Open-typed persisted metadata for plugin use
     this.vars = PersistedObject<Record<string, unknown>>(kv, {
       prefix: "_vars",
     });
   }
 
   abstract get blueprint(): AgentBlueprint;
-  abstract get middleware(): AgentMiddleware[];
+  abstract get plugins(): AgentPlugin[];
   abstract get tools(): Record<string, ToolHandler>;
   abstract get systemPrompt(): string;
   abstract get model(): string;
@@ -97,7 +97,7 @@ export abstract class HubAgent<
     return this._fs;
   }
 
-  get mwContext(): MWContext {
+  get pluginContext(): PluginContext {
     return {
       agent: this,
       provider: this.provider,
@@ -167,9 +167,9 @@ export abstract class HubAgent<
       payload: object;
     }>();
 
-    for (const mw of this.middleware) {
-      if (mw.actions?.[type]) {
-        const result = await mw.actions[type](this.mwContext, payload);
+    for (const plugin of this.plugins) {
+      if (plugin.actions?.[type]) {
+        const result = await plugin.actions[type](this.pluginContext, payload);
         return Response.json(result);
       }
     }
@@ -280,10 +280,9 @@ export abstract class HubAgent<
         agencyId,
       },
     };
-    // Let middlewares add their own state
-    for (const m of this.middleware) {
-      if (m.state) {
-        state = { ...state, ...m.state(this.mwContext) };
+    for (const p of this.plugins) {
+      if (p.state) {
+        state = { ...state, ...p.state(this.pluginContext) };
       }
     }
     return Response.json({ state, run: this.runState });
@@ -319,9 +318,9 @@ export abstract class HubAgent<
   async executePendingTools(maxTools: number) {
     const toolBatch = this.popPendingToolCalls(maxTools);
 
-    const mws = this.middleware;
+    const plugins = this.plugins;
     for (const call of toolBatch)
-      await Promise.all(mws.map((m) => m.onToolStart?.(this.mwContext, call)));
+      await Promise.all(plugins.map((p) => p.onToolStart?.(this.pluginContext, call)));
 
     // Execute all tool calls in parallel
     const tools = this.tools;
@@ -364,13 +363,13 @@ export abstract class HubAgent<
             error: String(error instanceof Error ? error.message : error),
           });
           await Promise.all(
-            mws.map((m) =>
-              m.onToolError?.(this.mwContext, r.call, r.error as Error)
+            plugins.map((p) =>
+              p.onToolError?.(this.pluginContext, r.call, r.error as Error)
             )
           );
         } else if ("out" in r) {
           await Promise.all(
-            mws.map((m) => m.onToolResult?.(this.mwContext, r.call, r.out))
+            plugins.map((p) => p.onToolResult?.(this.pluginContext, r.call, r.out))
           );
         }
       })
@@ -412,7 +411,7 @@ export abstract class HubAgent<
 
     if (!hasPendingTools && !this.isPaused) {
       try {
-        await step(this.middleware, this.mwContext);
+        await step(this.plugins, this.pluginContext);
       } catch (error: unknown) {
         runState.status = "error";
         runState.reason = String(
@@ -433,8 +432,8 @@ export abstract class HubAgent<
         const last = this.store.lastAssistant();
         const final = last && "content" in last ? last.content : "";
 
-        for (const mw of this.middleware) {
-          await mw.onRunComplete?.(this.mwContext, { final });
+        for (const plugin of this.plugins) {
+          await plugin.onRunComplete?.(this.pluginContext, { final });
         }
 
         this.emit(AgentEventType.AGENT_COMPLETED, { result: last });

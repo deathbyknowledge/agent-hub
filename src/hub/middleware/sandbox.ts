@@ -1,5 +1,5 @@
 /**
- * Sandbox Middleware
+ * Sandbox Plugin
  *
  * Provides tools for executing commands in an isolated Linux container.
  * Uses @cloudflare/sandbox for ephemeral container execution.
@@ -11,11 +11,11 @@
  * - Cloning and analyzing repositories
  * - Running tests and linters
  *
- * For persistent file storage, use the `filesystem` middleware instead.
+ * For persistent file storage, use the `filesystem` plugin instead.
  */
 
 import { z } from "zod";
-import { tool, type AgentMiddleware } from "@runtime";
+import { tool, type AgentPlugin } from "@runtime";
 
 // ============================================================================
 // Schemas
@@ -137,7 +137,7 @@ const SandboxGitCloneSchema = z.object({
 // ============================================================================
 
 /**
- * Sandbox middleware configuration.
+ * Sandbox plugin configuration.
  * Set via agent blueprint config: `config: { sandbox: { env: { GITHUB_TOKEN: "..." } } }`
  */
 export interface SandboxConfig {
@@ -214,11 +214,11 @@ You have access to an isolated Linux container (sandbox) for executing commands.
 5. Use \`sandbox_git_diff\` to review changes`;
 
 // ============================================================================
-// Middleware
+// Plugin
 // ============================================================================
 
 /**
- * Sandbox middleware - provides tools for ephemeral container execution.
+ * Sandbox plugin - provides tools for ephemeral container execution.
  *
  * Requires:
  * - SANDBOX binding in wrangler.jsonc pointing to a Sandbox Durable Object
@@ -227,7 +227,7 @@ You have access to an isolated Linux container (sandbox) for executing commands.
  * Tools are prefixed with "sandbox_" to distinguish them from the
  * persistent R2-backed filesystem tools.
  */
-export const sandbox: AgentMiddleware<SandboxConfig> = {
+export const sandbox: AgentPlugin<SandboxConfig> = {
   name: "sandbox",
 
   async beforeModel(ctx, plan) {

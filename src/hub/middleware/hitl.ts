@@ -1,13 +1,13 @@
 /**
- * HITL (Human-in-the-Loop) Middleware
+ * HITL (Human-in-the-Loop) Plugin
  *
- * This middleware pauses the agent when risky tools are called,
+ * This plugin pauses the agent when risky tools are called,
  * allowing human approval before execution.
  */
-import { defineMiddleware, type ToolCall } from "@runtime";
+import { definePlugin, type ToolCall } from "@runtime";
 import { AgentEventType } from "@runtime";
 
-/** Custom event types for HITL middleware */
+/** Custom event types for HITL plugin */
 export const HitlEventType = {
   INTERRUPT: "hitl.interrupt",
   RESUME: "hitl.resume",
@@ -24,7 +24,7 @@ export interface ApprovePayload {
   modifiedToolCalls?: ToolCall[];
 }
 
-export const hitl = defineMiddleware<HitlConfig>({
+export const hitl = definePlugin<HitlConfig>({
   name: "hitl",
 
   actions: {
@@ -53,9 +53,8 @@ export const hitl = defineMiddleware<HitlConfig>({
       });
       ctx.agent.emit(AgentEventType.RUN_RESUMED, {});
 
-      // Call onResume hooks
-      for (const m of ctx.agent.middleware) {
-        await m.onResume?.(ctx, "hitl", payload);
+      for (const p of ctx.agent.plugins) {
+        await p.onResume?.(ctx, "hitl", payload);
       }
 
       await ctx.agent.ensureScheduled();

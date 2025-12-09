@@ -1,8 +1,8 @@
-import {tool, type AgentMiddleware} from "@runtime";
+import {tool, type AgentPlugin} from "@runtime";
 import z from 'zod';
 
 /**
- * Filesystem middleware.
+ * Filesystem plugin.
  *
  * Registers file tools that use the agent's built-in `fs` (AgentFileSystem).
  * The filesystem provides:
@@ -12,7 +12,7 @@ import z from 'zod';
  *
  * Requires `FS: R2Bucket` binding in wrangler config.
  */
-export const filesystem: AgentMiddleware = {
+export const filesystem: AgentPlugin = {
   name: "filesystem",
 
   async beforeModel(ctx, plan) {
