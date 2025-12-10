@@ -19,9 +19,12 @@
     "tsc": "npx tsc --noEmit"
   },
   "dependencies": {
+    "@types/prismjs": "^1.26.5",
     "agents": "^0.2.30",
     "clsx": "^2.1.1",
+    "prismjs": "^1.30.0",
     "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
     "tailwind-merge": "^3.4.0",
     "wouter": "^3.8.1"
   },

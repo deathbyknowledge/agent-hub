@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { cn } from "../lib/utils";
-import { ChatCircle, Graph, Folder, ListChecks, Copy, Check } from "./Icons";
+import { ChatCircle, Graph, Folder, ListChecks, Copy, Check, DotsThree, Play, Stop, Trash } from "./Icons";
 
 export type TabId = "chat" | "trace" | "files" | "todos";
 
@@ -24,6 +24,9 @@ interface ContentHeaderProps {
   agencyId: string;
   activeTab: TabId;
   status?: "running" | "paused" | "done" | "error" | "idle";
+  onRestart?: () => void;
+  onStop?: () => void;
+  onDelete?: () => void;
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bgColor: string }> = {
@@ -39,9 +42,14 @@ export function ContentHeader({
   threadId,
   agencyId,
   activeTab,
-  status = "idle"
+  status = "idle",
+  onRestart,
+  onStop,
+  onDelete
 }: ContentHeaderProps) {
   const [copied, setCopied] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   
   // Build base path for tab links
   const basePath = `/${agencyId}/agent/${threadId}`;
@@ -53,6 +61,19 @@ export function ContentHeader({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+  
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    if (showMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showMenu]);
 
   return (
     <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
@@ -91,23 +112,70 @@ export function ContentHeader({
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center gap-1">
-        {TABS.map((tab) => (
-          <Link
-            key={tab.id}
-            href={tab.id === "chat" ? basePath : `${basePath}/${tab.id}`}
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-              activeTab === tab.id
-                ? "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
-                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            )}
+      {/* Tabs and actions */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          {TABS.map((tab) => (
+            <Link
+              key={tab.id}
+              href={tab.id === "chat" ? basePath : `${basePath}/${tab.id}`}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                activeTab === tab.id
+                  ? "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
+                  : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              )}
+            >
+              {tab.icon}
+              <span className="hidden sm:inline">{tab.label}</span>
+            </Link>
+          ))}
+        </div>
+        
+        {/* Actions dropdown */}
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setShowMenu(!showMenu)}
+            className="p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           >
-            {tab.icon}
-            <span className="hidden sm:inline">{tab.label}</span>
-          </Link>
-        ))}
+            <DotsThree size={18} />
+          </button>
+          
+          {showMenu && (
+            <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 z-50">
+              {isRunning && onStop && (
+                <button
+                  onClick={() => { onStop(); setShowMenu(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                >
+                  <Stop size={14} className="text-red-500" />
+                  Stop Agent
+                </button>
+              )}
+              {!isRunning && onRestart && (
+                <button
+                  onClick={() => { onRestart(); setShowMenu(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                >
+                  <Play size={14} className="text-green-500" />
+                  Restart Agent
+                </button>
+              )}
+              {onDelete && (
+                <>
+                  <div className="border-t border-neutral-200 dark:border-neutral-700 my-1" />
+                  <button
+                    onClick={() => { onDelete(); setShowMenu(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  >
+                    <Trash size={14} />
+                    Delete Agent
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

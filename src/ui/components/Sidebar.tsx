@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
+import { Select } from "./Select";
 import { Plus, Robot, Gear, CaretDown, CaretRight } from "./Icons";
 
 // Types
@@ -86,20 +87,16 @@ export function Sidebar({
 
         {/* Agency selector */}
         <div className="flex gap-2">
-          <select
+          <Select
             value={selectedAgencyId || ""}
-            onChange={(e) => {
-              const id = e.target.value;
+            onChange={(id) => {
               if (id) navigate(`/${id}`);
               else navigate("/");
             }}
-            className="flex-1 text-xs px-2 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-          >
-            <option value="">Select agency...</option>
-            {agencies.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
+            options={agencies.map((a) => ({ label: a.name, value: a.id }))}
+            placeholder="Select agency..."
+            className="flex-1 text-xs py-1.5"
+          />
           <Button
             variant="secondary"
             size="sm"

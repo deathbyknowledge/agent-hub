@@ -1,4 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import Prism from "prismjs";
+import "prismjs/components/prism-typescript";
+import "prismjs/components/prism-javascript";
+import "prismjs/components/prism-jsx";
+import "prismjs/components/prism-tsx";
+import "prismjs/components/prism-python";
+import "prismjs/components/prism-json";
+import "prismjs/components/prism-bash";
+import "prismjs/components/prism-yaml";
+import "prismjs/components/prism-markdown";
+import "prismjs/components/prism-css";
+import "prismjs/components/prism-sql";
+import "prismjs/components/prism-go";
+import "prismjs/components/prism-rust";
 import { cn } from "../lib/utils";
 import {
   Folder,
@@ -81,6 +95,75 @@ function getFileExtension(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() || "";
 }
 
+// Map file extensions to Prism language names
+const LANG_MAP: Record<string, string> = {
+  ts: "typescript",
+  tsx: "tsx",
+  js: "javascript",
+  jsx: "jsx",
+  py: "python",
+  json: "json",
+  sh: "bash",
+  bash: "bash",
+  yml: "yaml",
+  yaml: "yaml",
+  md: "markdown",
+  markdown: "markdown",
+  css: "css",
+  scss: "css",
+  sql: "sql",
+  go: "go",
+  rs: "rust",
+  html: "markup",
+  xml: "markup"
+};
+
+function getLanguage(ext: string): string {
+  return LANG_MAP[ext] || "";
+}
+
+// Folder descriptions for tooltips
+const FOLDER_TIPS: Record<string, string> = {
+  "~": "Agent's home directory - private to this agent",
+  "shared": "Shared directory - accessible by all agents in this agency"
+};
+
+// Syntax highlighted code component
+function SyntaxHighlightedCode({ content, language }: { content: string; language: string }) {
+  const highlighted = useMemo(() => {
+    if (!language || !Prism.languages[language]) {
+      return null;
+    }
+    try {
+      return Prism.highlight(content, Prism.languages[language], language);
+    } catch {
+      return null;
+    }
+  }, [content, language]);
+
+  if (highlighted) {
+    return (
+      <pre className="text-sm font-mono whitespace-pre-wrap break-words">
+        <code
+          className={`language-${language}`}
+          dangerouslySetInnerHTML={{ __html: highlighted }}
+          style={{
+            color: "#e5e7eb",
+            background: "transparent"
+          }}
+        />
+      </pre>
+    );
+  }
+
+  // Fallback to plain text
+  return (
+    <pre className="text-sm text-neutral-800 dark:text-neutral-200 font-mono whitespace-pre-wrap break-words">
+      {content}
+    </pre>
+  );
+}
+
 function formatSize(bytes?: number): string {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} B`;
@@ -146,8 +229,10 @@ function FileTreeNode({
           <File size={16} className="text-neutral-400 shrink-0" />
         )}
 
-        {/* Name */}
-        <span className="flex-1 truncate text-neutral-800 dark:text-neutral-200">
+        {/* Name with tooltip for special folders */}
+        <span 
+          className="flex-1 truncate text-neutral-800 dark:text-neutral-200"
+          title={FOLDER_TIPS[node.name] || undefined}>
           {node.name}
         </span>
 
@@ -341,9 +426,7 @@ export function FilesView({
               ) : error ? (
                 <div className="text-red-500 text-sm">{error}</div>
               ) : fileContent !== null ? (
-                <pre className="text-sm text-neutral-800 dark:text-neutral-200 font-mono whitespace-pre-wrap break-words">
-                  {fileContent}
-                </pre>
+                <SyntaxHighlightedCode content={fileContent} language={getLanguage(ext)} />
               ) : canPreview ? (
                 <div className="text-neutral-400 text-sm">
                   Click to load preview

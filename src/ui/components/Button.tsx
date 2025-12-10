@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import { forwardRef, type ComponentProps, type ReactNode } from "react";
 import { cn } from "../lib/utils";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
@@ -27,7 +27,7 @@ const sizeStyles: Record<ButtonSize, string> = {
   lg: "px-4 py-2.5 text-base gap-2"
 };
 
-export function Button({
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({
   variant = "primary",
   size = "md",
   icon,
@@ -35,9 +35,10 @@ export function Button({
   children,
   disabled,
   ...props
-}: ButtonProps) {
+}, ref) {
   return (
     <button
+      ref={ref}
       className={cn(
         "inline-flex items-center justify-center font-medium rounded-lg border transition-colors",
         "focus:outline-none focus:ring-2 focus:ring-orange-500/50",
@@ -53,4 +54,4 @@ export function Button({
       {children}
     </button>
   );
-}
+});

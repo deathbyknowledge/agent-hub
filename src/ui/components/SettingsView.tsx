@@ -3,6 +3,7 @@ import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { Select } from "./Select";
 import { LayerCard, LayerCardContent, LayerCardFooter } from "./LayerCard";
+import { ConfirmModal } from "./ConfirmModal";
 import {
   Robot,
   Plus,
@@ -131,7 +132,7 @@ function ScheduleRow({
     <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
       {/* Header */}
       <div
-        className="flex items-center gap-3 px-4 py-3 bg-neutral-50 dark:bg-neutral-900 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+        className="flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 bg-neutral-50 dark:bg-neutral-900 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? (
@@ -142,14 +143,14 @@ function ScheduleRow({
 
         <ScheduleTypeIcon type={schedule.type} />
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0 basis-full sm:basis-auto order-last sm:order-none mt-2 sm:mt-0">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-neutral-900 dark:text-neutral-100 truncate">
               {schedule.name}
             </span>
             <StatusBadge status={schedule.status} />
           </div>
-          <div className="flex items-center gap-3 text-xs text-neutral-500 mt-0.5">
+          <div className="flex items-center gap-2 sm:gap-3 text-xs text-neutral-500 mt-0.5 flex-wrap">
             <span className="flex items-center gap-1">
               <Robot size={12} />
               {schedule.agentType}
@@ -166,7 +167,7 @@ function ScheduleRow({
           </div>
         </div>
 
-        <div className="flex items-center gap-4 text-xs text-neutral-500">
+        <div className="hidden sm:flex items-center gap-4 text-xs text-neutral-500">
           {schedule.nextRunAt && (
             <span className="flex items-center gap-1">
               <Clock size={12} />
@@ -220,7 +221,7 @@ function ScheduleRow({
       {/* Expanded details */}
       {expanded && (
         <div className="px-4 py-3 border-t border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-950 space-y-3">
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
               <div className="text-xs text-neutral-500 mb-1">Agent Type</div>
               <div className="font-medium text-neutral-900 dark:text-neutral-100">
@@ -619,7 +620,7 @@ function VarsEditor({
               className="flex items-center gap-2 p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900"
             >
               <Key size={14} className="text-neutral-400 shrink-0" />
-              <span className="font-mono text-sm text-neutral-700 dark:text-neutral-300 min-w-[120px]">
+              <span className="font-mono text-sm text-neutral-700 dark:text-neutral-300 min-w-0 sm:min-w-[100px] truncate">
                 {key}
               </span>
 
@@ -687,13 +688,13 @@ function VarsEditor({
       )}
 
       {/* Add new var */}
-      <div className="flex items-center gap-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">
         <input
           type="text"
           value={newKey}
           onChange={(e) => setNewKey(e.target.value)}
           placeholder="Key (e.g., OPENAI_API_KEY)"
-          className="w-40 px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 font-mono"
+          className="w-full sm:w-32 md:w-40 px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 font-mono"
         />
         <input
           type="text"
@@ -735,6 +736,7 @@ export function SettingsView({
   const [selectedSchedule, setSelectedSchedule] =
     useState<AgentSchedule | null>(null);
   const [scheduleRuns, setScheduleRuns] = useState<ScheduleRun[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
 
   if (!agencyId) {
     return (
@@ -771,7 +773,7 @@ export function SettingsView({
           </span>
         </LayerCardFooter>
         <LayerCardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <div className="text-xs text-neutral-500 mb-1">Name</div>
               <div className="font-medium text-neutral-900 dark:text-neutral-100">
@@ -913,11 +915,7 @@ export function SettingsView({
                   onPause={() => onPauseSchedule?.(schedule.id)}
                   onResume={() => onResumeSchedule?.(schedule.id)}
                   onTrigger={() => onTriggerSchedule?.(schedule.id)}
-                  onDelete={() => {
-                    if (confirm(`Delete schedule "${schedule.name}"?`)) {
-                      onDeleteSchedule?.(schedule.id);
-                    }
-                  }}
+                  onDelete={() => setDeleteConfirm({ id: schedule.id, name: schedule.name })}
                   onViewRuns={() => handleViewRuns(schedule)}
                 />
               ))}
@@ -932,6 +930,21 @@ export function SettingsView({
           schedule={selectedSchedule}
           runs={scheduleRuns}
           onClose={() => setSelectedSchedule(null)}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <ConfirmModal
+          title="Delete Schedule"
+          message={`Are you sure you want to delete "${deleteConfirm.name}"? This action cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={() => {
+            onDeleteSchedule?.(deleteConfirm.id);
+            setDeleteConfirm(null);
+          }}
+          onCancel={() => setDeleteConfirm(null)}
         />
       )}
     </div>

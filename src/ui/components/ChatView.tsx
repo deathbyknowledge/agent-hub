@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, memo } from "react";
+import Markdown from "react-markdown";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
-import { PaperPlaneRight, User, Robot, Stop, Wrench } from "./Icons";
+import { PaperPlaneRight, User, Robot, Stop, Wrench, Copy, Check } from "./Icons";
 
 // Types
 interface ToolCall {
@@ -45,6 +46,87 @@ function formatTime(timestamp: string): string {
   if (isYesterday) return `Yesterday ${time}`;
   return date.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + time;
 }
+
+// Code block with copy button
+function CodeBlock({ children, className }: { children: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const language = className?.replace("language-", "") || "";
+  
+  const copyCode = async () => {
+    await navigator.clipboard.writeText(children);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  
+  return (
+    <div className="relative group my-2">
+      <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={copyCode}
+          className="p-1.5 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-300 text-xs"
+          title="Copy code"
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+        </button>
+      </div>
+      {language && (
+        <div className="absolute left-3 top-2 text-xs text-neutral-500 font-mono">
+          {language}
+        </div>
+      )}
+      <pre className="bg-neutral-900 dark:bg-neutral-950 text-neutral-100 p-3 pt-8 rounded-lg overflow-x-auto text-xs font-mono">
+        <code>{children}</code>
+      </pre>
+    </div>
+  );
+}
+
+// Markdown renderer with custom components
+const MarkdownContent = memo(function MarkdownContent({ content }: { content: string }) {
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-0 prose-pre:p-0 prose-pre:bg-transparent">
+      <Markdown
+        components={{
+          code({ className, children, ...props }) {
+            const isInline = !className;
+            const codeContent = String(children).replace(/\n$/, "");
+            
+            if (isInline) {
+              return (
+                <code
+                  className="bg-neutral-100 dark:bg-neutral-700 px-1.5 py-0.5 rounded text-xs font-mono"
+                  {...props}
+                >
+                  {codeContent}
+                </code>
+              );
+            }
+            
+            return <CodeBlock className={className}>{codeContent}</CodeBlock>;
+          },
+          pre({ children }) {
+            // Pass through to let code handle it
+            return <>{children}</>;
+          },
+          a({ href, children }) {
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-orange-500 hover:text-orange-600 underline"
+              >
+                {children}
+              </a>
+            );
+          }
+        }}
+      >
+        {content}
+      </Markdown>
+    </div>
+  );
+});
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
@@ -90,7 +172,11 @@ function MessageBubble({ message }: { message: Message }) {
                 : "bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 border border-neutral-200 dark:border-neutral-700 rounded-bl-md"
             )}
           >
-            <p className="whitespace-pre-wrap">{message.content}</p>
+            {isUser ? (
+              <p className="whitespace-pre-wrap">{message.content}</p>
+            ) : (
+              <MarkdownContent content={message.content} />
+            )}
           </div>
         )}
 

@@ -9,6 +9,7 @@ interface SelectProps {
   value: string;
   onChange: (value: string) => void;
   options: SelectOption[];
+  placeholder?: string;
   className?: string;
   disabled?: boolean;
 }
@@ -17,6 +18,7 @@ export function Select({
   value,
   onChange,
   options,
+  placeholder,
   className,
   disabled
 }: SelectProps) {
@@ -30,9 +32,15 @@ export function Select({
         "bg-white dark:bg-neutral-900 text-sm text-neutral-900 dark:text-neutral-100",
         "focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500",
         "disabled:opacity-50 disabled:cursor-not-allowed",
+        !value && placeholder && "text-neutral-500",
         className
       )}
     >
+      {placeholder && (
+        <option value="" disabled={!value}>
+          {placeholder}
+        </option>
+      )}
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
           {opt.label}

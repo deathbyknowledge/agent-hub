@@ -14,4 +14,5 @@ export type { FileNode } from "./FilesView";
 export { TodosView } from "./TodosView";
 export type { Todo } from "./TodosView";
 export { SettingsView } from "./SettingsView";
+export { ConfirmModal } from "./ConfirmModal";
 export { Robot, Plus, ChatCircle } from "./Icons";
