@@ -1,6 +1,6 @@
 import { getAgentByName } from "agents";
 import type { AgentBlueprint, ThreadRequestContext } from "./types";
-import type { KVNamespace } from "@cloudflare/workers-types";
+import type { R2Bucket } from "@cloudflare/workers-types";
 import type { HubAgent } from "./agent";
 import type { Agency } from "./agency";
 
@@ -67,7 +67,7 @@ export type HandlerOptions = {
 type HandlerEnv = {
   HUB_AGENT: DurableObjectNamespace<HubAgent>;
   AGENCY: DurableObjectNamespace<Agency>;
-  AGENCY_REGISTRY: KVNamespace;
+  FS: R2Bucket;
 };
 
 export const createHandler = (opts: HandlerOptions = {}) => {
@@ -90,14 +90,23 @@ export const createHandler = (opts: HandlerOptions = {}) => {
       // Root: Agency Management
       // ======================================================
 
-      // GET /agencies -> List all agencies
+      // GET /agencies -> List all agencies (from R2 bucket)
       if (req.method === "GET" && path === "/agencies") {
-        const list = await env.AGENCY_REGISTRY.list();
         const agencies = [];
 
-        for (const key of list.keys) {
-          const meta = await env.AGENCY_REGISTRY.get(key.name);
-          agencies.push(meta ? JSON.parse(meta) : { id: key.name });
+        // List top-level "directories" in R2 - each is an agency
+        const list = await env.FS.list({ delimiter: "/" });
+        for (const prefix of list.delimitedPrefixes) {
+          const agencyName = prefix.replace(/\/$/, ""); // Remove trailing slash
+          // Try to read agency metadata
+          const metaObj = await env.FS.get(`${agencyName}/.agency.json`);
+          if (metaObj) {
+            const meta = await metaObj.json();
+            agencies.push(meta);
+          } else {
+            // Agency exists but no metadata - provide minimal info
+            agencies.push({ id: agencyName, name: agencyName });
+          }
         }
 
         return withCors(Response.json({ agencies }));
@@ -109,15 +118,39 @@ export const createHandler = (opts: HandlerOptions = {}) => {
           .json<{ name?: string }>()
           .catch(() => ({}) as { name?: string });
 
-        // Use a proper Durable Object ID
-        const id = env.AGENCY.newUniqueId().toString();
+        const name = body.name?.trim();
+        if (!name) {
+          return withCors(
+            new Response("Agency name is required", { status: 400 })
+          );
+        }
+
+        // Validate name is URL-safe
+        if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+          return withCors(
+            new Response(
+              "Agency name must be alphanumeric with dashes/underscores only",
+              { status: 400 }
+            )
+          );
+        }
+
+        // Check if agency already exists
+        const existing = await env.FS.head(`${name}/.agency.json`);
+        if (existing) {
+          return withCors(
+            new Response(`Agency '${name}' already exists`, { status: 409 })
+          );
+        }
+
+        // Create agency metadata in R2
         const meta = {
-          id,
-          name: body.name || "Untitled Agency",
+          id: name,
+          name: name,
           createdAt: new Date().toISOString()
         };
+        await env.FS.put(`${name}/.agency.json`, JSON.stringify(meta));
 
-        await env.AGENCY_REGISTRY.put(id, JSON.stringify(meta));
         return withCors(Response.json(meta, { status: 201 }));
       }
 

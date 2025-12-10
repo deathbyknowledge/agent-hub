@@ -116,12 +116,11 @@ export class Agency extends Agent<AgentEnv> {
 
   /**
    * Get the agency name. Prefers in-memory name (set via getAgentByName),
-   * falls back to persisted name (for alarm wake-ups), then to DO ID.
+   * falls back to persisted name (for alarm wake-ups).
    */
   get agencyName(): string {
     // 1. In-memory name from getAgentByName
     if (this.name) {
-      // Persist it if not already done
       this.persistName(this.name);
       return this.name;
     }
@@ -138,7 +137,7 @@ export class Agency extends Agent<AgentEnv> {
       return stored;
     }
 
-    throw new Error("Agency name not found");
+    throw new Error("Agency name not found - DO never accessed via getAgentByName?");
   }
 
   private persistName(name: string): void {

@@ -21,12 +21,6 @@
       // }
     ]
   },
-  "kv_namespaces": [
-    {
-      "binding": "AGENCY_REGISTRY",
-      "id": "deep-soc-demo-registry"
-    }
-  ],
   "r2_buckets": [
     {
       "binding": "FS"
