@@ -21,8 +21,8 @@ import {
   CaretDown,
   Clock,
   Download,
-  Spinner
-} from "./Icons";
+  CircleNotch
+} from "@phosphor-icons/react";
 import { Button } from "./Button";
 
 // Types
@@ -387,7 +387,7 @@ export function FilesView({
                     size="sm"
                     icon={
                       loading ? (
-                        <Spinner size={14} className="animate-spin" />
+                        <CircleNotch size={14} className="animate-spin" />
                       ) : (
                         <Download size={14} />
                       )
@@ -420,7 +420,7 @@ export function FilesView({
                 </div>
               ) : loading ? (
                 <div className="flex items-center gap-2 text-neutral-400 text-sm">
-                  <Spinner size={16} className="animate-spin" />
+                  <CircleNotch size={16} className="animate-spin" />
                   Loading file...
                 </div>
               ) : error ? (

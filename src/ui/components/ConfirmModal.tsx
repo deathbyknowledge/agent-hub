@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Button } from "./Button";
-import { Warning } from "./Icons";
+import { Warning } from "@phosphor-icons/react";
 
 interface ConfirmModalProps {
   title: string;

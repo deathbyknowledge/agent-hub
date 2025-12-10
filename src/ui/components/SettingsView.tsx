@@ -23,7 +23,7 @@ import {
   Pencil,
   Check,
   X
-} from "./Icons";
+} from "@phosphor-icons/react";
 import type {
   AgentBlueprint,
   AgentSchedule,

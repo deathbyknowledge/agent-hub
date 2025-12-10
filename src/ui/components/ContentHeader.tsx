@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { cn } from "../lib/utils";
-import { ChatCircle, Graph, Folder, ListChecks, Copy, Check, DotsThree, Play, Stop, Trash } from "./Icons";
+import { ChatCircle, Graph, Folder, ListChecks, Copy, Check, DotsThreeVertical, Play, Stop, Trash } from "@phosphor-icons/react";
 
 export type TabId = "chat" | "trace" | "files" | "todos";
 
@@ -138,7 +138,7 @@ export function ContentHeader({
             onClick={() => setShowMenu(!showMenu)}
             className="p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           >
-            <DotsThree size={18} />
+            <DotsThreeVertical size={18} />
           </button>
           
           {showMenu && (

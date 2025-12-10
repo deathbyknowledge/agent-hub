@@ -13,7 +13,7 @@ import {
   Brain,
   ArrowRight,
   ArrowLeft,
-} from "./Icons";
+} from "@phosphor-icons/react";
 
 // ============================================================================
 // Types

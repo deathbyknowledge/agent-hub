@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { Select } from "./Select";
-import { Plus, Robot, Gear, CaretDown, CaretRight } from "./Icons";
+import { Plus, Robot, Gear, CaretDown, CaretRight } from "@phosphor-icons/react";
 
 // Types
 interface AgencyMeta {

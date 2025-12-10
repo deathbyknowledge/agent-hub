@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cn } from "../lib/utils";
-import { Check, Clock, Warning, CaretDown, CaretRight } from "./Icons";
+import { Check, Clock, Warning, CaretDown, CaretRight } from "@phosphor-icons/react";
 
 // Types
 type TodoStatus = "pending" | "in_progress" | "done" | "blocked";

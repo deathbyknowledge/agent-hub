@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, memo } from "react";
 import Markdown from "react-markdown";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
-import { PaperPlaneRight, User, Robot, Stop, Wrench, Copy, Check } from "./Icons";
+import { PaperPlaneRight, User, Robot, Stop, Wrench, Copy, Check } from "@phosphor-icons/react";
 
 // Types
 interface ToolCall {
