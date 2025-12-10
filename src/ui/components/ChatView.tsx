@@ -29,10 +29,21 @@ interface ChatViewProps {
 }
 
 function formatTime(timestamp: string): string {
-  return new Date(timestamp).toLocaleTimeString([], {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = date.toDateString() === yesterday.toDateString();
+  
+  const time = date.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit"
   });
+  
+  if (isToday) return time;
+  if (isYesterday) return `Yesterday ${time}`;
+  return date.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + time;
 }
 
 function MessageBubble({ message }: { message: Message }) {
@@ -103,25 +114,40 @@ function MessageBubble({ message }: { message: Message }) {
 function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   const [expanded, setExpanded] = useState(false);
 
-  const statusColors = {
-    pending: "text-neutral-400",
-    running: "text-blue-500",
-    done: "text-green-500",
-    error: "text-red-500"
+  const statusConfig = {
+    pending: { color: "text-neutral-400", bg: "bg-neutral-100 dark:bg-neutral-800", label: "pending" },
+    running: { color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/30", label: "running..." },
+    done: { color: "text-green-500", bg: "bg-green-50 dark:bg-green-900/30", label: "done" },
+    error: { color: "text-red-500", bg: "bg-red-50 dark:bg-red-900/30", label: "error" }
   };
+  
+  const config = statusConfig[toolCall.status];
+  const isRunning = toolCall.status === "running";
 
   return (
-    <div className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
+    <div className={cn(
+      "border rounded-lg overflow-hidden",
+      toolCall.status === "error" 
+        ? "border-red-200 dark:border-red-800" 
+        : "border-neutral-200 dark:border-neutral-700",
+      config.bg
+    )}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
       >
-        <Wrench size={14} className={statusColors[toolCall.status]} />
-        <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+        <Wrench size={14} className={cn(config.color, isRunning && "animate-spin")} />
+        <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300 truncate">
           {toolCall.name}
         </span>
-        <span className={cn("text-xs ml-auto", statusColors[toolCall.status])}>
-          {toolCall.status}
+        <span className={cn("text-xs ml-auto flex items-center gap-1", config.color)}>
+          {isRunning && (
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+            </span>
+          )}
+          {config.label}
         </span>
       </button>
 
@@ -192,9 +218,14 @@ export function ChatView({
       <div className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center">
-            <div className="text-center text-neutral-400">
-              <Robot size={48} className="mx-auto mb-3 opacity-50" />
-              <p>Start a conversation</p>
+            <div className="text-center max-w-sm">
+              <Robot size={48} className="mx-auto mb-4 text-neutral-300 dark:text-neutral-600" />
+              <h3 className="text-lg font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                Ready to chat
+              </h3>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                Send a message to start the conversation. The agent will respond and may use tools to help accomplish your task.
+              </p>
             </div>
           </div>
         ) : (
@@ -245,8 +276,8 @@ export function ChatView({
           )}
         </div>
 
-        <p className="text-xs text-neutral-400 mt-2 text-center">
-          Press Enter to send, Shift+Enter for new line
+        <p className="text-xs text-neutral-400 mt-2 text-center" title="Press Enter to send, Shift+Enter for new line">
+          Enter to send · Shift+Enter for new line
         </p>
       </div>
     </div>

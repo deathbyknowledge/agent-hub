@@ -8,6 +8,9 @@ import {
   FilesView,
   TodosView,
   SettingsView,
+  Robot,
+  Plus,
+  ChatCircle,
   type TabId,
   type Message,
   type FileNode,
@@ -717,10 +720,56 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
 // Empty State (no agent selected)
 // ============================================================================
 
-function EmptyState() {
+function EmptyState({ hasAgency, hasAgents }: { hasAgency?: boolean; hasAgents?: boolean }) {
+  if (!hasAgency) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center max-w-md px-4">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+            <Robot size={32} className="text-orange-500" />
+          </div>
+          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+            Welcome to Agent Hub
+          </h2>
+          <p className="text-neutral-500 dark:text-neutral-400 mb-4">
+            Select an agency from the sidebar to get started, or create a new one.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!hasAgents) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center max-w-md px-4">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+            <Plus size={32} className="text-neutral-400" />
+          </div>
+          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+            No agents yet
+          </h2>
+          <p className="text-neutral-500 dark:text-neutral-400 mb-4">
+            Create your first agent to start a conversation. Click "New Agent" in the sidebar.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
   return (
-    <div className="flex-1 flex items-center justify-center text-neutral-400">
-      <p className="text-lg">Select an agent to get started</p>
+    <div className="flex-1 flex items-center justify-center">
+      <div className="text-center max-w-md px-4">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+          <ChatCircle size={32} className="text-neutral-400" />
+        </div>
+        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+          Select an agent
+        </h2>
+        <p className="text-neutral-500 dark:text-neutral-400">
+          Choose an agent from the sidebar to view its conversation and details.
+        </p>
+      </div>
     </div>
   );
 }
@@ -729,14 +778,14 @@ function EmptyState() {
 // Main Content Router
 // ============================================================================
 
-function MainContent({ agencyId }: { agencyId: string | null }) {
+function MainContent({ agencyId, hasAgents }: { agencyId: string | null; hasAgents: boolean }) {
   // Match agent routes
   const [matchAgent, paramsAgent] = useRoute("/:agencyId/agent/:agentId");
   const [matchAgentTab, paramsAgentTab] = useRoute("/:agencyId/agent/:agentId/:tab");
   const [matchSettings] = useRoute("/:agencyId/settings");
 
   if (!agencyId) {
-    return <EmptyState />;
+    return <EmptyState hasAgency={false} />;
   }
 
   if (matchSettings) {
@@ -762,7 +811,7 @@ function MainContent({ agencyId }: { agencyId: string | null }) {
     );
   }
 
-  return <EmptyState />;
+  return <EmptyState hasAgency={true} hasAgents={hasAgents} />;
 }
 
 // ============================================================================
@@ -787,8 +836,8 @@ export default function App() {
   const [showAgencyModal, setShowAgencyModal] = useState(false);
   const [newAgencyName, setNewAgencyName] = useState("");
 
-  // Derive thread status
-  const threadStatus = useMemo(() => {
+  // Derive agent status
+  const agentStatus = useMemo(() => {
     const status: Record<string, "running" | "paused" | "done" | "error" | "idle"> = {};
     agents.forEach((a) => {
       if (a.id === agentId && runState) {
@@ -836,10 +885,10 @@ export default function App() {
         agencies={agencies}
         selectedAgencyId={agencyId}
         onCreateAgency={handleCreateAgency}
-        threads={agents}
-        selectedThreadId={agentId}
-        onCreateThread={() => handleCreateAgent()}
-        threadStatus={threadStatus}
+        agents={agents}
+        selectedAgentId={agentId}
+        onCreateAgent={() => handleCreateAgent()}
+        agentStatus={agentStatus}
       />
 
       {/* Blueprint picker modal */}
@@ -866,7 +915,7 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col">
-        <MainContent agencyId={agencyId} />
+        <MainContent agencyId={agencyId} hasAgents={agents.length > 0} />
       </div>
     </div>
   );

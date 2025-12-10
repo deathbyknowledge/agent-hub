@@ -21,13 +21,14 @@ interface SidebarProps {
   agencies: AgencyMeta[];
   selectedAgencyId: string | null;
   onCreateAgency: () => void;
-  threads: AgentSummary[];
-  selectedThreadId: string | null;
-  onCreateThread: () => void;
-  threadStatus?: Record<
+  agents: AgentSummary[];
+  selectedAgentId: string | null;
+  onCreateAgent: () => void;
+  agentStatus?: Record<
     string,
     "running" | "paused" | "done" | "error" | "idle"
   >;
+  isLoading?: boolean;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -38,7 +39,7 @@ const STATUS_COLORS: Record<string, string> = {
   idle: "bg-neutral-400"
 };
 
-function formatThreadId(id: string): string {
+function formatAgentId(id: string): string {
   return id.slice(0, 8);
 }
 
@@ -60,13 +61,17 @@ export function Sidebar({
   agencies,
   selectedAgencyId,
   onCreateAgency,
-  threads,
-  selectedThreadId,
-  onCreateThread,
-  threadStatus = {}
+  agents,
+  selectedAgentId,
+  onCreateAgent,
+  agentStatus = {},
+  isLoading = false
 }: SidebarProps) {
-  const [threadsExpanded, setThreadsExpanded] = useState(true);
-  const [, navigate] = useLocation();
+  const [agentsExpanded, setAgentsExpanded] = useState(true);
+  const [location, navigate] = useLocation();
+  
+  // Check if we're on the settings page
+  const isOnSettings = location.endsWith('/settings');
 
   return (
     <div className="w-64 h-full flex flex-col bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800">
@@ -105,22 +110,22 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Threads section */}
+      {/* Agents section */}
       <div className="flex-1 overflow-y-auto">
         <button
-          onClick={() => setThreadsExpanded(!threadsExpanded)}
+          onClick={() => setAgentsExpanded(!agentsExpanded)}
           className="w-full flex items-center gap-2 px-4 py-2 text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
         >
-          {threadsExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
-          THREADS
-          <span className="ml-auto text-neutral-400">{threads.length}</span>
+          {agentsExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
+          AGENTS
+          <span className="ml-auto text-neutral-400">{agents.length}</span>
         </button>
 
-        {threadsExpanded && (
+        {agentsExpanded && (
           <div className="px-2 pb-2">
-            {/* New thread button */}
+            {/* New agent button */}
             <button
-              onClick={onCreateThread}
+              onClick={onCreateAgent}
               disabled={!selectedAgencyId}
               className={cn(
                 "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
@@ -129,24 +134,37 @@ export function Sidebar({
               )}
             >
               <Plus size={14} />
-              New Thread
+              New Agent
             </button>
 
-            {/* Thread list */}
-            {threads.length === 0 ? (
+            {/* Loading state */}
+            {isLoading ? (
+              <div className="px-3 py-4 space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="animate-pulse flex items-center gap-2 px-3 py-2">
+                    <div className="w-2 h-2 rounded-full bg-neutral-200 dark:bg-neutral-700" />
+                    <div className="flex-1 space-y-1">
+                      <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-24" />
+                      <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded w-16" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : agents.length === 0 ? (
               <div className="px-3 py-4 text-xs text-neutral-400 text-center">
-                {selectedAgencyId ? "No threads yet" : "Select an agency first"}
+                {selectedAgencyId ? "No agents yet" : "Select an agency first"}
               </div>
             ) : (
               <div className="mt-1 space-y-0.5">
-                {threads.map((thread) => {
-                  const isSelected = thread.id === selectedThreadId;
-                  const status = threadStatus[thread.id] || "idle";
+                {agents.map((agent) => {
+                  const isSelected = agent.id === selectedAgentId && !isOnSettings;
+                  const status = agentStatus[agent.id] || "idle";
+                  const isRunning = status === "running";
 
                   return (
                     <Link
-                      key={thread.id}
-                      href={`/${selectedAgencyId}/agent/${thread.id}`}
+                      key={agent.id}
+                      href={`/${selectedAgencyId}/agent/${agent.id}`}
                       className={cn(
                         "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left",
                         isSelected
@@ -154,21 +172,31 @@ export function Sidebar({
                           : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                       )}
                     >
-                      {/* Status indicator */}
-                      <span
-                        className={cn(
-                          "w-2 h-2 rounded-full shrink-0",
-                          STATUS_COLORS[status]
+                      {/* Status indicator with pulse for running */}
+                      <span className="relative shrink-0">
+                        <span
+                          className={cn(
+                            "block w-2 h-2 rounded-full",
+                            STATUS_COLORS[status]
+                          )}
+                        />
+                        {isRunning && (
+                          <span
+                            className={cn(
+                              "absolute inset-0 w-2 h-2 rounded-full animate-ping",
+                              STATUS_COLORS[status]
+                            )}
+                          />
                         )}
-                      />
+                      </span>
 
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">
-                          {thread.agentType}
+                          {agent.agentType}
                         </div>
                         <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                          {formatThreadId(thread.id)} ·{" "}
-                          {formatRelativeTime(thread.createdAt)}
+                          {formatAgentId(agent.id)} ·{" "}
+                          {formatRelativeTime(agent.createdAt)}
                         </div>
                       </div>
                     </Link>
@@ -186,7 +214,9 @@ export function Sidebar({
           href={selectedAgencyId ? `/${selectedAgencyId}/settings` : "#"}
           className={cn(
             "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
-            "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800",
+            isOnSettings
+              ? "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300"
+              : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800",
             !selectedAgencyId && "opacity-50 pointer-events-none"
           )}
         >

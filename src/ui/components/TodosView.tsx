@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { cn } from "../lib/utils";
-import { Check, Clock, Warning, X } from "./Icons";
+import { Check, Clock, Warning, CaretDown, CaretRight } from "./Icons";
 
 // Types
 type TodoStatus = "pending" | "in_progress" | "done" | "blocked";
@@ -142,13 +143,15 @@ function TodoCard({
 }
 
 export function TodosView({ todos, onToggle }: TodosViewProps) {
-  const pendingTodos = todos.filter((t) => t.status !== "done");
-  const doneTodos = todos.filter((t) => t.status === "done");
+  const [showCompleted, setShowCompleted] = useState(false);
+  
+  const activeTodos = todos.filter((t) => t.status !== "done");
+  const completedTodos = todos.filter((t) => t.status === "done");
 
   const stats = {
     total: todos.length,
-    done: doneTodos.length,
-    pending: pendingTodos.length
+    done: completedTodos.length,
+    active: activeTodos.length
   };
 
   return (
@@ -167,8 +170,8 @@ export function TodosView({ todos, onToggle }: TodosViewProps) {
             done
           </span>
           <span className="text-neutral-500">
-            <span className="font-medium text-orange-500">{stats.pending}</span>{" "}
-            pending
+            <span className="font-medium text-orange-500">{stats.active}</span>{" "}
+            active
           </span>
 
           {/* Progress bar */}
@@ -193,31 +196,37 @@ export function TodosView({ todos, onToggle }: TodosViewProps) {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Pending */}
-            {pendingTodos.length > 0 && (
+            {/* Active (pending + in_progress) */}
+            {activeTodos.length > 0 && (
               <div>
                 <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">
-                  In Progress ({pendingTodos.length})
+                  Active ({activeTodos.length})
                 </h3>
                 <div className="space-y-2">
-                  {pendingTodos.map((todo) => (
+                  {activeTodos.map((todo) => (
                     <TodoCard key={todo.id} todo={todo} onToggle={onToggle} />
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Done */}
-            {doneTodos.length > 0 && (
+            {/* Completed - collapsible */}
+            {completedTodos.length > 0 && (
               <div>
-                <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">
-                  Completed ({doneTodos.length})
-                </h3>
-                <div className="space-y-2">
-                  {doneTodos.map((todo) => (
-                    <TodoCard key={todo.id} todo={todo} onToggle={onToggle} />
-                  ))}
-                </div>
+                <button
+                  onClick={() => setShowCompleted(!showCompleted)}
+                  className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
+                >
+                  {showCompleted ? <CaretDown size={14} /> : <CaretRight size={14} />}
+                  Completed ({completedTodos.length})
+                </button>
+                {showCompleted && (
+                  <div className="space-y-2">
+                    {completedTodos.map((todo) => (
+                      <TodoCard key={todo.id} todo={todo} onToggle={onToggle} />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
