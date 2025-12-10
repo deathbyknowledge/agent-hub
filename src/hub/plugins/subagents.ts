@@ -243,11 +243,11 @@ export const subagents = definePlugin<SubagentsConfig>({
             body: JSON.stringify({
               messages: [{ role: "user", content: String(description ?? "") }],
               vars: {
+                ...vars,
                 parent: {
                   threadId: ctx.agent.info.threadId,
                   token,
                 },
-                ...vars
               }
             }),
           })
