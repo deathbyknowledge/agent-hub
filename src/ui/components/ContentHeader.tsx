@@ -1,5 +1,6 @@
+import { Link } from "wouter";
 import { cn } from "../lib/utils";
-import { ChatCircle, Graph, Folder, ListChecks, Gear } from "./Icons";
+import { ChatCircle, Graph, Folder, ListChecks } from "./Icons";
 
 export type TabId = "chat" | "trace" | "files" | "todos";
 
@@ -19,8 +20,8 @@ const TABS: Tab[] = [
 interface ContentHeaderProps {
   threadName: string;
   threadId: string;
+  agencyId: string;
   activeTab: TabId;
-  onTabChange: (tab: TabId) => void;
   status?: "running" | "paused" | "done" | "error" | "idle";
 }
 
@@ -35,10 +36,12 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 export function ContentHeader({
   threadName,
   threadId,
+  agencyId,
   activeTab,
-  onTabChange,
   status = "idle"
 }: ContentHeaderProps) {
+  // Build base path for tab links
+  const basePath = `/${agencyId}/agent/${threadId}`;
   const statusInfo = STATUS_LABELS[status];
 
   return (
@@ -63,9 +66,9 @@ export function ContentHeader({
       {/* Tabs */}
       <div className="flex items-center gap-1">
         {TABS.map((tab) => (
-          <button
+          <Link
             key={tab.id}
-            onClick={() => onTabChange(tab.id)}
+            href={tab.id === "chat" ? basePath : `${basePath}/${tab.id}`}
             className={cn(
               "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
               activeTab === tab.id
@@ -75,7 +78,7 @@ export function ContentHeader({
           >
             {tab.icon}
             <span className="hidden sm:inline">{tab.label}</span>
-          </button>
+          </Link>
         ))}
       </div>
     </div>

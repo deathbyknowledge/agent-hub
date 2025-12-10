@@ -1,7 +1,7 @@
 import { useState } from "react";
+import { Link, useLocation } from "wouter";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
-import { Select } from "./Select";
 import { Plus, Robot, Gear, CaretDown, CaretRight } from "./Icons";
 
 // Types
@@ -20,13 +20,10 @@ interface AgentSummary {
 interface SidebarProps {
   agencies: AgencyMeta[];
   selectedAgencyId: string | null;
-  onSelectAgency: (id: string) => void;
   onCreateAgency: () => void;
   threads: AgentSummary[];
   selectedThreadId: string | null;
-  onSelectThread: (id: string) => void;
   onCreateThread: () => void;
-  onOpenSettings: () => void;
   threadStatus?: Record<
     string,
     "running" | "paused" | "done" | "error" | "idle"
@@ -62,21 +59,14 @@ function formatRelativeTime(dateStr: string): string {
 export function Sidebar({
   agencies,
   selectedAgencyId,
-  onSelectAgency,
   onCreateAgency,
   threads,
   selectedThreadId,
-  onSelectThread,
   onCreateThread,
-  onOpenSettings,
   threadStatus = {}
 }: SidebarProps) {
   const [threadsExpanded, setThreadsExpanded] = useState(true);
-
-  const agencyOptions = [
-    { label: "Select agency...", value: "" },
-    ...agencies.map((a) => ({ label: a.name, value: a.id }))
-  ];
+  const [, navigate] = useLocation();
 
   return (
     <div className="w-64 h-full flex flex-col bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800">
@@ -91,12 +81,20 @@ export function Sidebar({
 
         {/* Agency selector */}
         <div className="flex gap-2">
-          <Select
+          <select
             value={selectedAgencyId || ""}
-            onChange={onSelectAgency}
-            options={agencyOptions}
-            className="flex-1 text-xs"
-          />
+            onChange={(e) => {
+              const id = e.target.value;
+              if (id) navigate(`/${id}`);
+              else navigate("/");
+            }}
+            className="flex-1 text-xs px-2 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+          >
+            <option value="">Select agency...</option>
+            {agencies.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
           <Button
             variant="secondary"
             size="sm"
@@ -146,9 +144,9 @@ export function Sidebar({
                   const status = threadStatus[thread.id] || "idle";
 
                   return (
-                    <button
+                    <Link
                       key={thread.id}
-                      onClick={() => onSelectThread(thread.id)}
+                      href={`/${selectedAgencyId}/agent/${thread.id}`}
                       className={cn(
                         "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left",
                         isSelected
@@ -173,7 +171,7 @@ export function Sidebar({
                           {formatRelativeTime(thread.createdAt)}
                         </div>
                       </div>
-                    </button>
+                    </Link>
                   );
                 })}
               </div>
@@ -184,16 +182,17 @@ export function Sidebar({
 
       {/* Settings button */}
       <div className="border-t border-neutral-200 dark:border-neutral-800 p-2">
-        <button
-          onClick={onOpenSettings}
+        <Link
+          href={selectedAgencyId ? `/${selectedAgencyId}/settings` : "#"}
           className={cn(
             "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
-            "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800",
+            !selectedAgencyId && "opacity-50 pointer-events-none"
           )}
         >
           <Gear size={16} />
           Agency Settings
-        </button>
+        </Link>
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, StrictMode } from "react";
+import { useLocation, useRoute } from "wouter";
 import {
   Sidebar,
   ContentHeader,
@@ -444,36 +445,25 @@ const MOCK_TODOS: Todo[] = [
 ];
 
 // ============================================================================
-// App Component
+// Agent View Component (handles /:agencyId/agent/:agentId/:tab?)
 // ============================================================================
 
-export default function App() {
-  // Selection state
-  const [selectedAgencyId, setSelectedAgencyId] = useState<string | null>(null);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>("chat");
-  const [showSettings, setShowSettings] = useState(false);
-
-  // Real data hooks
-  const { agencies: realAgencies, create: createAgency } = useAgencies();
+function AgentView({
+  agencyId,
+  agentId,
+  tab = "chat",
+}: {
+  agencyId: string;
+  agentId: string;
+  tab?: string;
+}) {
   const {
-    agents: realAgents,
+    agents,
     blueprints,
-    schedules,
-    vars,
     spawnAgent,
     listDirectory,
     readFile,
-    refreshSchedules,
-    createSchedule,
-    deleteSchedule,
-    pauseSchedule,
-    resumeSchedule,
-    triggerSchedule,
-    getScheduleRuns,
-    setVar,
-    deleteVar,
-  } = useAgency(selectedAgencyId);
+  } = useAgency(agencyId);
   const {
     state: agentState,
     run: runState,
@@ -481,18 +471,10 @@ export default function App() {
     sendMessage,
     cancel,
     loading: agentLoading,
-  } = useAgent(selectedAgencyId, selectedAgentId);
+  } = useAgent(agencyId, agentId);
 
   // File loading state
   const [files, setFiles] = useState<FileNode[]>([]);
-  const [filesLoading, setFilesLoading] = useState(false);
-
-  // Blueprint picker state
-  const [showBlueprintPicker, setShowBlueprintPicker] = useState(false);
-
-  // Agency creation modal state
-  const [showAgencyModal, setShowAgencyModal] = useState(false);
-  const [newAgencyName, setNewAgencyName] = useState("");
 
   // Event detail modal state
   const [selectedEvent, setSelectedEvent] = useState<{
@@ -501,80 +483,45 @@ export default function App() {
     type: string;
   } | null>(null);
 
-  // Use mock or real data
-  const agencies = realAgencies;
-  const agents = realAgents;
+  const activeTab = (["chat", "trace", "files", "todos"].includes(tab) ? tab : "chat") as TabId;
+  const selectedAgent = agents.find((a) => a.id === agentId);
 
-  // Mock message state for demo
-  const [mockMessages, setMockMessages] = useState<Message[]>(MOCK_MESSAGES);
-  const [mockLoading, setMockLoading] = useState(false);
-
-  // Get messages from agent state or mock
+  // Get messages from agent state
   const messages = useMemo(() => {
     return convertChatMessages(agentState?.messages || []);
   }, [agentState?.messages]);
 
-  const isLoading = agentLoading;
-
-  // Get selected agent info
-  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
-  const selectedAgency = agencies.find((a) => a.id === selectedAgencyId);
-
   // Derive status from run state
-  const threadStatus = useMemo(() => {
-    const status: Record<
-      string,
-      "running" | "paused" | "done" | "error" | "idle"
-    > = {};
-    agents.forEach((a) => {
-      if (a.id === selectedAgentId && runState) {
-        status[a.id] =
-          runState.status === "running"
-            ? "running"
-            : runState.status === "completed"
-              ? "done"
-              : runState.status === "error"
-                ? "error"
-                : "idle";
-      } else {
-        status[a.id] = "idle";
-      }
-    });
-    return status;
-  }, [agents, selectedAgentId, runState]);
+  const status = useMemo(() => {
+    if (!runState) return "idle" as const;
+    if (runState.status === "running") return "running" as const;
+    if (runState.status === "completed") return "done" as const;
+    if (runState.status === "error") return "error" as const;
+    return "idle" as const;
+  }, [runState]);
 
-  // Handlers
-  const handleSendMessage = async (content: string) => {
-    await sendMessage(content);
-  };
-
-  const handleCreateAgency = async (name?: string) => {
-    if (name) {
-      const agency = await createAgency(name);
-      setSelectedAgencyId(agency.id);
-      setShowAgencyModal(false);
-      setNewAgencyName("");
-    } else {
-      setShowAgencyModal(true);
-    }
-  };
-
-  const handleCreateAgent = async (agentType?: string) => {
-    if (agentType) {
-      const agent = await spawnAgent(agentType);
-      setSelectedAgentId(agent.id);
-      setShowBlueprintPicker(false);
-    } else {
-      // Show blueprint picker
-      setShowBlueprintPicker(true);
-    }
-  };
+  // Derive todos from agent state
+  const todos = useMemo((): Todo[] => {
+    const stateTodos = (
+      agentState as { todos?: Array<{ content: string; status: string }> } | null
+    )?.todos;
+    if (!stateTodos) return [];
+    return stateTodos.map((t, i) => ({
+      id: `todo-${i}`,
+      title: t.content,
+      status:
+        t.status === "completed"
+          ? "done"
+          : t.status === "in_progress"
+            ? "in_progress"
+            : "pending",
+      priority: "medium" as const,
+      createdAt: new Date().toISOString(),
+    }));
+  }, [agentState]);
 
   // Load files for the current agent
-  // Shows /shared/ (agency-wide) and ~/ (current agent's folder)
   const loadFiles = useCallback(async () => {
-    if (!selectedAgencyId || !selectedAgentId) return;
-    setFilesLoading(true);
     try {
       const fileNodes: FileNode[] = [];
 
@@ -594,7 +541,6 @@ export default function App() {
           children: sharedChildren,
         });
       } catch {
-        // shared directory might not exist yet
         fileNodes.push({
           id: "dir-shared",
           name: "shared",
@@ -605,22 +551,18 @@ export default function App() {
 
       // Load current agent's directory as ~/ (home)
       try {
-        const agentPath = `agents/${selectedAgentId}`;
+        const agentPath = `agents/${agentId}`;
         const { entries: agentEntries } = await listDirectory(agentPath);
-
-        // Filter out the agent folder entry itself (API may return it)
         const filteredEntries = agentEntries.filter((e) => {
           const cleanPath = e.path.replace(/\/+$/, "");
           return cleanPath !== agentPath && cleanPath !== `/${agentPath}`;
         });
-
         const agentChildren = await buildFileTree(
           filteredEntries,
           agentPath,
           listDirectory,
           readFile
         );
-
         fileNodes.push({
           id: "dir-home",
           name: "~",
@@ -628,7 +570,6 @@ export default function App() {
           children: agentChildren,
         });
       } catch {
-        // agent directory might not exist yet
         fileNodes.push({
           id: "dir-home",
           name: "~",
@@ -640,10 +581,8 @@ export default function App() {
       setFiles(fileNodes);
     } catch (e) {
       console.error("Failed to load files:", e);
-    } finally {
-      setFilesLoading(false);
     }
-  }, [selectedAgencyId, selectedAgentId, listDirectory, readFile]);
+  }, [agentId, listDirectory, readFile]);
 
   useEffect(() => {
     if (activeTab === "files") {
@@ -651,39 +590,12 @@ export default function App() {
     }
   }, [activeTab, loadFiles]);
 
-  // Derive todos from agent state (planning middleware adds state.todos)
-  const todos = useMemo((): Todo[] => {
-    // Planning middleware adds `todos` to state
-    const stateTodos = (
-      agentState as {
-        todos?: Array<{ content: string; status: string }>;
-      } | null
-    )?.todos;
-    if (!stateTodos) return [];
-    return stateTodos.map((t, i) => ({
-      id: `todo-${i}`,
-      title: t.content,
-      status:
-        t.status === "completed"
-          ? "done"
-          : t.status === "in_progress"
-            ? "in_progress"
-            : "pending",
-      priority: "medium" as const,
-      createdAt: new Date().toISOString(),
-    }));
-  }, [agentState]);
+  const handleSendMessage = async (content: string) => {
+    await sendMessage(content);
+  };
 
   // Render content based on active tab
   const renderContent = () => {
-    if (!selectedAgent) {
-      return (
-        <div className="flex-1 flex items-center justify-center text-neutral-400">
-          <p className="text-lg">Select an agent to get started</p>
-        </div>
-      );
-    }
-
     switch (activeTab) {
       case "chat":
         return (
@@ -691,7 +603,7 @@ export default function App() {
             messages={messages}
             onSendMessage={handleSendMessage}
             onStop={cancel}
-            isLoading={isLoading}
+            isLoading={agentLoading}
           />
         );
       case "trace":
@@ -713,25 +625,220 @@ export default function App() {
     }
   };
 
+  if (!selectedAgent) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-neutral-400">
+        <p className="text-lg">Agent not found</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <ContentHeader
+        threadName={selectedAgent.agentType}
+        threadId={selectedAgent.id}
+        agencyId={agencyId}
+        activeTab={activeTab}
+        status={status}
+      />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {renderContent()}
+      </div>
+
+      {/* Event detail modal */}
+      {selectedEvent && (
+        <EventDetailModal
+          event={selectedEvent.event}
+          label={selectedEvent.label}
+          type={selectedEvent.type}
+          onClose={() => setSelectedEvent(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// ============================================================================
+// Settings View Wrapper (handles /:agencyId/settings)
+// ============================================================================
+
+function SettingsRoute({ agencyId }: { agencyId: string }) {
+  const {
+    blueprints,
+    schedules,
+    vars,
+    refreshSchedules,
+    createSchedule,
+    deleteSchedule,
+    pauseSchedule,
+    resumeSchedule,
+    triggerSchedule,
+    getScheduleRuns,
+    setVar,
+    deleteVar,
+  } = useAgency(agencyId);
+  const { agencies } = useAgencies();
+  const agency = agencies.find((a) => a.id === agencyId);
+
+  return (
+    <>
+      <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          Agency Settings
+        </h1>
+        <p className="text-sm text-neutral-500">
+          {agency?.name || "Unknown agency"}
+        </p>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <SettingsView
+          agencyId={agencyId}
+          agencyName={agency?.name}
+          blueprints={blueprints}
+          schedules={schedules}
+          vars={vars}
+          onCreateSchedule={createSchedule}
+          onDeleteSchedule={deleteSchedule}
+          onPauseSchedule={pauseSchedule}
+          onResumeSchedule={resumeSchedule}
+          onTriggerSchedule={triggerSchedule}
+          onGetScheduleRuns={getScheduleRuns}
+          onRefreshSchedules={refreshSchedules}
+          onSetVar={setVar}
+          onDeleteVar={deleteVar}
+        />
+      </div>
+    </>
+  );
+}
+
+// ============================================================================
+// Empty State (no agent selected)
+// ============================================================================
+
+function EmptyState() {
+  return (
+    <div className="flex-1 flex items-center justify-center text-neutral-400">
+      <p className="text-lg">Select an agent to get started</p>
+    </div>
+  );
+}
+
+// ============================================================================
+// Main Content Router
+// ============================================================================
+
+function MainContent({ agencyId }: { agencyId: string | null }) {
+  // Match agent routes
+  const [matchAgent, paramsAgent] = useRoute("/:agencyId/agent/:agentId");
+  const [matchAgentTab, paramsAgentTab] = useRoute("/:agencyId/agent/:agentId/:tab");
+  const [matchSettings] = useRoute("/:agencyId/settings");
+
+  if (!agencyId) {
+    return <EmptyState />;
+  }
+
+  if (matchSettings) {
+    return <SettingsRoute agencyId={agencyId} />;
+  }
+
+  if (matchAgentTab && paramsAgentTab) {
+    return (
+      <AgentView
+        agencyId={agencyId}
+        agentId={paramsAgentTab.agentId}
+        tab={paramsAgentTab.tab}
+      />
+    );
+  }
+
+  if (matchAgent && paramsAgent) {
+    return (
+      <AgentView
+        agencyId={agencyId}
+        agentId={paramsAgent.agentId}
+      />
+    );
+  }
+
+  return <EmptyState />;
+}
+
+// ============================================================================
+// App Component
+// ============================================================================
+
+export default function App() {
+  const [location, navigate] = useLocation();
+
+  // Parse agencyId and agentId from URL
+  const pathParts = location.split("/").filter(Boolean);
+  const agencyId = pathParts[0] || null;
+  const agentId = pathParts[1] === "agent" ? pathParts[2] || null : null;
+
+  // Data hooks
+  const { agencies, create: createAgency } = useAgencies();
+  const { agents, blueprints, spawnAgent } = useAgency(agencyId);
+  const { run: runState } = useAgent(agencyId, agentId);
+
+  // Modal state
+  const [showBlueprintPicker, setShowBlueprintPicker] = useState(false);
+  const [showAgencyModal, setShowAgencyModal] = useState(false);
+  const [newAgencyName, setNewAgencyName] = useState("");
+
+  // Derive thread status
+  const threadStatus = useMemo(() => {
+    const status: Record<string, "running" | "paused" | "done" | "error" | "idle"> = {};
+    agents.forEach((a) => {
+      if (a.id === agentId && runState) {
+        status[a.id] =
+          runState.status === "running"
+            ? "running"
+            : runState.status === "completed"
+              ? "done"
+              : runState.status === "error"
+                ? "error"
+                : "idle";
+      } else {
+        status[a.id] = "idle";
+      }
+    });
+    return status;
+  }, [agents, agentId, runState]);
+
+  // Handlers
+  const handleCreateAgency = async (name?: string) => {
+    if (name) {
+      const agency = await createAgency(name);
+      navigate(`/${agency.id}`);
+      setShowAgencyModal(false);
+      setNewAgencyName("");
+    } else {
+      setShowAgencyModal(true);
+    }
+  };
+
+  const handleCreateAgent = async (agentType?: string) => {
+    if (agentType && agencyId) {
+      const agent = await spawnAgent(agentType);
+      navigate(`/${agencyId}/agent/${agent.id}`);
+      setShowBlueprintPicker(false);
+    } else {
+      setShowBlueprintPicker(true);
+    }
+  };
+
   return (
     <div className="h-screen flex bg-neutral-50 dark:bg-neutral-950">
       {/* Sidebar */}
       <Sidebar
         agencies={agencies}
-        selectedAgencyId={selectedAgencyId}
-        onSelectAgency={setSelectedAgencyId}
+        selectedAgencyId={agencyId}
         onCreateAgency={handleCreateAgency}
         threads={agents}
-        selectedThreadId={selectedAgentId}
-        onSelectThread={(id) => {
-          setSelectedAgentId(id);
-          setShowSettings(false);
-        }}
+        selectedThreadId={agentId}
         onCreateThread={() => handleCreateAgent()}
-        onOpenSettings={() => {
-          setShowSettings(true);
-          setSelectedAgentId(null);
-        }}
         threadStatus={threadStatus}
       />
 
@@ -757,65 +864,9 @@ export default function App() {
         />
       )}
 
-      {/* Event detail modal */}
-      {selectedEvent && (
-        <EventDetailModal
-          event={selectedEvent.event}
-          label={selectedEvent.label}
-          type={selectedEvent.type}
-          onClose={() => setSelectedEvent(null)}
-        />
-      )}
-
       {/* Main content */}
       <div className="flex-1 flex flex-col">
-        {showSettings ? (
-          // Settings view (agency-level)
-          <>
-            <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-              <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-                Agency Settings
-              </h1>
-              <p className="text-sm text-neutral-500">
-                {selectedAgency?.name || "Select an agency"}
-              </p>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <SettingsView
-                agencyId={selectedAgencyId}
-                agencyName={selectedAgency?.name}
-                blueprints={blueprints}
-                schedules={schedules}
-                vars={vars}
-                onCreateSchedule={createSchedule}
-                onDeleteSchedule={deleteSchedule}
-                onPauseSchedule={pauseSchedule}
-                onResumeSchedule={resumeSchedule}
-                onTriggerSchedule={triggerSchedule}
-                onGetScheduleRuns={getScheduleRuns}
-                onRefreshSchedules={refreshSchedules}
-                onSetVar={setVar}
-                onDeleteVar={deleteVar}
-              />
-            </div>
-          </>
-        ) : (
-          // Agent view with tabs
-          <>
-            {selectedAgent && (
-              <ContentHeader
-                threadName={selectedAgent.agentType}
-                threadId={selectedAgent.id}
-                activeTab={activeTab}
-                onTabChange={setActiveTab}
-                status={threadStatus[selectedAgent.id]}
-              />
-            )}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {renderContent()}
-            </div>
-          </>
-        )}
+        <MainContent agencyId={agencyId} />
       </div>
     </div>
   );
