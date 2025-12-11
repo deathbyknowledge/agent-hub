@@ -14,7 +14,7 @@ import type {
   AgentBlueprint,
   AgentConfig,
   ThreadMetadata,
-  AgentEnv
+  AgentEnv,
 } from "./types";
 import { createHandler, type HandlerOptions } from "./worker";
 
@@ -206,7 +206,7 @@ export class AgentHub<TConfig = Record<string, unknown>> {
         // 3. Persist blueprint locally
         this.info.blueprint = bp;
 
-          for (const p of this.plugins) {
+        for (const p of this.plugins) {
           await p.onInit?.(this.pluginContext);
         }
       }
@@ -215,10 +215,8 @@ export class AgentHub<TConfig = Record<string, unknown>> {
         const blueprint = this.blueprint;
         const tools = toolRegistry.selectByCapabilities(blueprint.capabilities);
         return {
-          ...Object.fromEntries(
-            tools.map((t) => [t.meta.name, t] as const)
-          ),
-          ...this._tools
+          ...Object.fromEntries(tools.map((t) => [t.meta.name, t] as const)),
+          ...this._tools,
         };
       }
 
@@ -243,41 +241,47 @@ export class AgentHub<TConfig = Record<string, unknown>> {
         let baseProvider = options?.provider;
         // Set OpenAI (chat completions really) provider if not set
         if (!baseProvider) {
-          const apiKey = this.env.LLM_API_KEY;
-          const apiBase = this.env.LLM_API_BASE;
+          // we read from the agency/agent vars for provider keys. this allows
+          // each agency (or agent) to use a different provider while being able to have
+          // a global default through environment variables
+          const apiKey =
+            (this.vars.LLM_API_KEY as string) ?? this.env.LLM_API_KEY;
+          const apiBase =
+            (this.vars.LLM_API_BASE as string) ?? this.env.LLM_API_BASE;
           if (!apiKey)
             throw new Error("Neither LLM_API_KEY nor custom provider set");
 
           baseProvider = makeOpenAI(apiKey, apiBase);
         }
 
+        // this is just a wrapper on the provider interface to emit events
         return {
           invoke: async (req, opts) => {
             this.emit(AgentEventType.MODEL_STARTED, {
-              model: req.model
+              model: req.model,
             });
             const out = await baseProvider.invoke(req, opts);
             this.emit(AgentEventType.MODEL_COMPLETED, {
               usage: {
                 inputTokens: out.usage?.promptTokens ?? 0,
-                outputTokens: out.usage?.completionTokens ?? 0
-              }
+                outputTokens: out.usage?.completionTokens ?? 0,
+              },
             });
             return out;
           },
           stream: async (req, onDelta) => {
             this.emit(AgentEventType.MODEL_STARTED, {
-              model: req.model
+              model: req.model,
             });
             const out = await baseProvider.stream(req, (d) => {
               this.emit(AgentEventType.MODEL_DELTA, { delta: d });
               onDelta(d);
             });
             this.emit(AgentEventType.MODEL_COMPLETED, {
-              usage: undefined
+              usage: undefined,
             });
             return out;
-          }
+          },
         };
       }
     }

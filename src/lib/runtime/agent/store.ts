@@ -211,7 +211,3 @@ CREATE TABLE IF NOT EXISTS events (
     return out;
   }
 }
-
-function escapeRegExp(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
