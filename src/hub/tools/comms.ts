@@ -1,22 +1,18 @@
 import { tool } from "@runtime";
 import * as z from "zod";
 
-`
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"text": "hello from curl"}' \
-  "https://chat.googleapis.com/v1/spaces/AAQA7pwrRs4/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=J2NC-j5dZkugK8uA63Yu--mDQfkPG2SyTe7zEg5n_9c"
-`;
-
 export const sendGChatMessageTool = tool({
   name: "send_gchat_message",
   description: "Send a message to GChat",
   inputSchema: z.object({
     text: z.string().describe("The content of the message to send")
   }),
-  execute: async ({ text }) => {
+  execute: async ({ text }, ctx) => {
+    const url = ctx.agent.vars.GCHAT_WEBHOOK;
+    if (!url) throw new Error("Error: GCHAT_WEBHOOK var not found. Terminate and report this error to user immediately.")
+      
     await fetch(
-      "https://chat.googleapis.com/v1/spaces/AAQA7pwrRs4/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=J2NC-j5dZkugK8uA63Yu--mDQfkPG2SyTe7zEg5n_9c",
+      url as string,
       {
         method: "POST",
         headers: {
