@@ -644,6 +644,7 @@ function AgentView({
         agencyId={agencyId}
         activeTab={activeTab}
         status={status}
+        onStop={cancel}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         {renderContent()}
@@ -914,7 +915,7 @@ export default function App() {
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         <MainContent agencyId={agencyId} hasAgents={agents.length > 0} />
       </div>
     </div>

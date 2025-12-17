@@ -143,7 +143,7 @@ export function ContentHeader({
           
           {showMenu && (
             <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 z-50">
-              {isRunning && onStop && (
+              {isRunning && onStop ? (
                 <button
                   onClick={() => { onStop(); setShowMenu(false); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
@@ -151,8 +151,7 @@ export function ContentHeader({
                   <Stop size={14} className="text-red-500" />
                   Stop Agent
                 </button>
-              )}
-              {!isRunning && onRestart && (
+              ) : !isRunning && onRestart ? (
                 <button
                   onClick={() => { onRestart(); setShowMenu(false); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
@@ -160,10 +159,16 @@ export function ContentHeader({
                   <Play size={14} className="text-green-500" />
                   Restart Agent
                 </button>
-              )}
+              ) : !onDelete ? (
+                <div className="px-3 py-2 text-sm text-neutral-400 dark:text-neutral-500">
+                  No actions available
+                </div>
+              ) : null}
               {onDelete && (
                 <>
-                  <div className="border-t border-neutral-200 dark:border-neutral-700 my-1" />
+                  {(isRunning && onStop) || (!isRunning && onRestart) ? (
+                    <div className="border-t border-neutral-200 dark:border-neutral-700 my-1" />
+                  ) : null}
                   <button
                     onClick={() => { onDelete(); setShowMenu(false); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"

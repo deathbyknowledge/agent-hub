@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { Select } from "./Select";
-import { Plus, Robot, Gear, CaretDown, CaretRight } from "@phosphor-icons/react";
+import { Plus, HeadCircuitIcon, Gear, CaretDown, CaretRight } from "@phosphor-icons/react";
 
 // Types
 interface AgencyMeta {
@@ -79,7 +79,7 @@ export function Sidebar({
       {/* Header */}
       <div className="p-4 border-b border-neutral-200 dark:border-neutral-800">
         <div className="flex items-center gap-2 mb-3">
-          <Robot size={20} className="text-orange-500" />
+          <HeadCircuitIcon size={20} className="text-orange-500" />
           <span className="font-semibold text-neutral-900 dark:text-neutral-100">
             Agent Hub
           </span>
@@ -163,12 +163,17 @@ export function Sidebar({
                       key={agent.id}
                       href={`/${selectedAgencyId}/agent/${agent.id}`}
                       className={cn(
-                        "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left",
+                        "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left relative overflow-hidden",
                         isSelected
                           ? "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300"
-                          : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                          : isRunning
+                            ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
+                            : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                       )}
                     >
+                      {isRunning && !isSelected && (
+                        <span className="absolute inset-0 bg-blue-400/10 dark:bg-blue-400/5 animate-pulse" />
+                      )}
                       {/* Status indicator with pulse for running */}
                       <span className="relative shrink-0">
                         <span

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, memo } from "react";
 import Markdown from "react-markdown";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
-import { PaperPlaneRight, User, Robot, Stop, Wrench, Copy, Check } from "@phosphor-icons/react";
+import { PaperPlaneTiltIcon, User, Robot, Stop, Wrench, Copy, Check } from "@phosphor-icons/react";
 
 // Types
 interface ToolCall {
@@ -326,8 +326,7 @@ export function ChatView({
 
       {/* Input area */}
       <div className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-        <div className="flex items-end gap-2">
-          <div className="flex-1 relative">
+        <div className="flex items-center gap-2">
             <textarea
               ref={textareaRef}
               value={input}
@@ -337,14 +336,13 @@ export function ChatView({
               disabled={isLoading}
               rows={1}
               className={cn(
-                "w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700",
+                "w-full px-4 py-4 rounded-xl border border-neutral-200 dark:border-neutral-700",
                 "bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100",
                 "placeholder:text-neutral-400 resize-none",
                 "focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500",
                 "disabled:opacity-50"
               )}
             />
-          </div>
 
           {isLoading && onStop ? (
             <Button variant="danger" onClick={onStop} icon={<Stop size={18} />}>
@@ -355,16 +353,12 @@ export function ChatView({
               variant="primary"
               onClick={handleSubmit}
               disabled={!input.trim() || isLoading}
-              icon={<PaperPlaneRight size={18} />}
+              icon={<PaperPlaneTiltIcon size={18} />}
             >
               Send
             </Button>
           )}
         </div>
-
-        <p className="text-xs text-neutral-400 mt-2 text-center" title="Press Enter to send, Shift+Enter for new line">
-          Enter to send · Shift+Enter for new line
-        </p>
       </div>
     </div>
   );

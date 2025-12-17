@@ -67,9 +67,7 @@ class ToolRegistry {
           const handler = this.tools.get(cap);
           if (handler) {
             selected.push(handler);
-          } else {
-            console.warn(`Tool not found: ${cap}`);
-          }
+          } 
         }
       }
     }

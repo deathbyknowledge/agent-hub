@@ -5,7 +5,7 @@ import { Select } from "./Select";
 import { LayerCard, LayerCardContent, LayerCardFooter } from "./LayerCard";
 import { ConfirmModal } from "./ConfirmModal";
 import {
-  Robot,
+  Blueprint,
   Plus,
   Trash,
   Calendar,
@@ -22,7 +22,8 @@ import {
   EyeSlash,
   Pencil,
   Check,
-  X
+  X,
+  BlueprintIcon
 } from "@phosphor-icons/react";
 import type {
   AgentBlueprint,
@@ -152,7 +153,7 @@ function ScheduleRow({
           </div>
           <div className="flex items-center gap-2 sm:gap-3 text-xs text-neutral-500 mt-0.5 flex-wrap">
             <span className="flex items-center gap-1">
-              <Robot size={12} />
+              <BlueprintIcon size={12} />
               {schedule.agentType}
             </span>
             {schedule.type === "cron" && schedule.cron && (
@@ -617,7 +618,7 @@ function VarsEditor({
           {entries.map(([key, value]) => (
             <div
               key={key}
-              className="flex items-center gap-2 p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900"
+              className="flex items-center gap-2 p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 overflow-hidden"
             >
               <Key size={14} className="text-neutral-400 shrink-0" />
               <span className="font-mono text-sm text-neutral-700 dark:text-neutral-300 min-w-0 sm:min-w-[100px] truncate">
@@ -648,7 +649,7 @@ function VarsEditor({
                 </>
               ) : (
                 <>
-                  <span className="flex-1 font-mono text-sm text-neutral-500 truncate">
+                  <span className="flex-1 min-w-0 font-mono text-sm text-neutral-500 truncate">
                     {displayValue(key, value)}
                   </span>
                   {isSecret(key) && (
@@ -764,7 +765,7 @@ export function SettingsView({
   };
 
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-6">
+    <div className="h-full overflow-y-auto overflow-x-hidden p-6 space-y-6">
       {/* Agency Info */}
       <LayerCard>
         <LayerCardFooter>
@@ -826,7 +827,7 @@ export function SettingsView({
       <LayerCard>
         <LayerCardFooter className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Robot size={16} className="text-orange-500" />
+            <BlueprintIcon size={16} className="text-orange-500" />
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
               Agent Blueprints
             </span>
@@ -842,15 +843,15 @@ export function SettingsView({
               {blueprints.map((bp) => (
                 <div
                   key={bp.name}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-neutral-200 dark:border-neutral-700"
+                  className="flex items-center gap-3 p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden"
                 >
-                  <Robot size={18} className="text-neutral-400" />
+                  <BlueprintIcon size={18} className="text-neutral-400" />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-neutral-900 dark:text-neutral-100">
                       {bp.name}
                     </div>
                     {bp.description && (
-                      <div className="text-xs text-neutral-500 truncate">
+                      <div className="text-xs text-neutral-500 break-words">
                         {bp.description}
                       </div>
                     )}
