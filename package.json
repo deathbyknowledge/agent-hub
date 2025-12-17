@@ -15,6 +15,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "deploy": "npm run build && wrangler deploy",
     "preview": "vite preview",
     "tsc": "npx tsc --noEmit"
   },

@@ -18,12 +18,18 @@ import { getAgentByName } from "agents";
 const SubagentEventType = {
   SPAWNED: "subagent.spawned",
   COMPLETED: "subagent.completed",
+  MESSAGED: "subagent.messaged",
 } as const;
 
 
 const TaskParams = z.object({
   description: z.string().describe("Task description for the subagent"),
   subagentType: z.string().describe("Type of subagent to spawn")
+});
+
+const MessageAgentParams = z.object({
+  agentId: z.string().describe("The agentId from a previous task result"),
+  message: z.string().describe("Follow-up message to send to the agent"),
 });
 
 type SubagentRef = {
@@ -57,6 +63,7 @@ export const subagents = definePlugin<SubagentsConfig>({
       CREATE TABLE IF NOT EXISTS mw_subagent_links (
         child_thread_id TEXT PRIMARY KEY,
         token TEXT NOT NULL,
+        agent_type TEXT,
         status TEXT NOT NULL CHECK(status IN ('waiting','completed','canceled')),
         created_at INTEGER NOT NULL,
         completed_at INTEGER,
@@ -103,8 +110,12 @@ export const subagents = definePlugin<SubagentsConfig>({
         childThreadId
       );
 
-      // Append tool result
-      ctx.agent.store.appendToolResult(toolCallId, report ?? "");
+      // Append tool result with agentId for follow-up capability
+      const result = JSON.stringify({
+        agentId: childThreadId,
+        result: report ?? ""
+      });
+      ctx.agent.store.appendToolResult(toolCallId, result);
 
       ctx.agent.emit(SubagentEventType.COMPLETED, {
         childThreadId,
@@ -173,7 +184,7 @@ export const subagents = definePlugin<SubagentsConfig>({
     const sql = ctx.agent.store.sql;
     const rows = sql
       .exec(
-        `SELECT child_thread_id, token, status, created_at, completed_at, report, tool_call_id
+        `SELECT child_thread_id, token, agent_type, status, created_at, completed_at, report, tool_call_id
          FROM mw_subagent_links ORDER BY created_at ASC`
       )
       .toArray();
@@ -181,6 +192,7 @@ export const subagents = definePlugin<SubagentsConfig>({
     const subagents = rows.map((r) => ({
       childThreadId: String(r.child_thread_id),
       token: String(r.token ?? ""),
+      agentType: r.agent_type ? String(r.agent_type) : undefined,
       status: String(r.status),
       createdAt: Number(r.created_at ?? Date.now()),
       completedAt: r.completed_at ? Number(r.completed_at) : undefined,
@@ -274,10 +286,11 @@ export const subagents = definePlugin<SubagentsConfig>({
         );
 
         sql.exec(
-          `INSERT INTO mw_subagent_links (child_thread_id, token, status, created_at, tool_call_id)
-           VALUES (?, ?, 'waiting', ?, ?)`,
+          `INSERT INTO mw_subagent_links (child_thread_id, token, agent_type, status, created_at, tool_call_id)
+           VALUES (?, ?, ?, 'waiting', ?, ?)`,
           childId,
           token,
+          subagentType,
           Date.now(),
           toolCtx.callId
         );
@@ -297,6 +310,94 @@ export const subagents = definePlugin<SubagentsConfig>({
     });
 
     ctx.registerTool(taskTool);
+
+    // message_agent tool - send follow-up to existing subagent
+    const messageAgentTool = tool({
+      name: "message_agent",
+      description: `Send a follow-up message to a subagent you previously spawned via the task tool.
+Use this when you need to continue a conversation with a specific agent that already has context from prior interactions.
+The agentId is returned in the result object of the task tool (e.g., {"agentId": "...", "result": "..."}).`,
+      inputSchema: MessageAgentParams,
+      execute: async ({ agentId, message }, toolCtx) => {
+        const sql = ctx.agent.store.sql;
+
+        // Verify this is our child
+        const link = sql
+          .exec(
+            `SELECT status, agent_type FROM mw_subagent_links WHERE child_thread_id = ?`,
+            agentId
+          )
+          .toArray();
+
+        if (!link.length) {
+          return "Error: Unknown agent ID. Make sure this is an agentId from a previous task result.";
+        }
+
+        const token = crypto.randomUUID();
+
+        // Update tracking - reuse the link but new token
+        sql.exec(
+          `INSERT INTO mw_waiting_subagents (token, child_thread_id, tool_call_id, created_at)
+           VALUES (?, ?, ?, ?)`,
+          token,
+          agentId,
+          toolCtx.callId,
+          Date.now()
+        );
+
+        sql.exec(
+          `UPDATE mw_subagent_links 
+           SET status = 'waiting', token = ?, tool_call_id = ?
+           WHERE child_thread_id = ?`,
+          token,
+          toolCtx.callId,
+          agentId
+        );
+
+        // Re-invoke the existing agent
+        const agent = await getAgentByName(
+          (toolCtx.env as AgentEnv).HUB_AGENT,
+          agentId
+        );
+
+        ctx.agent.emit(SubagentEventType.MESSAGED, {
+          childThreadId: agentId,
+          message,
+        });
+
+        const res = await agent.fetch(
+          new Request("http://do/invoke", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              messages: [{ role: "user", content: message }],
+              vars: {
+                parent: {
+                  threadId: ctx.agent.info.threadId,
+                  token,
+                },
+              },
+            }),
+          })
+        );
+
+        if (!res.ok) {
+          return "Error: Failed to message agent";
+        }
+
+        // Pause parent
+        const runState = ctx.agent.runState;
+        if (runState && runState.status === "running") {
+          runState.status = "paused";
+          runState.reason = "subagent";
+          ctx.agent.emit(AgentEventType.RUN_PAUSED, { reason: "subagent" });
+        }
+
+        return null; // Result comes via subagent_result action
+      },
+    });
+
+    ctx.registerTool(messageAgentTool);
   },
 
   tags: ["subagents", "default"],
@@ -341,7 +442,7 @@ When using the Task tool, you must specify a subagentType parameter to select wh
 ## Usage notes:
 1. Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses
 2. When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.
-3. Each agent invocation is stateless. You will not be able to send additional messages to the agent, nor will the agent be able to communicate with you outside of its final report. Therefore, your prompt should contain a highly detailed task description for the agent to perform autonomously and you should specify exactly what information the agent should return back to you in its final and only message to you.
+3. Each task result includes an agentId that you can use with message_agent to send follow-up messages to the same agent. Therefore, your prompt should contain a highly detailed task description for the agent to perform autonomously and you should specify exactly what information the agent should return back to you in its final and only message to you.
 4. The agent's outputs should generally be trusted
 5. Clearly tell the agent whether you expect it to create content, perform analysis, or just do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent
 6. If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.

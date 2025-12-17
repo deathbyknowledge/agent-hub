@@ -10,6 +10,8 @@ import { getAgentByName } from "agents";
 interface ParentInfo {
   threadId: string;
   token: string;
+  /** Custom action type for reporting back (default: subagent_result) */
+  action?: string;
 }
 
 export const subagentReporter = definePlugin({
@@ -30,13 +32,14 @@ export const subagentReporter = definePlugin({
         parent.threadId
       );
 
-      // Send completion via action
+      // Send completion via action (supports custom action types for orchestrator)
+      const actionType = parent.action ?? "subagent_result";
       await parentAgent.fetch(
         new Request("http://do/action", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            type: "subagent_result",
+            type: actionType,
             token: parent.token,
             childThreadId: ctx.agent.info.threadId,
             report: final,
