@@ -16,7 +16,7 @@ import {
   type FileNode,
   type Todo,
 } from "./components";
-import { useAgencies, useAgency, useAgent } from "./hooks";
+import { useAgencies, useAgency, useAgent, usePlugins, getStoredSecret, setStoredSecret } from "./hooks";
 import type {
   AgentBlueprint,
   ChatMessage,
@@ -297,6 +297,61 @@ function AgencyCreateModal({
   );
 }
 
+// Auth unlock form component
+function AuthUnlockForm({
+  onUnlock,
+  error,
+}: {
+  onUnlock: (secret: string) => void;
+  error?: string;
+}) {
+  const [secret, setSecret] = useState("");
+
+  return (
+    <div className="h-screen flex items-center justify-center bg-neutral-950">
+      <div className="max-w-md w-full mx-4">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+            <Robot size={32} className="text-orange-500" />
+          </div>
+          <h1 className="text-2xl font-bold text-neutral-100 mb-2">Agent Hub</h1>
+          <p className="text-neutral-400 text-sm">
+            Enter your secret key to continue
+          </p>
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (secret.trim()) {
+              onUnlock(secret.trim());
+            }
+          }}
+          className="space-y-4"
+        >
+          <input
+            type="password"
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            placeholder="Enter hub secret..."
+            autoFocus
+            className="w-full px-4 py-3 rounded-lg border border-neutral-700 bg-neutral-800 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+          />
+          {error && (
+            <p className="text-red-400 text-sm text-center">{error}</p>
+          )}
+          <button
+            type="submit"
+            disabled={!secret.trim()}
+            className="w-full px-4 py-3 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Unlock
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // Event detail modal component
 function EventDetailModal({
   event,
@@ -359,93 +414,6 @@ function EventDetailModal({
     </div>
   );
 }
-
-// ============================================================================
-// Mock Data
-// ============================================================================
-
-const MOCK_AGENCIES = [
-  { id: "agency-1", name: "My Agency", createdAt: new Date().toISOString() },
-  { id: "agency-2", name: "Test Agency", createdAt: new Date().toISOString() },
-];
-
-const MOCK_AGENTS = [
-  {
-    id: "agent-abc123def456",
-    agentType: "research_agent",
-    createdAt: new Date(Date.now() - 300000).toISOString(),
-  },
-  {
-    id: "agent-xyz789ghi012",
-    agentType: "code_reviewer",
-    createdAt: new Date(Date.now() - 3600000).toISOString(),
-  },
-];
-
-const MOCK_MESSAGES: Message[] = [
-  {
-    id: "msg-1",
-    role: "system",
-    content: "Conversation started",
-    timestamp: new Date(Date.now() - 600000).toISOString(),
-  },
-  {
-    id: "msg-2",
-    role: "user",
-    content: "Can you help me analyze the sales data from Q3?",
-    timestamp: new Date(Date.now() - 300000).toISOString(),
-  },
-  {
-    id: "msg-3",
-    role: "assistant",
-    content:
-      "I'd be happy to help analyze the Q3 sales data. Let me fetch the relevant files.",
-    timestamp: new Date(Date.now() - 290000).toISOString(),
-    toolCalls: [
-      {
-        id: "tool-1",
-        name: "read_file",
-        args: { path: "/data/sales_q3.csv" },
-        result: "Successfully read 1,247 rows",
-        status: "done",
-      },
-    ],
-  },
-];
-
-const MOCK_FILES: FileNode[] = [
-  {
-    id: "f1",
-    name: "data",
-    type: "directory",
-    children: [
-      {
-        id: "f2",
-        name: "sales_q3.csv",
-        type: "file",
-        size: 45200,
-        content: "date,region,revenue\n2024-07-01,West,125000\n...",
-      },
-    ],
-  },
-];
-
-const MOCK_TODOS: Todo[] = [
-  {
-    id: "td1",
-    title: "Fetch Q3 sales data",
-    status: "done",
-    priority: "high",
-    createdAt: new Date(Date.now() - 300000).toISOString(),
-  },
-  {
-    id: "td2",
-    title: "Run analysis",
-    status: "in_progress",
-    priority: "medium",
-    createdAt: new Date(Date.now() - 200000).toISOString(),
-  },
-];
 
 // ============================================================================
 // Agent View Component (handles /:agencyId/agent/:agentId/:tab?)
@@ -672,6 +640,7 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
     blueprints,
     schedules,
     vars,
+    memoryDisks,
     refreshSchedules,
     createSchedule,
     deleteSchedule,
@@ -681,8 +650,13 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
     getScheduleRuns,
     setVar,
     deleteVar,
+    refreshMemoryDisks,
+    createMemoryDisk,
+    importMemoryDisk,
+    deleteMemoryDisk,
   } = useAgency(agencyId);
   const { agencies } = useAgencies();
+  const { plugins, tools } = usePlugins();
   const agency = agencies.find((a) => a.id === agencyId);
 
   return (
@@ -702,6 +676,7 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
           blueprints={blueprints}
           schedules={schedules}
           vars={vars}
+          memoryDisks={memoryDisks}
           onCreateSchedule={createSchedule}
           onDeleteSchedule={deleteSchedule}
           onPauseSchedule={pauseSchedule}
@@ -711,6 +686,14 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
           onRefreshSchedules={refreshSchedules}
           onSetVar={setVar}
           onDeleteVar={deleteVar}
+          onCreateMemoryDisk={async (name, desc, entries) => {
+            await createMemoryDisk(name, desc, entries);
+          }}
+          onImportMemoryDisk={importMemoryDisk}
+          onDeleteMemoryDisk={deleteMemoryDisk}
+          onRefreshMemoryDisks={refreshMemoryDisks}
+          plugins={plugins}
+          tools={tools}
         />
       </div>
     </>
@@ -822,15 +805,34 @@ function MainContent({ agencyId, hasAgents }: { agencyId: string | null; hasAgen
 export default function App() {
   const [location, navigate] = useLocation();
 
+  // Auth state - check if we need to show unlock form
+  const [isLocked, setIsLocked] = useState(false);
+  const [authError, setAuthError] = useState<string | undefined>();
+
   // Parse agencyId and agentId from URL
   const pathParts = location.split("/").filter(Boolean);
   const agencyId = pathParts[0] || null;
   const agentId = pathParts[1] === "agent" ? pathParts[2] || null : null;
 
   // Data hooks
-  const { agencies, create: createAgency } = useAgencies();
+  const { agencies, create: createAgency, error: agenciesError } = useAgencies();
   const { agents, blueprints, spawnAgent } = useAgency(agencyId);
   const { run: runState } = useAgent(agencyId, agentId);
+
+  // Check if we got a 401 error (need auth)
+  useEffect(() => {
+    if (agenciesError && agenciesError.message.includes("401")) {
+      setIsLocked(true);
+    }
+  }, [agenciesError]);
+
+  // Handle unlock attempt
+  const handleUnlock = useCallback((secret: string) => {
+    setStoredSecret(secret);
+    setAuthError(undefined);
+    // Reload the page to re-init all hooks with the new secret
+    window.location.reload();
+  }, []);
 
   // Modal state
   const [showBlueprintPicker, setShowBlueprintPicker] = useState(false);
@@ -878,6 +880,11 @@ export default function App() {
       setShowBlueprintPicker(true);
     }
   };
+
+  // Show auth unlock form if locked
+  if (isLocked) {
+    return <AuthUnlockForm onUnlock={handleUnlock} error={authError} />;
+  }
 
   return (
     <div className="h-screen flex bg-neutral-50 dark:bg-neutral-950">

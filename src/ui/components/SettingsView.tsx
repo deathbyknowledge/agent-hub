@@ -23,15 +23,27 @@ import {
   Pencil,
   Check,
   X,
-  BlueprintIcon
+  BlueprintIcon,
+  Brain,
+  Upload,
+  HardDrive
 } from "@phosphor-icons/react";
 import type {
   AgentBlueprint,
   AgentSchedule,
   ScheduleRun,
   CreateScheduleRequest,
-  AgentScheduleType
+  AgentScheduleType,
+  PluginInfo,
+  ToolInfo,
+  VarHint
 } from "@client";
+
+export interface MemoryDisk {
+  name: string;
+  description?: string;
+  size?: number;
+}
 
 interface SettingsViewProps {
   agencyId: string | null;
@@ -39,6 +51,7 @@ interface SettingsViewProps {
   blueprints?: AgentBlueprint[];
   schedules?: AgentSchedule[];
   vars?: Record<string, unknown>;
+  memoryDisks?: MemoryDisk[];
   onCreateSchedule?: (request: CreateScheduleRequest) => Promise<AgentSchedule>;
   onDeleteSchedule?: (id: string) => Promise<void>;
   onPauseSchedule?: (id: string) => Promise<void>;
@@ -48,6 +61,12 @@ interface SettingsViewProps {
   onRefreshSchedules?: () => Promise<void>;
   onSetVar?: (key: string, value: unknown) => Promise<void>;
   onDeleteVar?: (key: string) => Promise<void>;
+  onCreateMemoryDisk?: (name: string, description?: string, entries?: string[]) => Promise<void>;
+  onImportMemoryDisk?: (file: File) => Promise<void>;
+  onDeleteMemoryDisk?: (name: string) => Promise<void>;
+  onRefreshMemoryDisks?: () => Promise<void>;
+  plugins?: PluginInfo[];
+  tools?: ToolInfo[];
 }
 
 // Format relative time
@@ -717,12 +736,206 @@ function VarsEditor({
   );
 }
 
+// Memory Disks Editor
+function MemoryDisksEditor({
+  disks,
+  onCreate,
+  onImport,
+  onDelete,
+  onRefresh
+}: {
+  disks: MemoryDisk[];
+  onCreate: (name: string, description?: string, entries?: string[]) => Promise<void>;
+  onImport: (file: File) => Promise<void>;
+  onDelete: (name: string) => Promise<void>;
+  onRefresh: () => Promise<void>;
+}) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [newEntries, setNewEntries] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    const entries = newEntries
+      .split("\n")
+      .map((e) => e.trim())
+      .filter(Boolean);
+    await onCreate(newName.trim(), newDesc.trim() || undefined, entries.length ? entries : undefined);
+    setNewName("");
+    setNewDesc("");
+    setNewEntries("");
+    setShowCreate(false);
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      await onImport(file);
+    } finally {
+      setImporting(false);
+      e.target.value = "";
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {disks.length === 0 && !showCreate ? (
+        <p className="text-sm text-neutral-400 py-4 text-center">
+          No memory disks. Create one to enable semantic search.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {disks.map((disk) => (
+            <div
+              key={disk.name}
+              className="flex items-center gap-3 p-3 rounded-lg border border-neutral-200 dark:border-neutral-700"
+            >
+              <HardDrive size={18} className="text-neutral-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                  {disk.name}
+                </div>
+                {disk.description && (
+                  <div className="text-xs text-neutral-500 truncate">
+                    {disk.description}
+                  </div>
+                )}
+              </div>
+              {disk.size !== undefined && (
+                <span className="text-xs text-neutral-400">
+                  {disk.size} entries
+                </span>
+              )}
+              {deleteConfirm === disk.name ? (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      onDelete(disk.name);
+                      setDeleteConfirm(null);
+                    }}
+                    className="p-1 rounded bg-red-100 dark:bg-red-900/30 text-red-600"
+                    title="Confirm delete"
+                  >
+                    <Check size={14} />
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm(null)}
+                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
+                    title="Cancel"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setDeleteConfirm(disk.name)}
+                  className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-600"
+                  title="Delete"
+                >
+                  <Trash size={14} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showCreate && (
+        <div className="p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 space-y-2">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Disk name"
+            className="w-full px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800"
+            autoFocus
+          />
+          <input
+            type="text"
+            value={newDesc}
+            onChange={(e) => setNewDesc(e.target.value)}
+            placeholder="Description (optional)"
+            className="w-full px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800"
+          />
+          <textarea
+            value={newEntries}
+            onChange={(e) => setNewEntries(e.target.value)}
+            placeholder="Initial entries (one per line, optional)"
+            rows={3}
+            className="w-full px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 resize-none"
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setShowCreate(false);
+                setNewName("");
+                setNewDesc("");
+                setNewEntries("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleCreate}
+              disabled={!newName.trim()}
+            >
+              Create
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!showCreate && (
+        <div className="flex items-center gap-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Plus size={14} />}
+            onClick={() => setShowCreate(true)}
+          >
+            New Disk
+          </Button>
+          <label
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg cursor-pointer transition-colors",
+              "border border-neutral-200 dark:border-neutral-700",
+              "bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700",
+              "text-neutral-700 dark:text-neutral-200",
+              importing && "opacity-50 pointer-events-none"
+            )}
+          >
+            <input
+              type="file"
+              accept=".idz,.json"
+              onChange={handleImport}
+              className="hidden"
+              disabled={importing}
+            />
+            <Upload size={14} />
+            {importing ? "Importing..." : "Import"}
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsView({
   agencyId,
   agencyName,
   blueprints = [],
   schedules = [],
   vars = {},
+  memoryDisks = [],
   onCreateSchedule,
   onDeleteSchedule,
   onPauseSchedule,
@@ -731,7 +944,13 @@ export function SettingsView({
   onGetScheduleRuns,
   onRefreshSchedules,
   onSetVar,
-  onDeleteVar
+  onDeleteVar,
+  onCreateMemoryDisk,
+  onImportMemoryDisk,
+  onDeleteMemoryDisk,
+  onRefreshMemoryDisks,
+  plugins = [],
+  tools = []
 }: SettingsViewProps) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedSchedule, setSelectedSchedule] =
@@ -818,6 +1037,111 @@ export function SettingsView({
             }}
             onDeleteVar={async (key) => {
               await onDeleteVar?.(key);
+            }}
+          />
+          {/* Var hints from plugins and tools */}
+          {(plugins.some(p => p.varHints?.length) || tools.some(t => t.varHints?.length)) && (
+            <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+              <div className="text-xs font-medium text-neutral-500 mb-2">Plugin Requirements</div>
+              <div className="space-y-2">
+                {[...plugins.filter(p => p.varHints?.length), ...tools.filter(t => t.varHints?.length)].map((item) => {
+                  const hints = item.varHints ?? [];
+                  const missingRequired = hints.filter(
+                    (h: VarHint) => h.required && !(h.name in vars)
+                  );
+                  const hasMissing = missingRequired.length > 0;
+                  const isPlugin = 'tags' in item && !('description' in item && plugins.every(p => p.name !== item.name));
+                  const itemType = tools.some(t => t.name === item.name) ? 'tool' : 'plugin';
+                  
+                  return (
+                    <div
+                      key={`${itemType}-${item.name}`}
+                      className={cn(
+                        "p-2 rounded-lg border text-sm",
+                        hasMissing
+                          ? "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20"
+                          : "border-neutral-200 dark:border-neutral-700"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                          {item.name}
+                        </span>
+                        <span className="text-xs text-neutral-400">{itemType}</span>
+                        {hasMissing && (
+                          <span className="text-xs text-amber-600 dark:text-amber-400">
+                            ({missingRequired.length} missing)
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {hints.map((hint: VarHint) => {
+                          const isSet = hint.name in vars;
+                          const isMissing = hint.required && !isSet;
+                          return (
+                            <div
+                              key={hint.name}
+                              className={cn(
+                                "flex items-start gap-2 text-xs",
+                                isMissing ? "text-amber-700 dark:text-amber-300" : "text-neutral-500"
+                              )}
+                            >
+                              <span className={cn(
+                                "font-mono shrink-0",
+                                isSet && "text-green-600 dark:text-green-400"
+                              )}>
+                                {isSet ? "✓" : hint.required ? "○" : "·"} {hint.name}
+                              </span>
+                              {hint.description && (
+                                <span className="text-neutral-400 truncate">
+                                  — {hint.description}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </LayerCardContent>
+      </LayerCard>
+
+      {/* Memory Disks */}
+      <LayerCard>
+        <LayerCardFooter className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Brain size={16} className="text-pink-500" />
+            <span className="font-medium text-neutral-900 dark:text-neutral-100">
+              Memory
+            </span>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<ArrowClockwise size={14} />}
+            onClick={() => onRefreshMemoryDisks?.()}
+          >
+            Refresh
+          </Button>
+        </LayerCardFooter>
+        <LayerCardContent>
+          <MemoryDisksEditor
+            disks={memoryDisks}
+            onCreate={async (name, desc, entries) => {
+              await onCreateMemoryDisk?.(name, desc, entries);
+            }}
+            onImport={async (file) => {
+              await onImportMemoryDisk?.(file);
+            }}
+            onDelete={async (name) => {
+              await onDeleteMemoryDisk?.(name);
+            }}
+            onRefresh={async () => {
+              await onRefreshMemoryDisks?.();
             }}
           />
         </LayerCardContent>

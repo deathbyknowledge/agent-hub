@@ -363,6 +363,9 @@ export const getTopNTextTool = tool({
   description:
     "Return a formatted Top-N table from Cloudflare Analytics for a chosen dimension (e.g., clientIP, clientCountryName, edgeResponseStatus, userAgent, clientASN, host, path, method). Use this to pivot quickly.",
   inputSchema: GetTopNTextParams,
+  varHints: [
+    { name: "CF_TOKEN", required: true, description: "Cloudflare API token with Analytics read permissions" }
+  ],
   execute: async (
     { dimension, limit, startISO, endISO, maxRows, zoneTag, andFilters },
     ctx
@@ -429,6 +432,9 @@ export const getTimeseriesTextTool = tool({
   description:
     "Return a formatted timeseries (current vs previous window) for request counts from Cloudflare Analytics. Use this to confirm spikes, dips, or diurnal patterns.",
   inputSchema: GetTimeseriesTextParams,
+  varHints: [
+    { name: "CF_TOKEN", required: true, description: "Cloudflare API token with Analytics read permissions" }
+  ],
   execute: async (
     {
       startISO,

@@ -169,6 +169,12 @@ export type PluginContext = {
   registerTool: <T>(tool: Tool<T>) => void;
 };
 
+export interface VarHint {
+  name: string;
+  required?: boolean;
+  description?: string;
+}
+
 export interface AgentPlugin<TConfig = unknown> {
   actions?: Record<
     string,
@@ -178,22 +184,60 @@ export interface AgentPlugin<TConfig = unknown> {
   name: string;
   __configType?: TConfig;
 
+  /** Hints about vars this plugin needs */
+  varHints?: VarHint[];
+
+  /**
+   * Agents with this blueprint will include this plugin's state in their state.
+   */
   state?: (ctx: PluginContext) => Record<string, unknown>;
 
+  /**
+   * Hook called when an agent with this plugin is registered. Only called once.
+   */
   onInit?(ctx: PluginContext): Promise<void>;
 
+  /**
+   * Hook called at the beginning of each tick. Once per each LLM -> tool exec iterations.
+   */
   onTick?(ctx: PluginContext): Promise<void>;
 
+  /**
+   * Hook called before the model is invoked. Useful to add or modify the model request.
+   * e.g. add tools, modify system prompt, etc.
+   */
   beforeModel?(ctx: PluginContext, plan: ModelPlanBuilder): Promise<void>;
 
-  onModelResult?(ctx: PluginContext, res: { message: ChatMessage }): Promise<void>;
+  /**
+   * Hook called once the LLM response is received and before any tools are executed.
+   */
+  onModelResult?(
+    ctx: PluginContext,
+    res: { message: ChatMessage }
+  ): Promise<void>;
 
+  /**
+   * Hook called before a tool is executed. Executed once per tool call.
+   */
   onToolStart?(ctx: PluginContext, call: ToolCall): Promise<void>;
-  onToolResult?(ctx: PluginContext, call: ToolCall, result: unknown): Promise<void>;
+
+  /**
+   * Hook called after a tool is executed. Executed once per tool call.
+   */
+  onToolResult?(
+    ctx: PluginContext,
+    call: ToolCall,
+    result: unknown
+  ): Promise<void>;
+
+  /**
+   * Hook called after a tool is executed. Executed once per tool call.
+   */
   onToolError?(ctx: PluginContext, call: ToolCall, error: Error): Promise<void>;
 
-  onResume?(ctx: PluginContext, reason: string, payload: unknown): Promise<void>;
-
+  /**
+   * Hook called when the agent has no more tools to call and has returned a final text.
+   */
   onRunComplete?(ctx: PluginContext, result: { final: string }): Promise<void>;
 
   tags: string[];
@@ -202,6 +246,7 @@ export interface AgentPlugin<TConfig = unknown> {
 export interface Tool<TInput = unknown> {
   meta: ToolMeta;
   execute: (input: TInput, ctx: ToolContext) => Promise<string | object | null>;
+  varHints?: VarHint[];
 }
 
 export type ToolContext = {

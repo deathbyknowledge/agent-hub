@@ -4,7 +4,7 @@ import type {
   AgentBlueprint,
   ThreadMetadata,
   ThreadRequestContext,
-  AgentEnv
+  AgentEnv,
 } from "./types";
 import { PersistedObject } from "./config";
 
@@ -114,30 +114,29 @@ export class Agency extends Agent<AgentEnv> {
   /** Agency-level vars inherited by all spawned agents */
   readonly vars: Record<string, unknown>;
 
-  /**
-   * Get the agency name. Prefers in-memory name (set via getAgentByName),
-   * falls back to persisted name (for alarm wake-ups).
-   */
-  get agencyName(): string {
-    // 1. In-memory name from getAgentByName
-    if (this.name) {
+  onStart() {
+    const stored = this.ctx.storage.kv.get<string>(AGENCY_NAME_KEY);
+    if (stored) {
+      this._cachedAgencyName = stored;
+    } else {
       this.persistName(this.name);
-      return this.name;
     }
+  }
 
-    // 2. Cached from previous lookup
+  get agencyName(): string {
     if (this._cachedAgencyName) {
       return this._cachedAgencyName;
     }
 
-    // 3. Read from KV storage
     const stored = this.ctx.storage.kv.get<string>(AGENCY_NAME_KEY);
     if (stored) {
       this._cachedAgencyName = stored;
       return stored;
     }
 
-    throw new Error("Agency name not found - DO never accessed via getAgentByName?");
+    throw new Error(
+      "Agency name not found - DO never accessed via getAgentByName?"
+    );
   }
 
   private persistName(name: string): void {
@@ -151,7 +150,7 @@ export class Agency extends Agent<AgentEnv> {
 
     // Initialize vars
     this.vars = PersistedObject<Record<string, unknown>>(ctx.storage.kv, {
-      prefix: "_vars:"
+      prefix: "_vars:",
     });
 
     // Initialize tables
@@ -380,14 +379,14 @@ export class Agency extends Agent<AgentEnv> {
         ...prev,
         ...bp,
         createdAt: prev.createdAt ?? now,
-        updatedAt: now
+        updatedAt: now,
       };
     } else {
       merged = {
         ...bp,
         status: bp.status ?? "active",
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
       };
     }
 
@@ -418,7 +417,7 @@ export class Agency extends Agent<AgentEnv> {
       id: r.id,
       agentType: r.type,
       createdAt: new Date(r.created_at).toISOString(),
-      ...JSON.parse(r.metadata || "{}")
+      ...JSON.parse(r.metadata || "{}"),
     }));
 
     return Response.json({ agents });
@@ -445,7 +444,7 @@ export class Agency extends Agent<AgentEnv> {
     const meta = {
       request: requestContext,
       agencyId: this.agencyName,
-      input
+      input,
     };
 
     this.sql`
@@ -462,14 +461,14 @@ export class Agency extends Agent<AgentEnv> {
       request: requestContext ?? {},
       parent: undefined,
       agencyId: this.agencyName,
-      vars: { ...this.vars }
+      vars: { ...this.vars },
     };
 
     const res = await stub.fetch(
       new Request("http://do/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(initPayload)
+        body: JSON.stringify(initPayload),
       })
     );
 
@@ -490,8 +489,8 @@ export class Agency extends Agent<AgentEnv> {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            messages: [{ role: "user", content: userMessage }]
-          })
+            messages: [{ role: "user", content: userMessage }],
+          }),
         })
       );
     }
@@ -789,7 +788,7 @@ export class Agency extends Agent<AgentEnv> {
         UPDATE agent_schedules SET next_run_at = ${nextRunAt} WHERE id = ${schedule.id}
       `;
       await this.schedule(new Date(nextRunAt), "runScheduledAgent", {
-        id: schedule.id
+        id: schedule.id,
       });
     }
   }
@@ -873,7 +872,7 @@ export class Agency extends Agent<AgentEnv> {
     const bucket = this.env.FS;
     if (!bucket) {
       return new Response("Filesystem not configured (missing FS binding)", {
-        status: 503
+        status: 503,
       });
     }
 
@@ -914,8 +913,8 @@ export class Agency extends Agent<AgentEnv> {
           "content-type": "text/plain; charset=utf-8",
           "x-fs-path": "/" + fsPath,
           "x-fs-size": String(obj.size),
-          "x-fs-modified": obj.uploaded.toISOString()
-        }
+          "x-fs-modified": obj.uploaded.toISOString(),
+        },
       });
     }
 
@@ -947,7 +946,7 @@ export class Agency extends Agent<AgentEnv> {
         type: "file",
         path: "/" + relPath,
         size: obj.size,
-        modified: obj.uploaded.toISOString()
+        modified: obj.uploaded.toISOString(),
       });
     }
 
@@ -959,7 +958,7 @@ export class Agency extends Agent<AgentEnv> {
 
     return Response.json({
       path: "/" + fsPath || "/",
-      entries
+      entries,
     });
   }
 
@@ -979,7 +978,7 @@ export class Agency extends Agent<AgentEnv> {
     return Response.json({
       ok: true,
       path: "/" + fsPath,
-      size: content.length
+      size: content.length,
     });
   }
 
@@ -996,7 +995,7 @@ export class Agency extends Agent<AgentEnv> {
 
     return Response.json({
       ok: true,
-      path: "/" + fsPath
+      path: "/" + fsPath,
     });
   }
 }
@@ -1056,7 +1055,7 @@ function rowToSchedule(row: AgentScheduleRow): AgentSchedule {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastRunAt: row.last_run_at || undefined,
-    nextRunAt: row.next_run_at || undefined
+    nextRunAt: row.next_run_at || undefined,
   };
 }
 
@@ -1071,6 +1070,6 @@ function rowToRun(row: ScheduleRunRow): ScheduleRun {
     completedAt: row.completed_at || undefined,
     error: row.error || undefined,
     result: row.result || undefined,
-    retryCount: row.retry_count
+    retryCount: row.retry_count,
   };
 }

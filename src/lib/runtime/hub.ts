@@ -21,22 +21,48 @@ import { createHandler, type HandlerOptions } from "./worker";
 type AgentHubOptions = {
   defaultModel: string;
   provider?: Provider;
-  handlerOptions?: HandlerOptions;
+  secret?: string;
 };
 
 class ToolRegistry {
   private tools = new Map<string, Tool<any>>();
   private tags = new Map<string, string[]>();
+  private toolTags = new Map<string, string[]>();
 
   addTool<T>(name: string, tool: Tool<T>, tags?: string[]) {
     this.tools.set(name, tool);
     if (tags) {
+      this.toolTags.set(name, tags);
       for (const tag of tags) {
         const existing = this.tags.get(tag) || [];
         existing.push(name);
         this.tags.set(tag, existing);
       }
     }
+  }
+
+  /** Get all tools with their metadata */
+  getAll(): Array<{
+    name: string;
+    description?: string;
+    tags: string[];
+    varHints?: Tool<any>["varHints"];
+  }> {
+    const result: Array<{
+      name: string;
+      description?: string;
+      tags: string[];
+      varHints?: Tool<any>["varHints"];
+    }> = [];
+    for (const [name, tool] of this.tools) {
+      result.push({
+        name,
+        description: tool.meta.description,
+        tags: this.toolTags.get(name) ?? [],
+        varHints: tool.varHints?.length ? tool.varHints : undefined,
+      });
+    }
+    return result;
   }
 
   /**
@@ -67,7 +93,7 @@ class ToolRegistry {
           const handler = this.tools.get(cap);
           if (handler) {
             selected.push(handler);
-          } 
+          }
         }
       }
     }
@@ -89,6 +115,27 @@ class PluginRegistry {
         this.tags.set(tag, existing);
       }
     }
+  }
+
+  /** Get all plugins with their metadata */
+  getAll(): Array<{
+    name: string;
+    tags: string[];
+    varHints?: AgentPlugin["varHints"];
+  }> {
+    const result: Array<{
+      name: string;
+      tags: string[];
+      varHints?: AgentPlugin["varHints"];
+    }> = [];
+    for (const [name, plugin] of this.plugins) {
+      result.push({
+        name,
+        tags: plugin.tags,
+        varHints: plugin.varHints?.length ? plugin.varHints : undefined,
+      });
+    }
+    return result;
   }
 
   selectByCapabilities(capabilities: string[]): AgentPlugin[] {
@@ -283,10 +330,11 @@ export class AgentHub<TConfig = Record<string, unknown>> {
         };
       }
     }
-    const handlerOptions = { ...options?.handlerOptions };
-    if (!handlerOptions.agentDefinitions) {
-      handlerOptions.agentDefinitions = Array.from(this.agentRegistry.values());
-    }
+    const handlerOptions: HandlerOptions = {};
+    handlerOptions.agentDefinitions = Array.from(this.agentRegistry.values());
+    handlerOptions.plugins = pluginRegistry.getAll();
+    handlerOptions.tools = toolRegistry.getAll();
+    handlerOptions.secret = options.secret;
     const handler = createHandler(handlerOptions);
     return { HubAgent: ConfiguredHubAgent, Agency, handler };
   }

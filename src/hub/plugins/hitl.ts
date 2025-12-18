@@ -53,10 +53,6 @@ const hitl = definePlugin<HitlConfig>({
       });
       ctx.agent.emit(AgentEventType.RUN_RESUMED, {});
 
-      for (const p of ctx.agent.plugins) {
-        await p.onResume?.(ctx, "hitl", payload);
-      }
-
       await ctx.agent.ensureScheduled();
       return { ok: true };
     },
@@ -98,3 +94,5 @@ const hitl = definePlugin<HitlConfig>({
 
   tags: ["hitl"],
 });
+
+export default hitl;

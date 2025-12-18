@@ -3,7 +3,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/agencies", "/agency/*"]
+    "run_worker_first": ["/api/*", "/agencies", "/agency/*", "/plugins"]
   },
   "durable_objects": {
     "bindings": [
@@ -23,7 +23,8 @@
   },
   "r2_buckets": [
     {
-      "binding": "FS"
+      "binding": "FS",
+      "bucket_name": "agents-hub-fs"
     }
   ],
   // "containers": [

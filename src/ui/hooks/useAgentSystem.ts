@@ -14,11 +14,32 @@ import {
   type RunState,
   type AgentEvent,
   type WebSocketEvent,
+  type PluginInfo,
+  type ToolInfo,
 } from "@client";
 
 // Get base URL from current location
 function getBaseUrl(): string {
   return window.location.origin;
+}
+
+// Get secret from localStorage
+export function getStoredSecret(): string | undefined {
+  const secret = localStorage.getItem("hub_secret");
+  return secret || undefined;
+}
+
+// Set secret in localStorage
+export function setStoredSecret(secret: string): void {
+  localStorage.setItem("hub_secret", secret);
+  // Reset the client so it picks up the new secret
+  clientInstance = null;
+}
+
+// Clear secret from localStorage
+export function clearStoredSecret(): void {
+  localStorage.removeItem("hub_secret");
+  clientInstance = null;
 }
 
 // Singleton client instance
@@ -28,6 +49,7 @@ export function getClient(): AgentHubClient {
   if (!clientInstance) {
     clientInstance = new AgentHubClient({
       baseUrl: getBaseUrl(),
+      secret: getStoredSecret(),
     });
   }
   return clientInstance;
@@ -71,8 +93,44 @@ export function useAgencies() {
 }
 
 // ============================================================================
+// useVarHints - Get plugin var hints
+// ============================================================================
+
+export function usePlugins() {
+  const [plugins, setPlugins] = useState<PluginInfo[]>([]);
+  const [tools, setTools] = useState<ToolInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const client = getClient();
+      const { plugins, tools } = await client.getPlugins();
+      setPlugins(plugins);
+      setTools(tools);
+    } catch (e) {
+      console.error("Failed to fetch plugins:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { plugins, tools, loading, refresh };
+}
+
+// ============================================================================
 // useAgency - Work with a specific agency
 // ============================================================================
+
+export type MemoryDisk = {
+  name: string;
+  description?: string;
+  size?: number;
+};
 
 export function useAgency(agencyId: string | null) {
   const [agencyClient, setAgencyClient] = useState<AgencyClient | null>(null);
@@ -80,6 +138,7 @@ export function useAgency(agencyId: string | null) {
   const [blueprints, setBlueprints] = useState<AgentBlueprint[]>([]);
   const [schedules, setSchedules] = useState<AgentSchedule[]>([]);
   const [vars, setVars] = useState<Record<string, unknown>>({});
+  const [memoryDisks, setMemoryDisks] = useState<MemoryDisk[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
@@ -143,14 +202,45 @@ export function useAgency(agencyId: string | null) {
     }
   }, [agencyClient]);
 
+  // Fetch memory disks
+  const refreshMemoryDisks = useCallback(async () => {
+    if (!agencyClient) return;
+    try {
+      const { entries } = await agencyClient.listDirectory("/shared/memories");
+      const disks: MemoryDisk[] = [];
+      for (const entry of entries) {
+        if (entry.type === "file" && entry.path.endsWith(".idz")) {
+          const name = entry.path.replace(/.*\//, "").replace(/\.idz$/, "");
+          // Try to read the file to get description and size
+          try {
+            const { content } = await agencyClient.readFile(entry.path);
+            const data = JSON.parse(content) as { description?: string; entries?: unknown[] };
+            disks.push({
+              name,
+              description: data.description,
+              size: data.entries?.length,
+            });
+          } catch {
+            disks.push({ name });
+          }
+        }
+      }
+      setMemoryDisks(disks);
+    } catch {
+      // Directory might not exist yet
+      setMemoryDisks([]);
+    }
+  }, [agencyClient]);
+
   useEffect(() => {
     if (agencyClient) {
       refreshAgents();
       refreshBlueprints();
       refreshSchedules();
       refreshVars();
+      refreshMemoryDisks();
     }
-  }, [agencyClient, refreshAgents, refreshBlueprints, refreshSchedules, refreshVars]);
+  }, [agencyClient, refreshAgents, refreshBlueprints, refreshSchedules, refreshVars, refreshMemoryDisks]);
 
   const spawnAgent = useCallback(
     async (agentType: string) => {
@@ -255,6 +345,45 @@ export function useAgency(agencyId: string | null) {
     [agencyClient, refreshVars]
   );
 
+  // Memory disk operations
+  const createMemoryDisk = useCallback(
+    async (name: string, description?: string, entries?: string[]) => {
+      if (!agencyClient) throw new Error("No agency selected");
+      const idz = {
+        version: 1,
+        name,
+        description,
+        hasEmbeddings: false,
+        entries: entries?.map((content) => ({ content })) ?? [],
+      };
+      await agencyClient.writeFile(`/shared/memories/${name}.idz`, JSON.stringify(idz));
+      await refreshMemoryDisks();
+    },
+    [agencyClient, refreshMemoryDisks]
+  );
+
+  const importMemoryDisk = useCallback(
+    async (file: File) => {
+      if (!agencyClient) throw new Error("No agency selected");
+      const content = await file.text();
+      // Validate it's valid JSON
+      const data = JSON.parse(content) as { name?: string };
+      const name = data.name || file.name.replace(/\.(idz|json)$/, "");
+      await agencyClient.writeFile(`/shared/memories/${name}.idz`, content);
+      await refreshMemoryDisks();
+    },
+    [agencyClient, refreshMemoryDisks]
+  );
+
+  const deleteMemoryDisk = useCallback(
+    async (name: string) => {
+      if (!agencyClient) throw new Error("No agency selected");
+      await agencyClient.deleteFile(`/shared/memories/${name}.idz`);
+      await refreshMemoryDisks();
+    },
+    [agencyClient, refreshMemoryDisks]
+  );
+
   return {
     agencyClient,
     agents,
@@ -278,6 +407,11 @@ export function useAgency(agencyId: string | null) {
     refreshVars,
     setVar,
     deleteVar,
+    memoryDisks,
+    refreshMemoryDisks,
+    createMemoryDisk,
+    importMemoryDisk,
+    deleteMemoryDisk,
   };
 }
 

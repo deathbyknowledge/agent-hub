@@ -182,6 +182,34 @@ export interface ListAgenciesResponse {
   agencies: AgencyMeta[];
 }
 
+/** Var hint from a plugin */
+export interface VarHint {
+  name: string;
+  required?: boolean;
+  description?: string;
+}
+
+/** Plugin info with metadata */
+export interface PluginInfo {
+  name: string;
+  tags: string[];
+  varHints?: VarHint[];
+}
+
+/** Tool info with metadata */
+export interface ToolInfo {
+  name: string;
+  description?: string;
+  tags: string[];
+  varHints?: VarHint[];
+}
+
+/** Response from GET /plugins */
+export interface GetPluginsResponse {
+  plugins: PluginInfo[];
+  tools: ToolInfo[];
+}
+
 /** Response from POST /agencies */
 export interface CreateAgencyResponse extends AgencyMeta {}
 
@@ -417,9 +445,12 @@ export class AgentClient {
    * ```
    */
   connect(options: WebSocketOptions = {}): AgentWebSocket {
+    // Append the secret as a query param if it exists in the client headers
+    const secret = (this.headers as Record<string, string>)["X-SECRET"];
+    const secretParam = secret ? `?key=${encodeURIComponent(secret)}` : "";
     const wsUrl = this.path
       .replace(/^http/, "ws")
-      .replace(/^wss:\/\/localhost/, "ws://localhost");
+      .replace(/^wss:\/\/localhost/, "ws://localhost") + secretParam;
     console.log("WebSocket URL:", wsUrl);
     const ws = new WebSocket(wsUrl, options.protocols);
 
@@ -933,6 +964,14 @@ export class AgentHubClient {
    */
   async listAgencies(): Promise<ListAgenciesResponse> {
     return this.request<ListAgenciesResponse>("GET", "/agencies");
+  }
+
+  /**
+   * Get all plugins with their metadata.
+   * Includes varHints indicating what vars plugins need.
+   */
+  async getPlugins(): Promise<GetPluginsResponse> {
+    return this.request<GetPluginsResponse>("GET", "/plugins");
   }
 
   /**

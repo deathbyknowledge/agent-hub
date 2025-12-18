@@ -7,6 +7,9 @@ export const sendGChatMessageTool = tool({
   inputSchema: z.object({
     text: z.string().describe("The content of the message to send")
   }),
+  varHints: [
+    { name: "GCHAT_WEBHOOK", required: true, description: "Google Chat webhook URL for posting messages" }
+  ],
   execute: async ({ text }, ctx) => {
     const url = ctx.agent.vars.GCHAT_WEBHOOK;
     if (!url) throw new Error("Error: GCHAT_WEBHOOK var not found. Terminate and report this error to user immediately.")

@@ -10,7 +10,8 @@ export default defineConfig({
     agentsPlugin({
       srcDir: "./src/hub",
       outFile: "./src/_generated.ts",
-      defaultModel: "gpt-5-2025-08-07"
+      defaultModel: "gpt-5-2025-08-07",
+      secret: "1234" // just use ur own or whatever
     }),
     cloudflare()
   ],

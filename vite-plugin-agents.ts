@@ -29,6 +29,7 @@ interface AgentsPluginOptions {
   srcDir?: string;
   outFile?: string;
   defaultModel?: string;
+  secret?: string;
 }
 
 // ============================================================================
@@ -160,7 +161,8 @@ function generateCode(
   discovery: DiscoveryResult,
   defaultModel: string,
   srcDir: string,
-  outFile: string
+  outFile: string,
+  secret?: string
 ): string {
   const outDir = path.dirname(outFile);
   const imports: string[] = [];
@@ -237,7 +239,7 @@ function generateCode(
     "",
     ...imports,
     "",
-    `const hub = new AgentHub({ defaultModel: "${defaultModel}" })`,
+    `const hub = new AgentHub({ defaultModel: "${defaultModel}", secret: "${secret}" })`,
     ...toolRegistrations,
     ...pluginRegistrations,
     ...agentRegistrations,
@@ -270,7 +272,7 @@ export default function agentsPlugin(
 
   function regenerate() {
     const discovery = discoverModules(srcDir);
-    const code = generateCode(discovery, defaultModel, srcDir, outFile);
+    const code = generateCode(discovery, defaultModel, srcDir, outFile, options.secret);
 
     fs.mkdirSync(path.dirname(outFile), { recursive: true });
     fs.writeFileSync(outFile, code, "utf-8");

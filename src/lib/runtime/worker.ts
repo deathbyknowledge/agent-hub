@@ -57,11 +57,28 @@ function buildRequestContext(req: Request): ThreadRequestContext {
   return context;
 }
 
+export type PluginInfo = {
+  name: string;
+  tags: string[];
+  varHints?: Array<{ name: string; required?: boolean; description?: string }>;
+};
+
+export type ToolInfo = {
+  name: string;
+  description?: string;
+  tags: string[];
+  varHints?: Array<{ name: string; required?: boolean; description?: string }>;
+};
+
 export type HandlerOptions = {
   baseUrl?: string;
   /** Secret to use for authorization. Optional means no check. */
   secret?: string;
   agentDefinitions?: AgentBlueprint[];
+  /** Plugin metadata */
+  plugins?: PluginInfo[];
+  /** Tool metadata */
+  tools?: ToolInfo[];
 };
 
 type HandlerEnv = {
@@ -81,14 +98,32 @@ export const createHandler = (opts: HandlerOptions = {}) => {
         return new Response(null, { status: 204, headers: CORS_HEADERS });
       }
 
-      // Auth check
-      if (opts.secret && req.headers.get("X-SECRET") !== opts.secret) {
-        return withCors(new Response("Unauthorized", { status: 401 }));
+      // Auth check - accept secret from header or query param
+      const providedSecret = req.headers.get("X-SECRET") || url.searchParams.get("key");
+      if (opts.secret && providedSecret !== opts.secret) {
+        // Check if this is a WebSocket upgrade - return 401 for those
+        if (req.headers.get("Upgrade")?.toLowerCase() === "websocket") {
+          return withCors(new Response("Unauthorized", { status: 401 }));
+        }
+        // For API calls, return 401
+        if (path.startsWith("/api") || path.startsWith("/agency") || path.startsWith("/agencies") || path.startsWith("/plugins")) {
+          return withCors(new Response("Unauthorized", { status: 401 }));
+        }
+        // For UI/asset requests, return 403 with hint
+        return new Response("Forbidden: Please provide ?key=YOUR_SECRET or set hub_secret in localStorage", { status: 403 });
       }
 
       // ======================================================
       // Root: Agency Management
       // ======================================================
+
+      // GET /plugins -> List all plugins and tools with metadata
+      if (req.method === "GET" && path === "/plugins") {
+        return withCors(Response.json({ 
+          plugins: opts.plugins || [],
+          tools: opts.tools || []
+        }));
+      }
 
       // GET /agencies -> List all agencies (from R2 bucket)
       if (req.method === "GET" && path === "/agencies") {
