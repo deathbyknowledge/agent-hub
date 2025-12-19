@@ -17,7 +17,8 @@
     "build": "vite build",
     "deploy": "npm run build && wrangler deploy",
     "preview": "vite preview",
-    "tsc": "npx tsc --noEmit"
+    "tsc": "npx tsc --noEmit",
+    "docs": "typedoc"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
@@ -39,6 +40,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "react": "^19.2.1",
+    "typedoc": "^0.28.15",
     "vite": "^6.4.1"
   }
 }

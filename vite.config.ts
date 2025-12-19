@@ -8,8 +8,8 @@ export default defineConfig({
   plugins: [
     react(),
     agentsPlugin({
-      srcDir: "./src/hub",
-      outFile: "./src/_generated.ts",
+      srcDir: "./hub",
+      outFile: "./_generated.ts",
       defaultModel: "gpt-5-2025-08-07",
       secret: "1234" // just use ur own or whatever
     }),
@@ -17,8 +17,8 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@runtime": path.resolve(__dirname, "src/lib/runtime"),
-      "@client": path.resolve(__dirname, "src/lib/client"),
+      "@runtime": path.resolve(__dirname, "lib/runtime"),
+      "@client": path.resolve(__dirname, "lib/client"),
       "@ui": path.resolve(__dirname, "src/ui")
     }
   }

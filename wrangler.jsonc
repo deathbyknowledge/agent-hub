@@ -24,7 +24,7 @@
   "r2_buckets": [
     {
       "binding": "FS",
-      "bucket_name": "agents-hub-fs"
+      // "bucket_name": "agents-hub-fs"
     }
   ],
   // "containers": [

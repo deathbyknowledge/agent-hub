@@ -266,8 +266,8 @@ function generateCode(
 export default function agentsPlugin(
   options: AgentsPluginOptions = {}
 ): Plugin {
-  const srcDir = path.resolve(options.srcDir || "./src/hub");
-  const outFile = path.resolve(options.outFile || "./src/hub/_generated.ts");
+  const srcDir = path.resolve(options.srcDir || "./hub");
+  const outFile = path.resolve(options.outFile || "./_generated.ts");
   const defaultModel = options.defaultModel || "gpt-4o";
 
   function regenerate() {
