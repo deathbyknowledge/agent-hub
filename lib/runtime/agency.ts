@@ -238,6 +238,11 @@ export class Agency extends Agent<AgentEnv> {
       return this.handleCreateBlueprint(req);
     }
 
+    if (req.method === "DELETE" && path.startsWith("/blueprints/")) {
+      const name = path.slice("/blueprints/".length);
+      return this.handleDeleteBlueprint(name);
+    }
+
     // --------------------------------------------------
     // Agent Management
     // --------------------------------------------------
@@ -399,6 +404,22 @@ export class Agency extends Agent<AgentEnv> {
     `;
 
     return Response.json({ ok: true, name: merged.name });
+  }
+
+  private handleDeleteBlueprint(name: string): Response {
+    if (!name) return new Response("Missing name", { status: 400 });
+
+    const existing = this.sql<{ data: string }>`
+      SELECT data FROM blueprints WHERE name = ${name}
+    `;
+
+    if (existing.length === 0) {
+      return new Response("Blueprint not found", { status: 404 });
+    }
+
+    this.sql`DELETE FROM blueprints WHERE name = ${name}`;
+
+    return Response.json({ ok: true });
   }
 
   // ============================================================

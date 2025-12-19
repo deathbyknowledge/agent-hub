@@ -654,10 +654,15 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
     createMemoryDisk,
     importMemoryDisk,
     deleteMemoryDisk,
+    createBlueprint,
+    updateBlueprint,
+    deleteBlueprint,
+    spawnAgent,
   } = useAgency(agencyId);
   const { agencies } = useAgencies();
   const { plugins, tools } = usePlugins();
   const agency = agencies.find((a) => a.id === agencyId);
+  const [, navigate] = useLocation();
 
   return (
     <>
@@ -692,6 +697,13 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
           onImportMemoryDisk={importMemoryDisk}
           onDeleteMemoryDisk={deleteMemoryDisk}
           onRefreshMemoryDisks={refreshMemoryDisks}
+          onCreateBlueprint={createBlueprint}
+          onUpdateBlueprint={updateBlueprint}
+          onDeleteBlueprint={deleteBlueprint}
+          onTestBlueprint={async (name) => {
+            const agent = await spawnAgent(name);
+            navigate(`/${agencyId}/agent/${agent.id}`);
+          }}
           plugins={plugins}
           tools={tools}
         />

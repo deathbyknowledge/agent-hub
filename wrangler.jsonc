@@ -36,7 +36,7 @@
   //     "max_instances": 5
   //   }
   // ],
-  "main": "src/_generated.ts",
+  "main": "_generated.ts",
   "migrations": [
     {
       // "new_sqlite_classes": ["HubAgent", "Agency", "Sandbox"],

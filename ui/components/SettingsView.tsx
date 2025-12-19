@@ -4,6 +4,7 @@ import { Button } from "./Button";
 import { Select } from "./Select";
 import { LayerCard, LayerCardContent, LayerCardFooter } from "./LayerCard";
 import { ConfirmModal } from "./ConfirmModal";
+import { BlueprintEditor } from "./BlueprintEditor";
 import {
   Blueprint,
   Plus,
@@ -26,7 +27,8 @@ import {
   BlueprintIcon,
   Brain,
   Upload,
-  HardDrive
+  HardDrive,
+  Info
 } from "@phosphor-icons/react";
 import type {
   AgentBlueprint,
@@ -65,6 +67,10 @@ interface SettingsViewProps {
   onImportMemoryDisk?: (file: File) => Promise<void>;
   onDeleteMemoryDisk?: (name: string) => Promise<void>;
   onRefreshMemoryDisks?: () => Promise<void>;
+  onCreateBlueprint?: (blueprint: Omit<AgentBlueprint, "createdAt" | "updatedAt">) => Promise<void>;
+  onUpdateBlueprint?: (blueprint: AgentBlueprint) => Promise<void>;
+  onDeleteBlueprint?: (name: string) => Promise<void>;
+  onTestBlueprint?: (name: string) => Promise<void>;
   plugins?: PluginInfo[];
   tools?: ToolInfo[];
 }
@@ -929,6 +935,8 @@ function MemoryDisksEditor({
   );
 }
 
+type SettingsTab = "blueprints" | "schedules" | "variables" | "memory" | "info";
+
 export function SettingsView({
   agencyId,
   agencyName,
@@ -949,9 +957,14 @@ export function SettingsView({
   onImportMemoryDisk,
   onDeleteMemoryDisk,
   onRefreshMemoryDisks,
+  onCreateBlueprint,
+  onUpdateBlueprint,
+  onDeleteBlueprint,
+  onTestBlueprint,
   plugins = [],
   tools = []
 }: SettingsViewProps) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>("blueprints");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedSchedule, setSelectedSchedule] =
     useState<AgentSchedule | null>(null);
@@ -983,43 +996,77 @@ export function SettingsView({
     }
   };
 
-  return (
-    <div className="h-full overflow-y-auto overflow-x-hidden p-6 space-y-6">
-      {/* Agency Info */}
-      <LayerCard>
-        <LayerCardFooter>
-          <span className="font-medium text-neutral-900 dark:text-neutral-100">
-            Agency Details
-          </span>
-        </LayerCardFooter>
-        <LayerCardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <div className="text-xs text-neutral-500 mb-1">Name</div>
-              <div className="font-medium text-neutral-900 dark:text-neutral-100">
-                {agencyName || "Unnamed"}
-              </div>
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs text-neutral-500 mb-1">ID</div>
-              <div
-                className="font-mono text-xs text-neutral-700 dark:text-neutral-300 truncate"
-                title={agencyId}
-              >
-                {agencyId}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-neutral-500 mb-1">Blueprints</div>
-              <div className="text-sm text-neutral-700 dark:text-neutral-300">
-                {blueprints.length} available
-              </div>
-            </div>
-          </div>
-        </LayerCardContent>
-      </LayerCard>
+  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
+    { id: "blueprints", label: "Blueprints", icon: <BlueprintIcon size={16} /> },
+    { id: "schedules", label: "Schedules", icon: <Calendar size={16} /> },
+    { id: "variables", label: "Variables", icon: <Key size={16} /> },
+    { id: "memory", label: "Memory", icon: <Brain size={16} /> },
+    { id: "info", label: "Info", icon: <Info size={16} /> },
+  ];
 
-      {/* Agency Vars */}
+  return (
+    <div className="h-full flex flex-col">
+      {/* Tab Navigation */}
+      <div className="border-b border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
+        <div className="flex overflow-x-auto">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+                activeTab === tab.id
+                  ? "border-orange-500 text-orange-600 dark:text-orange-400"
+                  : "border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600"
+              )}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6">
+        {/* Info Tab */}
+        {activeTab === "info" && (
+          <LayerCard>
+            <LayerCardFooter>
+              <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                Agency Details
+              </span>
+            </LayerCardFooter>
+            <LayerCardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                <div>
+                  <div className="text-xs text-neutral-500 mb-1">Name</div>
+                  <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                    {agencyName || "Unnamed"}
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs text-neutral-500 mb-1">ID</div>
+                  <div
+                    className="font-mono text-xs text-neutral-700 dark:text-neutral-300 truncate"
+                    title={agencyId}
+                  >
+                    {agencyId}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-neutral-500 mb-1">Blueprints</div>
+                  <div className="text-sm text-neutral-700 dark:text-neutral-300">
+                    {blueprints.length} available
+                  </div>
+                </div>
+              </div>
+            </LayerCardContent>
+          </LayerCard>
+        )}
+
+        {/* Variables Tab */}
+        {activeTab === "variables" && (
       <LayerCard>
         <LayerCardFooter className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1109,8 +1156,10 @@ export function SettingsView({
           )}
         </LayerCardContent>
       </LayerCard>
+        )}
 
-      {/* Memory Disks */}
+        {/* Memory Tab */}
+        {activeTab === "memory" && (
       <LayerCard>
         <LayerCardFooter className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1146,8 +1195,10 @@ export function SettingsView({
           />
         </LayerCardContent>
       </LayerCard>
+        )}
 
-      {/* Blueprints List */}
+        {/* Blueprints Tab */}
+        {activeTab === "blueprints" && (
       <LayerCard>
         <LayerCardFooter className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1158,36 +1209,27 @@ export function SettingsView({
           </div>
         </LayerCardFooter>
         <LayerCardContent>
-          {blueprints.length === 0 ? (
-            <p className="text-sm text-neutral-400 py-4 text-center">
-              No blueprints available.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {blueprints.map((bp) => (
-                <div
-                  key={bp.name}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden"
-                >
-                  <BlueprintIcon size={18} className="text-neutral-400" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-neutral-900 dark:text-neutral-100">
-                      {bp.name}
-                    </div>
-                    {bp.description && (
-                      <div className="text-xs text-neutral-500 break-words">
-                        {bp.description}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <BlueprintEditor
+            blueprints={blueprints}
+            plugins={plugins}
+            tools={tools}
+            onCreateBlueprint={async (bp) => {
+              await onCreateBlueprint?.(bp);
+            }}
+            onUpdateBlueprint={async (bp) => {
+              await onUpdateBlueprint?.(bp);
+            }}
+            onDeleteBlueprint={async (name) => {
+              await onDeleteBlueprint?.(name);
+            }}
+            onTestBlueprint={onTestBlueprint}
+          />
         </LayerCardContent>
       </LayerCard>
+        )}
 
-      {/* Schedules */}
+        {/* Schedules Tab */}
+        {activeTab === "schedules" && (
       <LayerCard>
         <LayerCardFooter className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1248,6 +1290,8 @@ export function SettingsView({
           )}
         </LayerCardContent>
       </LayerCard>
+        )}
+      </div>
 
       {/* Schedule Runs Modal */}
       {selectedSchedule && (

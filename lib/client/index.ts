@@ -276,7 +276,7 @@ export interface CreateBlueprintRequest {
   name: string;
   description?: string;
   prompt: string;
-  tags: string[];
+  capabilities: string[];
   model?: string;
   config?: Record<string, unknown>;
   status?: "active" | "draft" | "disabled";
@@ -546,6 +546,13 @@ export class AgencyClient {
       "/blueprints",
       blueprint
     );
+  }
+
+  /**
+   * Delete a blueprint from this agency.
+   */
+  async deleteBlueprint(name: string): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>("DELETE", `/blueprints/${name}`);
   }
 
   /**

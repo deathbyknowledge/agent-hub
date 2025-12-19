@@ -15,4 +15,5 @@ export { TodosView } from "./TodosView";
 export type { Todo } from "./TodosView";
 export { SettingsView } from "./SettingsView";
 export { ConfirmModal } from "./ConfirmModal";
+export { BlueprintEditor } from "./BlueprintEditor";
 export { Robot, Plus, ChatCircle } from "@phosphor-icons/react";

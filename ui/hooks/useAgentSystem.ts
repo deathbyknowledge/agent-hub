@@ -384,6 +384,33 @@ export function useAgency(agencyId: string | null) {
     [agencyClient, refreshMemoryDisks]
   );
 
+  const createBlueprint = useCallback(
+    async (blueprint: Omit<AgentBlueprint, "createdAt" | "updatedAt">) => {
+      if (!agencyClient) throw new Error("No agency selected");
+      await agencyClient.createBlueprint(blueprint);
+      await refreshBlueprints();
+    },
+    [agencyClient, refreshBlueprints]
+  );
+
+  const updateBlueprint = useCallback(
+    async (blueprint: AgentBlueprint) => {
+      if (!agencyClient) throw new Error("No agency selected");
+      await agencyClient.createBlueprint(blueprint);
+      await refreshBlueprints();
+    },
+    [agencyClient, refreshBlueprints]
+  );
+
+  const deleteBlueprint = useCallback(
+    async (name: string) => {
+      if (!agencyClient) throw new Error("No agency selected");
+      await agencyClient.deleteBlueprint(name);
+      await refreshBlueprints();
+    },
+    [agencyClient, refreshBlueprints]
+  );
+
   return {
     agencyClient,
     agents,
@@ -412,6 +439,9 @@ export function useAgency(agencyId: string | null) {
     createMemoryDisk,
     importMemoryDisk,
     deleteMemoryDisk,
+    createBlueprint,
+    updateBlueprint,
+    deleteBlueprint,
   };
 }
 
