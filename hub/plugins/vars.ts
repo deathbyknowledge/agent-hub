@@ -11,7 +11,7 @@
  * - Resolution happens at tool execution time
  * - Secrets never appear in message history
  */
-import { definePlugin } from "@runtime";
+import type { AgentPlugin } from "@runtime";
 
 /** Matches $VAR_NAME where VAR_NAME is uppercase letters, digits, underscores */
 const VAR_PATTERN = /\$([A-Z][A-Z0-9_]*)/g;
@@ -20,10 +20,7 @@ const VAR_PATTERN = /\$([A-Z][A-Z0-9_]*)/g;
  * Recursively resolve $VAR references in a value.
  * Returns the original value if no vars found or var is undefined.
  */
-function resolveVars(
-  value: unknown,
-  vars: Record<string, unknown>
-): unknown {
+function resolveVars(value: unknown, vars: Record<string, unknown>): unknown {
   if (typeof value === "string") {
     // Check if the entire string is a single var reference
     const fullMatch = value.match(/^\$([A-Z][A-Z0-9_]*)$/);
@@ -56,7 +53,7 @@ function resolveVars(
   return value;
 }
 
-export const vars = definePlugin({
+export const vars: AgentPlugin = {
   name: "vars",
 
   async onToolStart(ctx, call) {
@@ -65,4 +62,4 @@ export const vars = definePlugin({
   },
 
   tags: ["default"],
-});
+};

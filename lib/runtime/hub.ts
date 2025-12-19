@@ -167,28 +167,28 @@ class PluginRegistry {
   }
 }
 
-export class AgentHub<TConfig = Record<string, unknown>> {
+export class AgentHub {
   toolRegistry = new ToolRegistry();
   pluginRegistry = new PluginRegistry();
   agentRegistry = new Map<string, AgentBlueprint>();
 
   constructor(private options: AgentHubOptions) {}
 
-  addTool<T>(tool: Tool<T>, tags?: string[]): AgentHub<TConfig> {
+  addTool<T>(tool: Tool<T>, tags?: string[]): AgentHub {
     this.toolRegistry.addTool(tool.meta.name, tool, tags);
     return this;
   }
 
-  use<TNewConfig>(
-    plugin: AgentPlugin<TNewConfig>,
+  use(
+    plugin: AgentPlugin,
     tags?: string[]
-  ): AgentHub<TConfig & TNewConfig> {
+  ): AgentHub {
     const uniqueTags = Array.from(new Set([...(tags || []), ...plugin.tags]));
     this.pluginRegistry.addPlugin(plugin.name, plugin, uniqueTags);
-    return this as unknown as AgentHub<TConfig & TNewConfig>;
+    return this 
   }
 
-  addAgent(blueprint: AgentBlueprint): AgentHub<TConfig> {
+  addAgent(blueprint: AgentBlueprint): AgentHub {
     this.agentRegistry.set(blueprint.name, blueprint);
     return this;
   }

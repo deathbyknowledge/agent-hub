@@ -176,14 +176,13 @@ export interface VarHint {
   description?: string;
 }
 
-export interface AgentPlugin<TConfig = unknown> {
+export interface AgentPlugin {
   actions?: Record<
     string,
     (ctx: PluginContext, payload: unknown) => Promise<unknown>
   >;
 
   name: string;
-  __configType?: TConfig;
 
   /** Hints about vars this plugin needs */
   varHints?: VarHint[];

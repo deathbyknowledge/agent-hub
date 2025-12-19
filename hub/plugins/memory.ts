@@ -19,11 +19,8 @@
  *   - EMBEDDING_MODEL (default: "text-embedding-3-small")
  */
 import { HNSW } from "hnsw";
-import { definePlugin, tool, z } from "@runtime";
-
-// ============================================================
-// Types
-// ============================================================
+import { tool, z, type AgentPlugin } from "@runtime";
+import type { AgentFileSystem } from "lib/runtime/fs";
 
 type MemoryEntry = {
   content: string;
@@ -41,10 +38,6 @@ type IDZFile = {
   hasEmbeddings: boolean;
   entries: StoredEntry[];
 };
-
-// ============================================================
-// Helpers
-// ============================================================
 
 function diskPath(name: string): string {
   return `/shared/memories/${name}.idz`;
@@ -83,17 +76,15 @@ async function fetchEmbeddings(
   return json.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
 }
 
-type FS = { readDir: (p: string) => Promise<{ type: string; path: string }[]>; readFile: (p: string) => Promise<string | null>; writeFile: (p: string, c: string) => Promise<void> };
-
-async function listDisks(fs: FS): Promise<{ name: string }[]> {
+async function listDisks(fs: AgentFileSystem): Promise<{ name: string }[]> {
   const entries = await fs.readDir("/shared/memories").catch(() => []);
   return entries
-    .filter((e): e is { type: string; path: string } => e.type === "file" && e.path.endsWith(".idz"))
+    .filter((e) => e.type === "file" && e.path.endsWith(".idz"))
     .map((e) => ({ name: e.path.replace(/.*\//, "").replace(/\.idz$/, "") }));
 }
 
 async function searchDisk(
-  fs: FS,
+  fs: AgentFileSystem,
   vars: Record<string, unknown>,
   name: string,
   query: string,
@@ -141,7 +132,7 @@ async function searchDisk(
 // Plugin
 // ============================================================
 
-export const memory = definePlugin({
+export const memory: AgentPlugin = {
   name: "memory",
 
   async beforeModel(ctx) {
@@ -160,8 +151,17 @@ Available disks can be listed first, then searched by name.`,
           .enum(["list", "search"])
           .describe("Action: 'list' disks or 'search' a disk"),
         disk: z.string().optional().describe("Disk name (required for search)"),
-        query: z.string().optional().describe("Search query (required for search)"),
-        k: z.number().int().min(1).max(20).optional().describe("Results to return (default: 5)"),
+        query: z
+          .string()
+          .optional()
+          .describe("Search query (required for search)"),
+        k: z
+          .number()
+          .int()
+          .min(1)
+          .max(20)
+          .optional()
+          .describe("Results to return (default: 5)"),
       }),
       execute: async ({ action, disk, query, k }) => {
         if (action === "list") {
@@ -200,8 +200,21 @@ Available disks can be listed first, then searched by name.`,
   tags: ["memory"],
 
   varHints: [
-    { name: "EMBEDDING_API_BASE", required: true, description: "Base URL for embedding API (e.g., https://api.openai.com/v1)" },
-    { name: "EMBEDDING_API_KEY", required: true, description: "API key for embedding service" },
-    { name: "EMBEDDING_MODEL", required: false, description: "Model to use (default: text-embedding-3-small)" },
+    {
+      name: "EMBEDDING_API_BASE",
+      required: true,
+      description:
+        "Base URL for embedding API (e.g., https://api.openai.com/v1)",
+    },
+    {
+      name: "EMBEDDING_API_KEY",
+      required: true,
+      description: "API key for embedding service",
+    },
+    {
+      name: "EMBEDDING_MODEL",
+      required: false,
+      description: "Model to use (default: text-embedding-3-small)",
+    },
   ],
-});
+};

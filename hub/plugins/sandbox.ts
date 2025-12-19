@@ -7,8 +7,6 @@
  * IMPORTANT: These tools operate on an EPHEMERAL sandbox container filesystem,
  * NOT the agent's persistent R2-backed filesystem. Use for:
  * - Running bash commands (git, npm, python, etc.)
- * - Searching code with ripgrep
- * - Cloning and analyzing repositories
  * - Running tests and linters
  *
  * For persistent file storage, use the `filesystem` plugin instead.
@@ -16,10 +14,6 @@
 
 import { z } from "zod";
 import { tool, type AgentPlugin } from "@runtime";
-
-// ============================================================================
-// Schemas
-// ============================================================================
 
 const SandboxBashSchema = z.object({
   command: z.string().describe("The bash command to execute in the sandbox"),
@@ -33,47 +27,7 @@ const SandboxBashSchema = z.object({
     .number()
     .int()
     .default(30000)
-    .describe("Timeout in milliseconds before the command is killed")
-});
-
-const SandboxGrepSchema = z.object({
-  pattern: z.string().describe("The pattern to search for (supports regex)"),
-  path: z
-    .string()
-    .default("/workspace")
-    .describe(
-      "Directory or file path to search in the sandbox. Defaults to /workspace."
-    ),
-  glob: z
-    .string()
-    .optional()
-    .describe(
-      'Glob pattern for filtering files (e.g., "*.ts" for TypeScript files)'
-    ),
-  ignoreCase: z
-    .boolean()
-    .default(false)
-    .describe("Whether to ignore case when matching"),
-  maxResults: z
-    .number()
-    .int()
-    .default(50)
-    .describe("Maximum number of results to return")
-});
-
-const SandboxGlobSchema = z.object({
-  patterns: z
-    .array(z.string())
-    .describe("One or more glob patterns to match files in the sandbox"),
-  cwd: z
-    .string()
-    .default("/workspace")
-    .describe("Directory to search in the sandbox. Defaults to /workspace."),
-  maxResults: z
-    .number()
-    .int()
-    .default(100)
-    .describe("Maximum number of results to return")
+    .describe("Timeout in milliseconds before the command is killed"),
 });
 
 const SandboxLsSchema = z.object({
@@ -89,7 +43,7 @@ const SandboxLsSchema = z.object({
     .number()
     .int()
     .default(3)
-    .describe("Maximum depth for recursive listing")
+    .describe("Maximum depth for recursive listing"),
 });
 
 const SandboxReadFileSchema = z.object({
@@ -103,12 +57,12 @@ const SandboxReadFileSchema = z.object({
     .number()
     .int()
     .optional()
-    .describe("The line number to end reading at (1-based)")
+    .describe("The line number to end reading at (1-based)"),
 });
 
 const SandboxWriteFileSchema = z.object({
   path: z.string().describe("Path to write the file in the sandbox container"),
-  content: z.string().describe("The content to write to the file")
+  content: z.string().describe("The content to write to the file"),
 });
 
 const SandboxGitDiffSchema = z.object({
@@ -119,7 +73,7 @@ const SandboxGitDiffSchema = z.object({
   base: z
     .string()
     .default("HEAD~1")
-    .describe("Base commit/branch to compare against (e.g., 'main', 'HEAD~1')")
+    .describe("Base commit/branch to compare against (e.g., 'main', 'HEAD~1')"),
 });
 
 const SandboxGitCloneSchema = z.object({
@@ -129,25 +83,8 @@ const SandboxGitCloneSchema = z.object({
     .number()
     .int()
     .default(1)
-    .describe("Create a shallow clone with this many commits")
+    .describe("Create a shallow clone with this many commits"),
 });
-
-// ============================================================================
-// Config
-// ============================================================================
-
-/**
- * Sandbox plugin configuration.
- * Set via agent blueprint config: `config: { sandbox: { env: { GITHUB_TOKEN: "..." } } }`
- */
-export interface SandboxConfig {
-  /** Environment variables to inject into sandbox commands */
-  env?: Record<string, string>;
-}
-
-// ============================================================================
-// Sandbox Interface
-// ============================================================================
 
 interface SandboxExecOptions {
   timeout?: number;
@@ -186,10 +123,6 @@ function getSandboxInstance(
   return stub as unknown as SandboxInstance;
 }
 
-// ============================================================================
-// Prompts
-// ============================================================================
-
 const SANDBOX_SYSTEM_PROMPT = `## Sandbox Container
 
 You have access to an isolated Linux container (sandbox) for executing commands.
@@ -197,9 +130,7 @@ You have access to an isolated Linux container (sandbox) for executing commands.
 **IMPORTANT**: The sandbox filesystem is EPHEMERAL - files created here are temporary and will be lost when the sandbox is destroyed. For persistent storage, use the agent's filesystem tools (ls, read_file, write_file) which are backed by R2 storage.
 
 ### Sandbox Tools (ephemeral container):
-- \`sandbox_bash\`: Execute any bash command (git, npm, python, etc.)
-- \`sandbox_grep\`: Fast code search using ripgrep
-- \`sandbox_glob\`: Find files by pattern using fd
+- \`sandbox_bash\`: Execute any bash command
 - \`sandbox_ls\`: List directories with optional tree view
 - \`sandbox_read_file\`: Read file contents from the container
 - \`sandbox_write_file\`: Write files to the container
@@ -213,10 +144,6 @@ You have access to an isolated Linux container (sandbox) for executing commands.
 4. Run tests/linters with \`sandbox_bash\`
 5. Use \`sandbox_git_diff\` to review changes`;
 
-// ============================================================================
-// Plugin
-// ============================================================================
-
 /**
  * Sandbox plugin - provides tools for ephemeral container execution.
  *
@@ -227,8 +154,16 @@ You have access to an isolated Linux container (sandbox) for executing commands.
  * Tools are prefixed with "sandbox_" to distinguish them from the
  * persistent R2-backed filesystem tools.
  */
-export const sandbox: AgentPlugin<SandboxConfig> = {
+export const sandbox: AgentPlugin = {
   name: "sandbox",
+
+  varHints: [
+    {
+      name: "SANDBOX_ENV",
+      description: "Environment variables to inject into the sandbox container",
+      required: false,
+    },
+  ],
 
   async beforeModel(ctx, plan) {
     const sandboxNs = ctx.env.SANDBOX;
@@ -254,36 +189,12 @@ export const sandbox: AgentPlugin<SandboxConfig> = {
       opts?: { timeout?: number }
     ): Promise<SandboxExecResult> => sb.exec(cmd, { ...opts, env: sandboxEnv });
 
-    // Dangerous command patterns to block
-    const DANGEROUS_PATTERNS = [
-      "rm -rf /",
-      "mkfs",
-      "dd if=",
-      ":(){",
-      "fork bomb"
-    ];
-
-    const checkDangerous = (cmd: string): string | null => {
-      for (const pattern of DANGEROUS_PATTERNS) {
-        if (cmd.includes(pattern)) {
-          return `Blocked: potentially dangerous command pattern "${pattern}"`;
-        }
-      }
-      return null;
-    };
-
-    // -------------------------------------------------------------------------
-    // sandbox_bash
-    // -------------------------------------------------------------------------
     const sandbox_bash = tool({
       name: "sandbox_bash",
       description:
         "Execute a bash command in an isolated Linux container. Supports git, npm, python, and common CLI tools. The sandbox filesystem is EPHEMERAL - use for running tests, git operations, and code analysis.",
       inputSchema: SandboxBashSchema,
       execute: async ({ command, cwd, timeout }) => {
-        const blocked = checkDangerous(command);
-        if (blocked) return blocked;
-
         try {
           const fullCommand =
             cwd !== "/workspace" ? `cd ${cwd} && ${command}` : command;
@@ -304,76 +215,7 @@ export const sandbox: AgentPlugin<SandboxConfig> = {
         } catch (error) {
           return `Error: ${error instanceof Error ? error.message : String(error)}`;
         }
-      }
-    });
-
-    // -------------------------------------------------------------------------
-    // sandbox_grep
-    // -------------------------------------------------------------------------
-    const sandbox_grep = tool({
-      name: "sandbox_grep",
-      description:
-        "Search for patterns in sandbox files using ripgrep. Fast, respects .gitignore. Returns matching lines with file paths and line numbers. Operates on the EPHEMERAL sandbox filesystem.",
-      inputSchema: SandboxGrepSchema,
-      execute: async ({
-        pattern,
-        path,
-        glob: globPattern,
-        ignoreCase,
-        maxResults
-      }) => {
-        try {
-          let cmd = `rg --line-number --max-count ${maxResults}`;
-          if (ignoreCase) cmd += " --ignore-case";
-          if (globPattern) cmd += ` --glob '${globPattern}'`;
-          cmd += ` '${pattern}' ${path}`;
-
-          const result = await exec(cmd);
-
-          if (result.exitCode === 1 && !result.stdout) {
-            return `No matches found for pattern "${pattern}"`;
-          }
-
-          if (result.stderr && !result.stdout) {
-            return `Error: ${result.stderr}`;
-          }
-
-          return result.stdout || "No matches found";
-        } catch (error) {
-          return `Error: ${error instanceof Error ? error.message : String(error)}`;
-        }
-      }
-    });
-
-    // -------------------------------------------------------------------------
-    // sandbox_glob
-    // -------------------------------------------------------------------------
-    const sandbox_glob = tool({
-      name: "sandbox_glob",
-      description:
-        "Find files matching glob patterns in the sandbox using fd. Fast, respects .gitignore. Operates on the EPHEMERAL sandbox filesystem.",
-      inputSchema: SandboxGlobSchema,
-      execute: async ({ patterns, cwd, maxResults }) => {
-        try {
-          const results: string[] = [];
-          for (const pattern of patterns) {
-            // Try fd first, fall back to fdfind (Debian/Ubuntu)
-            const cmd = `(fd --max-results ${maxResults} '${pattern}' ${cwd} 2>/dev/null || fdfind --max-results ${maxResults} '${pattern}' ${cwd})`;
-            const result = await exec(cmd);
-            if (result.stdout) {
-              results.push(...result.stdout.trim().split("\n").filter(Boolean));
-            }
-          }
-
-          if (results.length === 0) {
-            return `No files found matching: ${patterns.join(", ")}`;
-          }
-
-          return `Found ${results.length} file(s):\n${results.join("\n")}`;
-        } catch (error) {
-          return `Error: ${error instanceof Error ? error.message : String(error)}`;
-        }
-      }
+      },
     });
 
     // -------------------------------------------------------------------------
@@ -395,7 +237,7 @@ export const sandbox: AgentPlugin<SandboxConfig> = {
         } catch (error) {
           return `Error: ${error instanceof Error ? error.message : String(error)}`;
         }
-      }
+      },
     });
 
     // -------------------------------------------------------------------------
@@ -443,7 +285,7 @@ export const sandbox: AgentPlugin<SandboxConfig> = {
         } catch (error) {
           return `Error: ${error instanceof Error ? error.message : String(error)}`;
         }
-      }
+      },
     });
 
     // -------------------------------------------------------------------------
@@ -461,7 +303,7 @@ export const sandbox: AgentPlugin<SandboxConfig> = {
         } catch (error) {
           return `Error: ${error instanceof Error ? error.message : String(error)}`;
         }
-      }
+      },
     });
 
     // -------------------------------------------------------------------------
@@ -498,45 +340,15 @@ export const sandbox: AgentPlugin<SandboxConfig> = {
         } catch (error) {
           return `Error: ${error instanceof Error ? error.message : String(error)}`;
         }
-      }
+      },
     });
 
-    // -------------------------------------------------------------------------
-    // sandbox_git_diff
-    // -------------------------------------------------------------------------
-    const sandbox_git_diff = tool({
-      name: "sandbox_git_diff",
-      description:
-        "Show git diff for changes in the sandbox workspace. Works with repositories cloned via sandbox_git_clone.",
-      inputSchema: SandboxGitDiffSchema,
-      execute: async ({ path, base }) => {
-        try {
-          let cmd = `cd /workspace && git diff ${base}`;
-          if (path) cmd += ` -- '${path}'`;
-
-          const result = await exec(cmd);
-
-          if (result.exitCode !== 0 && result.stderr) {
-            return `Error: ${result.stderr}`;
-          }
-
-          return result.stdout || "No changes detected";
-        } catch (error) {
-          return `Error: ${error instanceof Error ? error.message : String(error)}`;
-        }
-      }
-    });
-
-    // Register all tools
     ctx.registerTool(sandbox_bash);
-    ctx.registerTool(sandbox_grep);
-    ctx.registerTool(sandbox_glob);
     ctx.registerTool(sandbox_ls);
     ctx.registerTool(sandbox_read_file);
     ctx.registerTool(sandbox_write_file);
     ctx.registerTool(sandbox_git_clone);
-    ctx.registerTool(sandbox_git_diff);
   },
 
-  tags: ["sandbox", "container", "bash", "git"]
+  tags: ["sandbox"],
 };

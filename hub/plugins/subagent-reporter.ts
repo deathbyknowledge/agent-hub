@@ -4,7 +4,7 @@
  * This plugin is dynamically added to child agents and reports
  * completion back to the parent via the subagent_result action.
  */
-import { definePlugin, type AgentEnv } from "@runtime";
+import { type AgentPlugin, type AgentEnv } from "@runtime";
 import { getAgentByName } from "agents";
 
 interface ParentInfo {
@@ -14,7 +14,7 @@ interface ParentInfo {
   action?: string;
 }
 
-export const subagentReporter = definePlugin({
+export const subagentReporter: AgentPlugin = {
   name: "subagent_reporter",
 
   async onRunComplete(ctx, { final }) {
@@ -52,4 +52,4 @@ export const subagentReporter = definePlugin({
   },
 
   tags: ["subagent_reporter"],
-});
+};

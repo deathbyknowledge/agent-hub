@@ -4,7 +4,7 @@
  * This plugin pauses the agent when risky tools are called,
  * allowing human approval before execution.
  */
-import { definePlugin, type ToolCall } from "@runtime";
+import { type AgentPlugin, type ToolCall } from "@runtime";
 import { AgentEventType } from "@runtime";
 
 /** Custom event types for HITL plugin */
@@ -13,18 +13,13 @@ const HitlEventType = {
   RESUME: "hitl.resume",
 } as const;
 
-type HitlConfig = {
-  hitl?: {
-    tools: string[];
-  };
-};
 
 interface ApprovePayload {
   approved: boolean;
   modifiedToolCalls?: ToolCall[];
 }
 
-const hitl = definePlugin<HitlConfig>({
+const hitl: AgentPlugin = {
   name: "hitl",
 
   actions: {
@@ -91,6 +86,6 @@ const hitl = definePlugin<HitlConfig>({
   },
 
   tags: ["hitl"],
-});
+};
 
 export default hitl;

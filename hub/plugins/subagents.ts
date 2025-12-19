@@ -7,11 +7,11 @@
  * It manages its own waiting_subagents table and handles completion via actions.
  */
 import {
-  definePlugin,
   tool,
   z,
   type AgentEnv,
   AgentEventType,
+  type AgentPlugin,
 } from "@runtime";
 import { getAgentByName } from "agents";
 
@@ -21,10 +21,9 @@ const SubagentEventType = {
   MESSAGED: "subagent.messaged",
 } as const;
 
-
 const TaskParams = z.object({
   description: z.string().describe("Task description for the subagent"),
-  subagentType: z.string().describe("Type of subagent to spawn")
+  subagentType: z.string().describe("Type of subagent to spawn"),
 });
 
 const MessageAgentParams = z.object({
@@ -41,7 +40,7 @@ function renderOtherAgents(subagents: SubagentRef[]) {
   return subagents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
 }
 
-export const subagents = definePlugin({
+export const subagents: AgentPlugin = {
   name: "subagents",
 
   async onInit(ctx) {
@@ -107,7 +106,7 @@ export const subagents = definePlugin({
       // Append tool result with agentId for follow-up capability
       const result = JSON.stringify({
         agentId: childThreadId,
-        result: report ?? ""
+        result: report ?? "",
       });
       ctx.agent.store.appendToolResult(toolCallId, result);
 
@@ -199,7 +198,9 @@ export const subagents = definePlugin({
 
   async beforeModel(ctx, plan) {
     plan.addSystemPrompt(TASK_SYSTEM_PROMPT);
-    const subagentsConfig = ctx.agent.vars.SUBAGENTS as SubagentRef[] | undefined;
+    const subagentsConfig = ctx.agent.vars.SUBAGENTS as
+      | SubagentRef[]
+      | undefined;
     const otherAgents = renderOtherAgents(subagentsConfig ?? []);
     const taskDesc = TASK_TOOL_DESCRIPTION.replace(
       "{other_agents}",
@@ -254,7 +255,7 @@ export const subagents = definePlugin({
                   threadId: ctx.agent.info.threadId,
                   token,
                 },
-              }
+              },
             }),
           })
         );
@@ -395,7 +396,7 @@ The agentId is returned in the result object of the task tool (e.g., {"agentId":
   },
 
   tags: ["subagents", "default"],
-});
+};
 
 const TASK_SYSTEM_PROMPT = `## \`task\` (subagent spawner)
 
@@ -424,7 +425,6 @@ When NOT to use the task tool:
 - Whenever possible, parallelize the work that you do. This is true for both tool calls, and for tasks. Whenever you have independent steps to complete - make tool calls, or kick off tasks (subagents) in parallel to accomplish them faster. This saves time for the user, which is incredibly important.
 - Remember to use the \`task\` tool to silo independent tasks within a multi-part objective.
 - You should use the \`task\` tool whenever you have a complex task that will take multiple steps, and is independent from other tasks that the agent needs to complete. These agents are highly competent and efficient.`;
-
 
 const TASK_TOOL_DESCRIPTION = `Launch an ephemeral subagent to handle complex, multi-step independent tasks with isolated context windows. 
 
