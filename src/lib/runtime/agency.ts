@@ -6,7 +6,7 @@ import type {
   ThreadRequestContext,
   AgentEnv,
 } from "./types";
-import { PersistedObject } from "./config";
+import { PersistedObject } from "./persisted";
 
 // ============================================================
 // Schedule Types

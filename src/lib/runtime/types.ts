@@ -58,7 +58,7 @@ export type ToolMeta = {
 
 export type ChatMessage =
   | { role: "system" | "user" | "assistant"; content: string }
-  | { role: "assistant"; toolCalls?: ToolCall[] }
+  | { role: "assistant"; toolCalls: ToolCall[] }
   | { role: "tool"; content: string; toolCallId: string };
 
 export interface InvokeBody {
@@ -163,7 +163,6 @@ export interface AgentEnv {
 }
 
 export type PluginContext = {
-  provider: Provider;
   agent: HubAgent;
   env: AgentEnv;
   registerTool: <T>(tool: Tool<T>) => void;

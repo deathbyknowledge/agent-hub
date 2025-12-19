@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS events (
         out.push({
           role: role as "user" | "assistant",
           content: String(r.content ?? ""),
-        });
+        } as ChatMessage);
       }
     }
     this._messages = [...out];

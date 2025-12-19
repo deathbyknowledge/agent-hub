@@ -200,12 +200,9 @@ export class AgentHub<TConfig = Record<string, unknown>> {
     Agency: typeof Agency;
     handler: ReturnType<typeof createHandler>;
   } {
+    const options = this.options;
     const { toolRegistry, pluginRegistry, agentRegistry } = this;
-    const options = this.options; // biome bug, if I put it above the biome things its not used anywhere
     class ConfiguredHubAgent extends HubAgent<AgentEnv> {
-      async onDone(_ctx: { agent: HubAgent; final: string }): Promise<void> {
-        // Override in subclass if needed
-      }
 
       // Gets local agent blueprint or reads it from static defaults.
       // Local blueprint is set by Agency on registration.
