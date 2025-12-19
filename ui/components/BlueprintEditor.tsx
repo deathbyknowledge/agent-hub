@@ -1,20 +1,20 @@
 import { useState } from "react";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
-import { Select } from "./Select";
 import { ConfirmModal } from "./ConfirmModal";
+import { Select } from "./Select";
+import { VarEditor } from "./VarEditor";
+import type { AgentBlueprint, PluginInfo, ToolInfo } from "@client";
 import {
   Plus,
   Trash,
   Pencil,
-  Check,
-  X,
   Copy,
   Play,
+  X,
   CaretDown,
   CaretRight,
 } from "@phosphor-icons/react";
-import type { AgentBlueprint, PluginInfo, ToolInfo } from "@client";
 
 interface BlueprintEditorProps {
   blueprints: AgentBlueprint[];
@@ -37,7 +37,7 @@ type BlueprintFormData = {
   capabilities: string[];
   model: string;
   status: "active" | "draft" | "disabled";
-  config: string;
+  vars: Record<string, unknown>;
 };
 
 function BlueprintForm({
@@ -62,11 +62,10 @@ function BlueprintForm({
     capabilities: initialData?.capabilities || [],
     model: initialData?.model || "",
     status: initialData?.status || "active",
-    config: initialData?.config || "",
+    vars: initialData?.vars || {},
   });
 
   const [capabilityInput, setCapabilityInput] = useState("");
-  const [configError, setConfigError] = useState<string | null>(null);
 
   const allCapabilities = [
     ...plugins.map((p) => ({ type: "plugin", name: p.name, tags: p.tags })),
@@ -79,17 +78,6 @@ function BlueprintForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (formData.config.trim()) {
-      try {
-        JSON.parse(formData.config);
-        setConfigError(null);
-      } catch (err) {
-        setConfigError("Invalid JSON format");
-        return;
-      }
-    }
-    
     onSubmit(formData);
   };
 
@@ -139,7 +127,7 @@ function BlueprintForm({
           </label>
           <Select
             value={formData.status}
-            onChange={(val) =>
+            onChange={(val: string) =>
               setFormData({ ...formData, status: val as BlueprintFormData["status"] })
             }
             options={[
@@ -197,39 +185,26 @@ function BlueprintForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1">
-          Configuration (JSON)
+        <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-2">
+          Variables
         </label>
-        <textarea
-          value={formData.config}
-          onChange={(e) => {
-            setFormData({ ...formData, config: e.target.value });
-            if (e.target.value.trim()) {
-              try {
-                JSON.parse(e.target.value);
-                setConfigError(null);
-              } catch (err) {
-                setConfigError("Invalid JSON format");
-              }
-            } else {
-              setConfigError(null);
-            }
-          }}
-          className={cn(
-            "w-full px-3 py-2 border rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 font-mono text-sm resize-none",
-            configError
-              ? "border-red-500 dark:border-red-500"
-              : "border-neutral-300 dark:border-neutral-600"
-          )}
-          placeholder='{\n  "subagents": {\n    "subagents": [...]\n  }\n}'
-          rows={6}
-        />
-        {configError && (
-          <p className="text-xs text-red-500 mt-1">{configError}</p>
-        )}
-        <p className="text-xs text-neutral-500 mt-1">
-          Optional plugin configuration (e.g., subagent definitions)
+        <p className="text-xs text-neutral-500 mb-2">
+          Configure plugin behavior (e.g., subagent definitions, API keys)
         </p>
+        <VarEditor
+          vars={formData.vars}
+          onSetVar={async (key, value) => {
+            setFormData({
+              ...formData,
+              vars: { ...formData.vars, [key]: value },
+            });
+          }}
+          onDeleteVar={async (key) => {
+            const newVars = { ...formData.vars };
+            delete newVars[key];
+            setFormData({ ...formData, vars: newVars });
+          }}
+        />
       </div>
 
       <div>
@@ -423,13 +398,13 @@ function BlueprintCard({
             </div>
           </div>
 
-          {blueprint.config && Object.keys(blueprint.config).length > 0 && (
+          {blueprint.vars && Object.keys(blueprint.vars).length > 0 && (
             <div>
               <div className="text-xs font-medium text-neutral-500 mb-1">
-                Configuration
+                Variables
               </div>
               <pre className="text-xs bg-neutral-100 dark:bg-neutral-900 p-3 rounded-lg overflow-auto max-h-48 text-neutral-800 dark:text-neutral-200">
-                {JSON.stringify(blueprint.config, null, 2)}
+                {JSON.stringify(blueprint.vars, null, 2)}
               </pre>
             </div>
           )}
@@ -492,35 +467,55 @@ export function BlueprintEditor({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingBlueprint, setEditingBlueprint] = useState<AgentBlueprint | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const handleCreate = async (data: BlueprintFormData) => {
-    const blueprint: Omit<AgentBlueprint, "createdAt" | "updatedAt"> = {
-      name: data.name,
-      description: data.description,
-      prompt: data.prompt,
-      capabilities: data.capabilities,
-      model: data.model || undefined,
-      status: data.status,
-      config: data.config.trim() ? JSON.parse(data.config) : undefined,
-    };
-    await onCreateBlueprint(blueprint);
-    setShowCreateForm(false);
+    try {
+      setError(null);
+      const blueprint: Omit<AgentBlueprint, "createdAt" | "updatedAt"> = {
+        name: data.name,
+        description: data.description,
+        prompt: data.prompt,
+        capabilities: data.capabilities,
+        model: data.model || undefined,
+        status: data.status,
+        vars: Object.keys(data.vars).length > 0 ? data.vars : undefined,
+      };
+      await onCreateBlueprint(blueprint);
+      setShowCreateForm(false);
+      setSuccessMessage(`Blueprint "${data.name}" created successfully`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: unknown) {
+      const error = err as any;
+      const errorMsg = error.body || error.message || "Failed to create blueprint";
+      setError(errorMsg);
+    }
   };
 
   const handleUpdate = async (data: BlueprintFormData) => {
     if (!editingBlueprint) return;
-    const blueprint: AgentBlueprint = {
-      ...editingBlueprint,
-      name: data.name,
-      description: data.description,
-      prompt: data.prompt,
-      capabilities: data.capabilities,
-      model: data.model || undefined,
-      status: data.status,
-      config: data.config.trim() ? JSON.parse(data.config) : undefined,
-    };
-    await onUpdateBlueprint(blueprint);
-    setEditingBlueprint(null);
+    try {
+      setError(null);
+      const blueprint: AgentBlueprint = {
+        ...editingBlueprint,
+        name: data.name,
+        description: data.description,
+        prompt: data.prompt,
+        capabilities: data.capabilities,
+        model: data.model || undefined,
+        status: data.status,
+        vars: Object.keys(data.vars).length > 0 ? data.vars : undefined,
+      };
+      await onUpdateBlueprint(blueprint);
+      setEditingBlueprint(null);
+      setSuccessMessage(`Blueprint "${data.name}" updated successfully`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: unknown) {
+      const error = err as any;
+      const errorMsg = error.body || error.message || "Failed to update blueprint";
+      setError(errorMsg);
+    }
   };
 
   const handleDuplicate = (blueprint: AgentBlueprint) => {
@@ -541,7 +536,7 @@ export function BlueprintEditor({
       capabilities: bp.capabilities,
       model: bp.model || "",
       status: bp.status || "active",
-      config: bp.config ? JSON.stringify(bp.config, null, 2) : "",
+      vars: bp.vars || {},
     };
   };
 
@@ -560,6 +555,7 @@ export function BlueprintEditor({
             onCancel={() => {
               setShowCreateForm(false);
               setEditingBlueprint(null);
+              setError(null);
             }}
             isEdit={!!editingBlueprint && !showCreateForm}
           />

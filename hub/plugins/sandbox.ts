@@ -246,8 +246,7 @@ export const sandbox: AgentPlugin<SandboxConfig> = {
     const sb = getSandboxInstance(sandboxNs, sandboxId);
 
     // Get env vars from config (e.g., GITHUB_TOKEN for git auth)
-    const config = (ctx.agent.config as { sandbox?: SandboxConfig })?.sandbox;
-    const sandboxEnv = config?.env;
+    const sandboxEnv = ctx.agent.vars.SANDBOX_ENV as Record<string, string>;
 
     // Helper to exec with env vars injected
     const exec = (

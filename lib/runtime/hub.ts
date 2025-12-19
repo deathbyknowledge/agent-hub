@@ -12,7 +12,6 @@ import type {
   Tool,
   AgentPlugin,
   AgentBlueprint,
-  AgentConfig,
   ThreadMetadata,
   AgentEnv,
 } from "./types";
@@ -172,7 +171,6 @@ export class AgentHub<TConfig = Record<string, unknown>> {
   toolRegistry = new ToolRegistry();
   pluginRegistry = new PluginRegistry();
   agentRegistry = new Map<string, AgentBlueprint>();
-  config: Record<string, AgentConfig> = {};
 
   constructor(private options: AgentHubOptions) {}
 
@@ -190,7 +188,7 @@ export class AgentHub<TConfig = Record<string, unknown>> {
     return this as unknown as AgentHub<TConfig & TNewConfig>;
   }
 
-  addAgent(blueprint: AgentBlueprint<Partial<TConfig>>): AgentHub<TConfig> {
+  addAgent(blueprint: AgentBlueprint): AgentHub<TConfig> {
     this.agentRegistry.set(blueprint.name, blueprint);
     return this;
   }
@@ -248,6 +246,11 @@ export class AgentHub<TConfig = Record<string, unknown>> {
         // 3. Persist blueprint locally
         this.info.blueprint = bp;
 
+        // 4. Merge blueprint vars into agent vars
+        if (bp.vars) {
+          Object.assign(this.vars, bp.vars);
+        }
+
         for (const p of this.plugins) {
           await p.onInit?.(this.pluginContext);
         }
@@ -273,10 +276,6 @@ export class AgentHub<TConfig = Record<string, unknown>> {
 
       get systemPrompt(): string {
         return this.blueprint.prompt;
-      }
-
-      get config(): AgentConfig {
-        return this.blueprint.config ?? { plugins: {}, tools: {} };
       }
 
       get provider(): Provider {

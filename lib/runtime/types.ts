@@ -20,8 +20,6 @@ export type RunState = {
   nextAlarmAt?: number | null; // ms epoch
 };
 
-export type AgentConfig<T = Record<string, unknown>> = T;
-
 export type AgentState = {
   messages: ChatMessage[];
   tools: ToolMeta[];
@@ -134,7 +132,7 @@ export interface SubagentLink {
 
 type BlueprintStatus = "active" | "draft" | "disabled";
 
-export type AgentBlueprint<TConfig = Record<string, unknown>> = {
+export type AgentBlueprint = {
   name: string;
   description: string;
   prompt: string;
@@ -145,7 +143,11 @@ export type AgentBlueprint<TConfig = Record<string, unknown>> = {
    */
   capabilities: string[];
   model?: string;
-  config?: AgentConfig<TConfig>;
+  /**
+   * Variables accessible to plugins and the agent at runtime.
+   * These are merged with agency vars and can be overridden at registration/invocation.
+   */
+  vars?: Record<string, unknown>;
   status?: BlueprintStatus;
   createdAt?: string; // ISO
   updatedAt?: string; // ISO

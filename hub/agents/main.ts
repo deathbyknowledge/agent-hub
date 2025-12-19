@@ -160,17 +160,15 @@ const blueprint: AgentBlueprint = {
     "Coordinates multiple security agents to investigate anomalies and security events for a Cloudflare zone.",
   prompt: ANOMALY_MAIN_AGENT_PROMPT,
   capabilities: ["filesystem", "planning", "subagents", "send_gchat_message"],
-  config: {
-    subagents: {
-      subagents: [
-        {
-          name: "Security Agent",
-          description:
-            "Expert security analyst. Conducts deep-dive research on traffic and security events for a given Cloudflare zone, you must always provide the zone tag to the subagent. Give focused queries on specific topics - for multiple topics, call multiple agents in parallel using the task tool."
-        }
-      ]
-    }
-  }
+  vars: {
+    SUBAGENTS: [
+      {
+        name: "Security Agent",
+        description:
+          "Expert security analyst. Conducts deep-dive research on traffic and security events for a given Cloudflare zone, you must always provide the zone tag to the subagent. Give focused queries on specific topics - for multiple topics, call multiple agents in parallel using the task tool.",
+      },
+    ],
+  },
 };
 
 export default blueprint;

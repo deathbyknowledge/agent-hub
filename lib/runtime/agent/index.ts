@@ -9,7 +9,6 @@ import type {
   AgentState,
   ThreadRequestContext,
   RunState,
-  AgentConfig,
   AgentBlueprint,
   AgentEnv,
 } from "../types";
@@ -69,7 +68,6 @@ export abstract class HubAgent<
   abstract get tools(): Record<string, Tool<any>>;
   abstract get systemPrompt(): string;
   abstract get model(): string;
-  abstract get config(): AgentConfig;
   abstract get provider(): Provider;
   abstract onRegister(meta: ThreadMetadata): Promise<void>;
 

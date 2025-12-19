@@ -78,10 +78,8 @@ const hitl = definePlugin<HitlConfig>({
       last?.role === "assistant" && "toolCalls" in last
         ? (last.toolCalls ?? [])
         : [];
-    const config = ctx.agent.config as HitlConfig;
-    const risky = calls.find((c: ToolCall) =>
-      config.hitl?.tools.includes(c.name)
-    );
+    const watchTools = ctx.agent.vars.HTIL_TOOLS as string[] | undefined;
+    const risky = calls.find((c: ToolCall) => watchTools?.includes(c.name));
 
     if (risky) {
       runState.status = "paused";

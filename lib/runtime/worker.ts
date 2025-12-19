@@ -242,6 +242,16 @@ export const createHandler = (opts: HandlerOptions = {}) => {
           return withCors(res);
         }
 
+        // DELETE /agency/:id/blueprints/:name -> delete blueprint
+        if (req.method === "DELETE" && subPath.startsWith("/blueprints/")) {
+          const res = await agencyStub.fetch(
+            new Request(`http://do${subPath}`, {
+              method: "DELETE"
+            })
+          );
+          return withCors(res);
+        }
+
         // GET /agency/:id/agents
         if (req.method === "GET" && subPath === "/agents") {
           const res = await agencyStub.fetch(

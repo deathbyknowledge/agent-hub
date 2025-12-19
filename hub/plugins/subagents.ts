@@ -37,17 +37,11 @@ type SubagentRef = {
   description: string;
 };
 
-type SubagentsConfig = {
-  subagents?: {
-    subagents: SubagentRef[];
-  };
-};
-
 function renderOtherAgents(subagents: SubagentRef[]) {
   return subagents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
 }
 
-export const subagents = definePlugin<SubagentsConfig>({
+export const subagents = definePlugin({
   name: "subagents",
 
   async onInit(ctx) {
@@ -205,8 +199,8 @@ export const subagents = definePlugin<SubagentsConfig>({
 
   async beforeModel(ctx, plan) {
     plan.addSystemPrompt(TASK_SYSTEM_PROMPT);
-    const config = ctx.agent.config as SubagentsConfig;
-    const otherAgents = renderOtherAgents(config.subagents?.subagents ?? []);
+    const subagentsConfig = ctx.agent.vars.SUBAGENTS as SubagentRef[] | undefined;
+    const otherAgents = renderOtherAgents(subagentsConfig ?? []);
     const taskDesc = TASK_TOOL_DESCRIPTION.replace(
       "{other_agents}",
       otherAgents
