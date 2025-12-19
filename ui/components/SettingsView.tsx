@@ -312,13 +312,19 @@ function CreateScheduleForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    let runAtISO: string | undefined;
+    if (type === "once" && runAt) {
+      const localDate = new Date(runAt);
+      runAtISO = localDate.toISOString();
+    }
+
     onSubmit({
       name,
       agentType,
       type,
       cron: type === "cron" ? cron : undefined,
       intervalMs: type === "interval" ? intervalMs : undefined,
-      runAt: type === "once" ? runAt : undefined,
+      runAt: runAtISO,
       overlapPolicy,
       input: message.trim() ? { message: message.trim() } : undefined
     });
