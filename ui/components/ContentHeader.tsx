@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { cn } from "../lib/utils";
-import { ChatCircle, Graph, Folder, ListChecks, Copy, Check, DotsThreeVertical, Play, Stop, Trash } from "@phosphor-icons/react";
+import { ChatCircle, Graph, Folder, ListChecks, Copy, Check, DotsThreeVertical, Play, Stop, Trash, List } from "@phosphor-icons/react";
 
 export type TabId = "chat" | "trace" | "files" | "todos";
 
@@ -27,6 +27,7 @@ interface ContentHeaderProps {
   onRestart?: () => void;
   onStop?: () => void;
   onDelete?: () => void;
+  onMenuClick?: () => void;
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bgColor: string }> = {
@@ -45,7 +46,8 @@ export function ContentHeader({
   status = "idle",
   onRestart,
   onStop,
-  onDelete
+  onDelete,
+  onMenuClick
 }: ContentHeaderProps) {
   const [copied, setCopied] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -77,11 +79,25 @@ export function ContentHeader({
 
   return (
     <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+      {/* Mobile menu button */}
+      {onMenuClick && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onMenuClick();
+          }}
+          className="md:hidden p-2 -ml-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          aria-label="Open menu"
+        >
+          <List size={20} />
+        </button>
+      )}
+
       {/* Agent info */}
-      <div className="flex items-center gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-neutral-900 dark:text-neutral-100 truncate">
               {threadName}
             </span>
             <span className={cn(
@@ -100,9 +116,10 @@ export function ContentHeader({
           </div>
           <button
             onClick={copyId}
-            className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400 font-mono hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors group"
+            className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400 font-mono hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors group truncate"
           >
-            <span>{threadId.slice(0, 12)}...</span>
+            <span className="hidden sm:inline">{threadId.slice(0, 12)}...</span>
+            <span className="sm:hidden">{threadId.slice(0, 8)}...</span>
             {copied ? (
               <Check size={12} className="text-green-500" />
             ) : (
@@ -113,14 +130,14 @@ export function ContentHeader({
       </div>
 
       {/* Tabs and actions */}
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 overflow-x-auto [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {TABS.map((tab) => (
             <Link
               key={tab.id}
               href={tab.id === "chat" ? basePath : `${basePath}/${tab.id}`}
               className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                "flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
                 activeTab === tab.id
                   ? "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
                   : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"

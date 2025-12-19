@@ -354,28 +354,28 @@ function InlineAgentCard({
       className={cn(
         "border-l-4 rounded-r-lg bg-neutral-50/80 dark:bg-neutral-800/50",
         statusColors[status],
-        depth > 0 && "ml-2"
+        depth > 0 && "ml-1 sm:ml-2"
       )}
     >
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+        className="w-full flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
       >
         {expanded ? (
           <CaretDown size={12} className="text-neutral-400 shrink-0" />
         ) : (
           <CaretRight size={12} className="text-neutral-400 shrink-0" />
         )}
-        <Robot size={16} className="text-orange-500 shrink-0" />
-        <span className="font-medium text-sm text-neutral-900 dark:text-neutral-100">
+        <Robot size={14} className="sm:w-4 sm:h-4 text-orange-500 shrink-0" />
+        <span className="font-medium text-xs sm:text-sm text-neutral-900 dark:text-neutral-100 truncate">
           {agentType}
         </span>
-        <span className="text-[10px] text-neutral-500 font-mono">
+        <span className="text-[10px] text-neutral-500 font-mono hidden sm:inline">
           {short(threadId)}
         </span>
         <div className="flex-1" />
-        <div className="flex items-center gap-2 text-[11px]">
+        <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-[11px] flex-wrap">
           {duration !== undefined && (
             <span className="text-neutral-500 font-mono flex items-center gap-1">
               <Clock size={10} />
@@ -398,8 +398,8 @@ function InlineAgentCard({
 
       {/* Timeline */}
       {expanded && (
-        <div className="px-3 pb-2">
-          <div className="relative pl-4 border-l-2 border-neutral-200 dark:border-neutral-700 space-y-1">
+        <div className="px-2 sm:px-3 pb-2">
+          <div className="relative pl-3 sm:pl-4 border-l-2 border-neutral-200 dark:border-neutral-700 space-y-1">
             {timeline.map((item, idx) => {
               if (item.type === "event") {
                 const event = item.event;
@@ -667,8 +667,8 @@ export function TraceView({
     <FilterContext.Provider value={enabledFilters}>
       <div className="h-full flex flex-col">
         {/* Stats bar */}
-        <div className="px-4 py-2 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-          <div className="flex items-center gap-3 text-xs flex-wrap">
+        <div className="px-3 sm:px-4 py-2 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+          <div className="flex items-center gap-2 sm:gap-3 text-xs flex-wrap">
             <div className="flex items-center gap-1.5 text-neutral-500">
               <Robot size={14} />
               <span>{stats.totalAgents} agents</span>
@@ -693,8 +693,8 @@ export function TraceView({
         </div>
 
         {/* Filter bar */}
-        <div className="px-4 py-2 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2 flex-wrap bg-white dark:bg-neutral-900">
-          <span className="text-xs text-neutral-500 mr-1">Show:</span>
+        <div className="px-3 sm:px-4 py-2 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2 flex-wrap bg-white dark:bg-neutral-900">
+          <span className="text-xs text-neutral-500 mr-1 hidden sm:inline">Show:</span>
           {(Object.keys(FILTER_CONFIG) as EventFilter[]).map((filter) => (
             <FilterButton
               key={filter}
@@ -706,7 +706,7 @@ export function TraceView({
         </div>
 
         {/* Timeline content */}
-        <div className="flex-1 overflow-auto p-4 bg-neutral-50 dark:bg-neutral-950">
+        <div className="flex-1 overflow-auto p-3 sm:p-4 bg-neutral-50 dark:bg-neutral-950">
           <div className="space-y-4">
             {rootAgents.map((agent) => (
               <InlineAgentCard

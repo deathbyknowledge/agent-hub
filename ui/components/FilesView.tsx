@@ -271,12 +271,16 @@ export function FilesView({
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showTree, setShowTree] = useState(false);
 
   const handleSelect = (node: FileNode) => {
     setSelectedFile(node);
     setFileContent(null);
     setError(null);
     onFileSelect?.(node);
+    if (window.innerWidth < 768) {
+      setShowTree(false);
+    }
   };
 
   // Load file content when a file is selected
@@ -338,9 +342,32 @@ export function FilesView({
   const canPreview = selectedFile && isTextFile(selectedFile.name);
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full relative">
+      {/* Mobile overlay */}
+      {showTree && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/50 z-10"
+          onClick={() => setShowTree(false)}
+        />
+      )}
+
+      {/* Mobile file tree toggle */}
+      <button
+        onClick={() => setShowTree(!showTree)}
+        className="md:hidden fixed bottom-4 left-4 z-10 p-3 rounded-full bg-orange-500 text-white shadow-lg"
+        aria-label="Toggle file tree"
+      >
+        <Folder size={20} />
+      </button>
+
       {/* File tree */}
-      <div className="w-64 border-r border-neutral-200 dark:border-neutral-800 overflow-y-auto p-2">
+      <div className={cn(
+        "w-64 border-r border-neutral-200 dark:border-neutral-800 overflow-y-auto p-2",
+        "md:relative md:translate-x-0",
+        "absolute inset-y-0 left-0 z-20 bg-white dark:bg-neutral-900",
+        "transform transition-transform duration-300",
+        showTree ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}>
         {files.length === 0 ? (
           <div className="h-full flex items-center justify-center text-neutral-400 text-sm">
             No files available

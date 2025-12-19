@@ -1008,13 +1008,13 @@ export function SettingsView({
     <div className="h-full flex flex-col">
       {/* Tab Navigation */}
       <div className="border-b border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
-        <div className="flex overflow-x-auto">
+        <div className="flex overflow-x-auto scrollbar-hide">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+                "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
                 activeTab === tab.id
                   ? "border-orange-500 text-orange-600 dark:text-orange-400"
                   : "border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600"
@@ -1028,7 +1028,7 @@ export function SettingsView({
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6">
         {/* Info Tab */}
         {activeTab === "info" && (
           <LayerCard>
@@ -1238,24 +1238,25 @@ export function SettingsView({
               Scheduled Runs
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={<ArrowClockwise size={14} />}
-              onClick={() => onRefreshSchedules?.()}
-            >
-              Refresh
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<Plus size={14} />}
-              onClick={() => setShowCreateForm(true)}
-            >
-              New Schedule
-            </Button>
-          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<ArrowClockwise size={14} />}
+            onClick={() => onRefreshSchedules?.()}
+          >
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Plus size={14} />}
+            onClick={() => setShowCreateForm(true)}
+          >
+            <span className="hidden sm:inline">New</span>
+            <span className="sm:hidden">New</span>
+          </Button>
+        </div>
         </LayerCardFooter>
         <LayerCardContent>
           {showCreateForm ? (

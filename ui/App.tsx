@@ -8,14 +8,21 @@ import {
   FilesView,
   TodosView,
   SettingsView,
-  Robot,
-  Plus,
-  ChatCircle,
   type TabId,
   type Message,
   type FileNode,
   type Todo,
 } from "./components";
+import {
+  Robot,
+  Plus,
+  ChatCircle,
+  Trash,
+  Play,
+  Stop,
+  HeadCircuitIcon as BlueprintIcon,
+  List,
+} from "@phosphor-icons/react";
 import { useAgencies, useAgency, useAgent, usePlugins, getStoredSecret, setStoredSecret } from "./hooks";
 import type {
   AgentBlueprint,
@@ -189,8 +196,8 @@ function BlueprintPicker({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
-        <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between">
-          <h2 className="font-semibold text-neutral-900 dark:text-neutral-100">
+        <div className="px-3 sm:px-4 py-2.5 sm:py-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between">
+          <h2 className="font-semibold text-sm sm:text-base text-neutral-900 dark:text-neutral-100">
             Select Agent Type
           </h2>
           <button
@@ -200,7 +207,7 @@ function BlueprintPicker({
             ✕
           </button>
         </div>
-        <div className="p-4 max-h-80 overflow-y-auto">
+        <div className="p-3 sm:p-4 max-h-80 overflow-y-auto">
           {blueprints.length === 0 ? (
             <p className="text-neutral-500 text-sm text-center py-4">
               No blueprints available
@@ -211,13 +218,13 @@ function BlueprintPicker({
                 <button
                   key={bp.name}
                   onClick={() => onSelect(bp)}
-                  className="w-full text-left p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                  className="w-full text-left p-2.5 sm:p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
                 >
-                  <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                  <div className="font-medium text-sm sm:text-base text-neutral-900 dark:text-neutral-100">
                     {bp.name}
                   </div>
                   {bp.description && (
-                    <div className="text-sm text-neutral-500 mt-1">
+                    <div className="text-xs sm:text-sm text-neutral-500 mt-1">
                       {bp.description}
                     </div>
                   )}
@@ -244,10 +251,10 @@ function AgencyCreateModal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
-        <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between">
-          <h2 className="font-semibold text-neutral-900 dark:text-neutral-100">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-xl max-w-md w-full overflow-hidden">
+        <div className="px-3 sm:px-4 py-2.5 sm:py-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between">
+          <h2 className="font-semibold text-sm sm:text-base text-neutral-900 dark:text-neutral-100">
             Create Agency
           </h2>
           <button
@@ -262,9 +269,9 @@ function AgencyCreateModal({
             e.preventDefault();
             if (value.trim()) onSubmit();
           }}
-          className="p-4"
+          className="p-3 sm:p-4"
         >
-          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+          <label className="block text-xs sm:text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
             Agency Name
           </label>
           <input
@@ -273,20 +280,20 @@ function AgencyCreateModal({
             onChange={(e) => onChange(e.target.value)}
             placeholder="Enter agency name..."
             autoFocus
-            className="w-full px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <div className="flex justify-end gap-2 mt-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!value.trim()}
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Create
             </button>
@@ -308,14 +315,14 @@ function AuthUnlockForm({
   const [secret, setSecret] = useState("");
 
   return (
-    <div className="h-screen flex items-center justify-center bg-neutral-950">
-      <div className="max-w-md w-full mx-4">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-            <Robot size={32} className="text-orange-500" />
+    <div className="h-screen flex items-center justify-center bg-neutral-950 p-4">
+      <div className="max-w-md w-full">
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+            <Robot size={28} className="sm:w-8 sm:h-8 text-orange-500" />
           </div>
-          <h1 className="text-2xl font-bold text-neutral-100 mb-2">Agent Hub</h1>
-          <p className="text-neutral-400 text-sm">
+          <h1 className="text-xl sm:text-2xl font-bold text-neutral-100 mb-2">Agent Hub</h1>
+          <p className="text-neutral-400 text-xs sm:text-sm">
             Enter your secret key to continue
           </p>
         </div>
@@ -326,7 +333,7 @@ function AuthUnlockForm({
               onUnlock(secret.trim());
             }
           }}
-          className="space-y-4"
+          className="space-y-3 sm:space-y-4"
         >
           <input
             type="password"
@@ -334,15 +341,15 @@ function AuthUnlockForm({
             onChange={(e) => setSecret(e.target.value)}
             placeholder="Enter hub secret..."
             autoFocus
-            className="w-full px-4 py-3 rounded-lg border border-neutral-700 bg-neutral-800 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+            className="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg border border-neutral-700 bg-neutral-800 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
           />
           {error && (
-            <p className="text-red-400 text-sm text-center">{error}</p>
+            <p className="text-red-400 text-xs sm:text-sm text-center">{error}</p>
           )}
           <button
             type="submit"
             disabled={!secret.trim()}
-            className="w-full px-4 py-3 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Unlock
           </button>
@@ -370,20 +377,20 @@ function EventDetailModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-xl max-w-2xl w-full mx-4 overflow-hidden max-h-[80vh] flex flex-col">
         <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between shrink-0">
-          <div>
-            <h2 className="font-semibold text-neutral-900 dark:text-neutral-100">
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold text-sm sm:text-base text-neutral-900 dark:text-neutral-100 truncate">
               {label}
             </h2>
-            <p className="text-xs text-neutral-500 font-mono">{type}</p>
+            <p className="text-xs text-neutral-500 font-mono truncate">{type}</p>
           </div>
           <button
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+            className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 shrink-0"
           >
             ✕
           </button>
         </div>
-        <div className="p-4 overflow-auto flex-1">
+        <div className="p-3 sm:p-4 overflow-auto flex-1">
           {eventData.ts && (
             <div className="mb-4">
               <label className="text-xs font-medium text-neutral-500 uppercase">
@@ -423,10 +430,12 @@ function AgentView({
   agencyId,
   agentId,
   tab = "chat",
+  onMenuClick,
 }: {
   agencyId: string;
   agentId: string;
   tab?: string;
+  onMenuClick?: () => void;
 }) {
   const {
     agents,
@@ -613,6 +622,7 @@ function AgentView({
         activeTab={activeTab}
         status={status}
         onStop={cancel}
+        onMenuClick={onMenuClick}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         {renderContent()}
@@ -711,15 +721,26 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
     </>
   );
 }
-
-// ============================================================================
 // Empty State (no agent selected)
 // ============================================================================
 
-function EmptyState({ hasAgency, hasAgents }: { hasAgency?: boolean; hasAgents?: boolean }) {
+function EmptyState({ hasAgency, hasAgents, onMenuClick }: { hasAgency: boolean; hasAgents?: boolean; onMenuClick?: () => void }) {
   if (!hasAgency) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center relative">
+        {/* Mobile menu button */}
+        {onMenuClick && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onMenuClick();
+            }}
+            className="md:hidden fixed top-4 left-4 p-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors z-10"
+            aria-label="Open menu"
+          >
+            <List size={20} />
+          </button>
+        )}
         <div className="text-center max-w-md px-4">
           <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
             <Robot size={32} className="text-orange-500" />
@@ -737,7 +758,20 @@ function EmptyState({ hasAgency, hasAgents }: { hasAgency?: boolean; hasAgents?:
   
   if (!hasAgents) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center relative">
+        {/* Mobile menu button */}
+        {onMenuClick && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onMenuClick();
+            }}
+            className="md:hidden fixed top-4 left-4 p-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors z-10"
+            aria-label="Open menu"
+          >
+            <List size={20} />
+          </button>
+        )}
         <div className="text-center max-w-md px-4">
           <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
             <Plus size={32} className="text-neutral-400" />
@@ -754,7 +788,17 @@ function EmptyState({ hasAgency, hasAgents }: { hasAgency?: boolean; hasAgents?:
   }
   
   return (
-    <div className="flex-1 flex items-center justify-center">
+    <div className="flex-1 flex items-center justify-center relative">
+      {/* Mobile menu button */}
+      {onMenuClick && (
+        <button
+          onClick={onMenuClick}
+          className="md:hidden fixed top-4 left-4 p-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors z-10"
+          aria-label="Open menu"
+        >
+          <List size={20} />
+        </button>
+      )}
       <div className="text-center max-w-md px-4">
         <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
           <ChatCircle size={32} className="text-neutral-400" />
@@ -774,14 +818,14 @@ function EmptyState({ hasAgency, hasAgents }: { hasAgency?: boolean; hasAgents?:
 // Main Content Router
 // ============================================================================
 
-function MainContent({ agencyId, hasAgents }: { agencyId: string | null; hasAgents: boolean }) {
+function MainContent({ agencyId, hasAgents, onMenuClick }: { agencyId: string | null; hasAgents: boolean; onMenuClick: () => void }) {
   // Match agent routes
   const [matchAgent, paramsAgent] = useRoute("/:agencyId/agent/:agentId");
   const [matchAgentTab, paramsAgentTab] = useRoute("/:agencyId/agent/:agentId/:tab");
   const [matchSettings] = useRoute("/:agencyId/settings");
 
   if (!agencyId) {
-    return <EmptyState hasAgency={false} />;
+    return <EmptyState hasAgency={false} onMenuClick={onMenuClick} />;
   }
 
   if (matchSettings) {
@@ -794,6 +838,7 @@ function MainContent({ agencyId, hasAgents }: { agencyId: string | null; hasAgen
         agencyId={agencyId}
         agentId={paramsAgentTab.agentId}
         tab={paramsAgentTab.tab}
+        onMenuClick={onMenuClick}
       />
     );
   }
@@ -803,11 +848,12 @@ function MainContent({ agencyId, hasAgents }: { agencyId: string | null; hasAgen
       <AgentView
         agencyId={agencyId}
         agentId={paramsAgent.agentId}
+        onMenuClick={onMenuClick}
       />
     );
   }
 
-  return <EmptyState hasAgency={true} hasAgents={hasAgents} />;
+  return <EmptyState hasAgency={true} hasAgents={hasAgents} onMenuClick={onMenuClick} />;
 }
 
 // ============================================================================
@@ -820,6 +866,14 @@ export default function App() {
   // Auth state - check if we need to show unlock form
   const [isLocked, setIsLocked] = useState(false);
   const [authError, setAuthError] = useState<string | undefined>();
+
+  // Mobile menu state - default to true for desktop, false for mobile
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 768;
+    }
+    return true;
+  });
 
   // Parse agencyId and agentId from URL
   const pathParts = location.split("/").filter(Boolean);
@@ -909,6 +963,8 @@ export default function App() {
         selectedAgentId={agentId}
         onCreateAgent={() => handleCreateAgent()}
         agentStatus={agentStatus}
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
       />
 
       {/* Blueprint picker modal */}
@@ -935,7 +991,7 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <MainContent agencyId={agencyId} hasAgents={agents.length > 0} />
+        <MainContent agencyId={agencyId} hasAgents={agents.length > 0} onMenuClick={() => setIsMobileMenuOpen(true)} />
       </div>
     </div>
   );

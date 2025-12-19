@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { Select } from "./Select";
-import { Plus, HeadCircuitIcon, Gear, CaretDown, CaretRight } from "@phosphor-icons/react";
+import { Plus, HeadCircuitIcon, Gear, CaretDown, CaretRight, X } from "@phosphor-icons/react";
 
 // Types
 interface AgencyMeta {
@@ -30,6 +30,8 @@ interface SidebarProps {
     "running" | "paused" | "done" | "error" | "idle"
   >;
   isLoading?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -66,7 +68,9 @@ export function Sidebar({
   selectedAgentId,
   onCreateAgent,
   agentStatus = {},
-  isLoading = false
+  isLoading = false,
+  isOpen = true,
+  onClose
 }: SidebarProps) {
   const [agentsExpanded, setAgentsExpanded] = useState(true);
   const [location, navigate] = useLocation();
@@ -74,10 +78,60 @@ export function Sidebar({
   // Check if we're on the settings page
   const isOnSettings = location.endsWith('/settings');
 
+  // Close sidebar on mobile when route changes (but not on initial mount)
+  const prevLocationRef = useRef(location);
+  useEffect(() => {
+    if (prevLocationRef.current !== location) {
+      if (onClose && window.innerWidth < 768) {
+        onClose();
+      }
+    }
+    prevLocationRef.current = location;
+  }, [location]);
+
+  // Prevent body scroll when sidebar is open on mobile
+  useEffect(() => {
+    if (isOpen && onClose && window.innerWidth < 768) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen, onClose]);
+
   return (
-    <div className="w-64 h-full flex flex-col bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800">
+    <>
+      {/* Mobile overlay */}
+      {isOpen && onClose && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Sidebar */}
+      <div
+        className={cn(
+          "w-64 h-full flex flex-col bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800",
+          "fixed md:relative inset-y-0 left-0 z-50 md:z-auto",
+          "transform transition-transform duration-300 ease-in-out md:transform-none",
+          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        )}
+      >
       {/* Header */}
       <div className="p-4 border-b border-neutral-200 dark:border-neutral-800">
+        {/* Mobile close button */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="md:hidden absolute top-4 right-4 p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
+        )}
         <div className="flex items-center gap-2 mb-3">
           <HeadCircuitIcon size={20} className="text-orange-500" />
           <span className="font-semibold text-neutral-900 dark:text-neutral-100">
@@ -227,6 +281,7 @@ export function Sidebar({
         </Link>
       </div>
     </div>
+    </>
   );
 }
 

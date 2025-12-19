@@ -145,22 +145,22 @@ function MessageBubble({ message }: { message: Message }) {
   }
 
   return (
-    <div className={cn("flex gap-3 mb-4", isUser ? "flex-row-reverse" : "")}>
+    <div className={cn("flex gap-2 sm:gap-3 mb-4", isUser ? "flex-row-reverse" : "")}>
       {/* Avatar */}
       <div
         className={cn(
-          "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
+          "w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0",
           isUser
             ? "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
             : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
         )}
       >
-        {isUser ? <User size={16} /> : <Robot size={16} />}
+        {isUser ? <User size={14} className="sm:w-4 sm:h-4" /> : <Robot size={14} className="sm:w-4 sm:h-4" />}
       </div>
 
       {/* Content */}
       <div
-        className={cn("flex flex-col max-w-[75%]", isUser ? "items-end" : "")}
+        className={cn("flex flex-col max-w-[85%] sm:max-w-[75%]", isUser ? "items-end" : "")}
       >
         {/* Only show text bubble if there's actual content */}
         {hasContent && (
@@ -325,8 +325,8 @@ export function ChatView({
       </div>
 
       {/* Input area */}
-      <div className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-        <div className="flex items-center gap-2">
+      <div className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 sm:p-4">
+        <div className="flex items-end gap-2">
             <textarea
               ref={textareaRef}
               value={input}
@@ -336,26 +336,28 @@ export function ChatView({
               disabled={isLoading}
               rows={1}
               className={cn(
-                "w-full px-4 py-4 rounded-xl border border-neutral-200 dark:border-neutral-700",
+                "w-full px-3 py-3 sm:px-4 sm:py-4 rounded-xl border border-neutral-200 dark:border-neutral-700",
                 "bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100",
-                "placeholder:text-neutral-400 resize-none",
+                "placeholder:text-neutral-400 resize-none text-sm sm:text-base",
                 "focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500",
                 "disabled:opacity-50"
               )}
             />
 
           {isLoading && onStop ? (
-            <Button variant="danger" onClick={onStop} icon={<Stop size={18} />}>
-              Stop
+            <Button variant="danger" onClick={onStop} icon={<Stop size={16} className="sm:w-[18px] sm:h-[18px]" />} size="sm" className="sm:text-sm sm:px-3 sm:py-2">
+              <span className="hidden sm:inline">Stop</span>
             </Button>
           ) : (
             <Button
               variant="primary"
               onClick={handleSubmit}
               disabled={!input.trim() || isLoading}
-              icon={<PaperPlaneTiltIcon size={18} />}
+              icon={<PaperPlaneTiltIcon size={16} className="sm:w-[18px] sm:h-[18px]" />}
+              size="sm"
+              className="sm:text-sm sm:px-3 sm:py-2"
             >
-              Send
+              <span className="hidden sm:inline">Send</span>
             </Button>
           )}
         </div>

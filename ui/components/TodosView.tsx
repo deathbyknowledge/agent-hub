@@ -157,8 +157,8 @@ export function TodosView({ todos, onToggle }: TodosViewProps) {
   return (
     <div className="h-full overflow-y-auto">
       {/* Stats bar */}
-      <div className="sticky top-0 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-4 py-3">
-        <div className="flex items-center gap-4 text-sm">
+      <div className="sticky top-0 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-3 sm:px-4 py-3">
+        <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm flex-wrap">
           <span className="text-neutral-500">
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
               {stats.total}
@@ -175,7 +175,7 @@ export function TodosView({ todos, onToggle }: TodosViewProps) {
           </span>
 
           {/* Progress bar */}
-          <div className="flex-1 max-w-xs">
+          <div className="flex-1 max-w-xs min-w-0">
             <div className="h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
               <div
                 className="h-full bg-green-500 transition-all"
@@ -189,7 +189,7 @@ export function TodosView({ todos, onToggle }: TodosViewProps) {
       </div>
 
       {/* Content */}
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         {todos.length === 0 ? (
           <div className="text-center text-neutral-400 py-12">
             <p>No todos yet</p>

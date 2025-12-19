@@ -2,9 +2,62 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    
+    <!-- Progressive Web App support -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#000000" />
+    
+    <!-- iOS Safari -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    
+    <!-- Android Chrome -->
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <title>Agent Hub</title>
+    <style>
+      /* Full-screen mobile support for all browsers */
+      * {
+        -webkit-tap-highlight-color: transparent;
+      }
+      
+      html {
+        height: 100%;
+        height: -webkit-fill-available;
+        overflow: hidden;
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        height: -webkit-fill-available;
+        overflow: hidden;
+        /* Safe area insets for notched devices */
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        /* Prevent pull-to-refresh */
+        overscroll-behavior-y: none;
+        /* Prevent text selection on long press */
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      
+      #root {
+        height: 100%;
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
+        overflow: hidden;
+      }
+      
+      /* Allow text selection in input fields */
+      input, textarea {
+        -webkit-user-select: text;
+        user-select: text;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
