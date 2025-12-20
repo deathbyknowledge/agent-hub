@@ -20,7 +20,6 @@ import { createHandler, type HandlerOptions } from "./worker";
 type AgentHubOptions = {
   defaultModel: string;
   provider?: Provider;
-  secret?: string;
 };
 
 class ToolRegistry {
@@ -228,7 +227,7 @@ export class AgentHub {
 
         // 1. Ask Agency DO for blueprint
         try {
-          const agencyStub = await getAgentByName(this.env.AGENCY, agencyId);
+          const agencyStub = await getAgentByName(this.exports.Agency, agencyId);
           const res = await agencyStub.fetch(
             `http://do/internal/blueprint/${type}`
           );
@@ -330,7 +329,6 @@ export class AgentHub {
     handlerOptions.agentDefinitions = Array.from(this.agentRegistry.values());
     handlerOptions.plugins = pluginRegistry.getAll();
     handlerOptions.tools = toolRegistry.getAll();
-    handlerOptions.secret = options.secret;
     const handler = createHandler(handlerOptions);
     return { HubAgent: ConfiguredHubAgent, Agency, handler };
   }

@@ -254,3 +254,10 @@ export type ToolContext = {
   env: typeof env;
   callId: string;
 };
+
+type Exports = {
+  HubAgent: DurableObjectNamespace<HubAgent>;
+  Agency: DurableObjectNamespace<Agency>;
+};
+
+export type CfCtx = ExecutionContext & { exports: Exports };

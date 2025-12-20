@@ -142,7 +142,7 @@ export const subagents: AgentPlugin = {
       for (const w of waiters) {
         try {
           const childAgent = await getAgentByName(
-            (ctx.env as AgentEnv).HUB_AGENT,
+            ctx.agent.exports.HubAgent,
             String(w.child_thread_id)
           );
           // Send cancel action to child
@@ -219,7 +219,7 @@ export const subagents: AgentPlugin = {
 
         // Spawn child
         const subagent = await getAgentByName(
-          (toolCtx.env as AgentEnv).HUB_AGENT,
+          toolCtx.agent.exports.HubAgent,
           childId
         );
 
@@ -351,7 +351,7 @@ The agentId is returned in the result object of the task tool (e.g., {"agentId":
 
         // Re-invoke the existing agent
         const agent = await getAgentByName(
-          (toolCtx.env as AgentEnv).HUB_AGENT,
+          toolCtx.agent.exports.HubAgent,
           agentId
         );
 

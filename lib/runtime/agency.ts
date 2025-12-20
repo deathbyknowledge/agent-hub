@@ -5,6 +5,7 @@ import type {
   ThreadMetadata,
   ThreadRequestContext,
   AgentEnv,
+  CfCtx,
 } from "./types";
 import { PersistedObject } from "./persisted";
 
@@ -121,6 +122,10 @@ export class Agency extends Agent<AgentEnv> {
     } else {
       this.persistName(this.name);
     }
+  }
+
+  get exports() {
+    return (this.ctx as unknown as CfCtx).exports
   }
 
   get agencyName(): string {
@@ -473,7 +478,7 @@ export class Agency extends Agent<AgentEnv> {
       VALUES (${id}, ${agentType}, ${createdAt}, ${JSON.stringify(meta)})
     `;
 
-    const stub = await getAgentByName(this.env.HUB_AGENT, id);
+    const stub = await getAgentByName(this.exports.HubAgent, id);
 
     const initPayload: ThreadMetadata = {
       id,

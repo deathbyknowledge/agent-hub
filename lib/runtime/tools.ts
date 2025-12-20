@@ -39,7 +39,6 @@ function isZodSchema(value: unknown): value is ZodType {
  *     limit: z.number().int().min(1).optional(),
  *   }),
  *   execute: async ({ path, offset, limit }, ctx) => {
- *     // ctx.agent, ctx.env, ctx.callId available
  *     const content = await ctx.agent.fs.readFile(path);
  *     return content ?? `Error: File '${path}' not found`;
  *   },

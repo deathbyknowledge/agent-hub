@@ -14,14 +14,15 @@
 
 import { z } from "zod";
 import { tool, type AgentPlugin } from "@runtime";
+import { getSandbox } from "@cloudflare/sandbox";
 
 const SandboxBashSchema = z.object({
   command: z.string().describe("The bash command to execute in the sandbox"),
   cwd: z
     .string()
-    .default("/workspace")
+    .optional()
     .describe(
-      "Working directory in the sandbox container. Defaults to /workspace."
+      "Working directory for the command. Defaults to current directory."
     ),
   timeout: z
     .number()
@@ -30,60 +31,11 @@ const SandboxBashSchema = z.object({
     .describe("Timeout in milliseconds before the command is killed"),
 });
 
-const SandboxLsSchema = z.object({
-  path: z
-    .string()
-    .default("/workspace")
-    .describe("Directory path in the sandbox to list. Defaults to /workspace."),
-  recursive: z
-    .boolean()
-    .default(false)
-    .describe("Whether to list recursively (uses tree command)"),
-  maxDepth: z
-    .number()
-    .int()
-    .default(3)
-    .describe("Maximum depth for recursive listing"),
-});
-
-const SandboxReadFileSchema = z.object({
-  path: z.string().describe("Path to the file in the sandbox container"),
-  startLine: z
-    .number()
-    .int()
-    .optional()
-    .describe("The line number to start reading from (1-based)"),
-  endLine: z
-    .number()
-    .int()
-    .optional()
-    .describe("The line number to end reading at (1-based)"),
-});
-
 const SandboxWriteFileSchema = z.object({
-  path: z.string().describe("Path to write the file in the sandbox container"),
-  content: z.string().describe("The content to write to the file"),
-});
-
-const SandboxGitDiffSchema = z.object({
   path: z
     .string()
-    .optional()
-    .describe("Path to get diff for. If empty, shows all changes."),
-  base: z
-    .string()
-    .default("HEAD~1")
-    .describe("Base commit/branch to compare against (e.g., 'main', 'HEAD~1')"),
-});
-
-const SandboxGitCloneSchema = z.object({
-  url: z.string().describe("The git repository URL to clone"),
-  branch: z.string().optional().describe("Branch to checkout after cloning"),
-  depth: z
-    .number()
-    .int()
-    .default(1)
-    .describe("Create a shallow clone with this many commits"),
+    .describe("Absolute path to write the file in the sandbox container"),
+  content: z.string().describe("The content to write to the file"),
 });
 
 interface SandboxExecOptions {
@@ -115,12 +67,10 @@ function getSandboxInstance(
   ns: DurableObjectNamespace,
   id: string
 ): SandboxInstance {
-  const doId = ns.idFromName(id);
-  const stub = ns.get(doId);
-
-  // The Sandbox DO stub exposes RPC methods directly
-  // Cast to our interface - the actual implementation comes from @cloudflare/sandbox DO
-  return stub as unknown as SandboxInstance;
+  const sandbox = getSandbox(ns as any, id, {
+    sleepAfter: 60 * 30,
+  });
+  return sandbox as unknown as SandboxInstance;
 }
 
 const SANDBOX_SYSTEM_PROMPT = `## Sandbox Container
@@ -129,20 +79,17 @@ You have access to an isolated Linux container (sandbox) for executing commands.
 
 **IMPORTANT**: The sandbox filesystem is EPHEMERAL - files created here are temporary and will be lost when the sandbox is destroyed. For persistent storage, use the agent's filesystem tools (ls, read_file, write_file) which are backed by R2 storage.
 
-### Sandbox Tools (ephemeral container):
-- \`sandbox_bash\`: Execute any bash command
-- \`sandbox_ls\`: List directories with optional tree view
-- \`sandbox_read_file\`: Read file contents from the container
-- \`sandbox_write_file\`: Write files to the container
-- \`sandbox_git_clone\`: Clone repositories into /workspace
-- \`sandbox_git_diff\`: Show git diffs
+### Sandbox Tools:
+- \`sandbox_bash\`: Execute any bash command (git, npm, python, ls, cat, grep, etc.)
+- \`sandbox_write_file\`: Write file contents (easier than heredocs for multi-line)
 
 ### Workflow Tips:
-1. Clone repos with \`sandbox_git_clone\` - they land in /workspace
-2. Explore with \`sandbox_ls\` (recursive for tree view)
-3. Search with \`sandbox_grep\` for specific patterns
-4. Run tests/linters with \`sandbox_bash\`
-5. Use \`sandbox_git_diff\` to review changes`;
+1. Clone repos: \`git clone <url>\`
+2. Explore: \`ls -la\`, \`tree\`, \`find\`
+3. Read files: \`cat\`, \`head\`, \`tail\`, \`sed -n '10,20p'\`
+4. Search: \`grep -r 'pattern' .\`
+5. Run tests/linters via bash
+6. Review changes: \`git diff\``;
 
 /**
  * Sandbox plugin - provides tools for ephemeral container execution.
@@ -166,7 +113,7 @@ export const sandbox: AgentPlugin = {
   ],
 
   async beforeModel(ctx, plan) {
-    const sandboxNs = ctx.env.SANDBOX;
+    const sandboxNs = (ctx.agent.exports as any).Sandbox;
     if (!sandboxNs) {
       console.warn(
         "SANDBOX binding not found. Sandbox tools disabled. Add SANDBOX to your wrangler.jsonc."
@@ -196,14 +143,12 @@ export const sandbox: AgentPlugin = {
       inputSchema: SandboxBashSchema,
       execute: async ({ command, cwd, timeout }) => {
         try {
-          const fullCommand =
-            cwd !== "/workspace" ? `cd ${cwd} && ${command}` : command;
+          const fullCommand = cwd ? `cd ${cwd} && ${command}` : command;
           const result = await exec(fullCommand, { timeout });
 
           let output = "";
           if (result.stdout) output += result.stdout;
-          if (result.stderr)
-            output += (output ? "\n" : "") + `STDERR: ${result.stderr}`;
+          if (result.stderr) output += (output ? "\n" : "") + result.stderr;
 
           if (!output.trim()) {
             return result.success
@@ -218,79 +163,6 @@ export const sandbox: AgentPlugin = {
       },
     });
 
-    // -------------------------------------------------------------------------
-    // sandbox_ls
-    // -------------------------------------------------------------------------
-    const sandbox_ls = tool({
-      name: "sandbox_ls",
-      description:
-        "List files and directories in the sandbox. Use recursive option for tree view. Operates on the EPHEMERAL sandbox filesystem.",
-      inputSchema: SandboxLsSchema,
-      execute: async ({ path, recursive, maxDepth }) => {
-        try {
-          const cmd = recursive
-            ? `tree -L ${maxDepth} --noreport ${path} 2>/dev/null || find ${path} -maxdepth ${maxDepth} -print`
-            : `ls -la ${path}`;
-
-          const result = await exec(cmd);
-          return result.stdout || result.stderr || "No output";
-        } catch (error) {
-          return `Error: ${error instanceof Error ? error.message : String(error)}`;
-        }
-      },
-    });
-
-    // -------------------------------------------------------------------------
-    // sandbox_read_file
-    // -------------------------------------------------------------------------
-    const sandbox_read_file = tool({
-      name: "sandbox_read_file",
-      description:
-        "Read a file from the sandbox container. Supports line range selection for large files. Operates on the EPHEMERAL sandbox filesystem - NOT the agent's persistent storage.",
-      inputSchema: SandboxReadFileSchema,
-      execute: async ({ path: filePath, startLine, endLine }) => {
-        try {
-          // Check if file exists
-          const existsResult = await exec(
-            `test -f '${filePath}' && echo "exists"`
-          );
-          if (!existsResult.stdout?.includes("exists")) {
-            return `Error: File not found in sandbox: ${filePath}`;
-          }
-
-          // Read with optional line range
-          let cmd: string;
-          if (startLine && endLine) {
-            cmd = `sed -n '${startLine},${endLine}p' '${filePath}' | cat -n`;
-          } else if (startLine) {
-            cmd = `tail -n +${startLine} '${filePath}' | head -200 | cat -n`;
-          } else {
-            cmd = `head -200 '${filePath}' | cat -n`;
-          }
-
-          const result = await exec(cmd);
-
-          if (result.stderr && !result.stdout) {
-            return `Error reading file: ${result.stderr}`;
-          }
-
-          const lineInfo =
-            startLine && endLine
-              ? `Lines ${startLine}-${endLine}`
-              : startLine
-                ? `Lines from ${startLine}`
-                : "First 200 lines";
-
-          return `File: ${filePath}\n${lineInfo}:\n\n${result.stdout}`;
-        } catch (error) {
-          return `Error: ${error instanceof Error ? error.message : String(error)}`;
-        }
-      },
-    });
-
-    // -------------------------------------------------------------------------
-    // sandbox_write_file
-    // -------------------------------------------------------------------------
     const sandbox_write_file = tool({
       name: "sandbox_write_file",
       description:
@@ -306,48 +178,8 @@ export const sandbox: AgentPlugin = {
       },
     });
 
-    // -------------------------------------------------------------------------
-    // sandbox_git_clone
-    // -------------------------------------------------------------------------
-    const sandbox_git_clone = tool({
-      name: "sandbox_git_clone",
-      description:
-        "Clone a git repository into the sandbox workspace at /workspace. The cloned repo is EPHEMERAL and will be lost when the sandbox ends.",
-      inputSchema: SandboxGitCloneSchema,
-      execute: async ({ url, branch, depth }) => {
-        try {
-          // Clear workspace first
-          await exec(
-            "rm -rf /workspace/* /workspace/.[!.]* 2>/dev/null || true"
-          );
-
-          let cmd = `cd /workspace && git clone --depth ${depth}`;
-          if (branch) cmd += ` --branch '${branch}'`;
-          cmd += ` '${url}' .`;
-
-          const result = await exec(cmd, { timeout: 60000 });
-
-          if (result.exitCode !== 0) {
-            return `Error cloning: ${result.stderr || "Unknown error"}`;
-          }
-
-          // Show what we got
-          const lsResult = await exec(
-            "cd /workspace && ls -la && echo '---' && git log --oneline -5 2>/dev/null || true"
-          );
-
-          return `Repository cloned to /workspace!\n\n${lsResult.stdout}`;
-        } catch (error) {
-          return `Error: ${error instanceof Error ? error.message : String(error)}`;
-        }
-      },
-    });
-
     ctx.registerTool(sandbox_bash);
-    ctx.registerTool(sandbox_ls);
-    ctx.registerTool(sandbox_read_file);
     ctx.registerTool(sandbox_write_file);
-    ctx.registerTool(sandbox_git_clone);
   },
 
   tags: ["sandbox"],

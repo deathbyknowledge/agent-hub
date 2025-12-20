@@ -28,7 +28,7 @@ export const subagentReporter: AgentPlugin = {
 
     try {
       const parentAgent = await getAgentByName(
-        (ctx.env as AgentEnv).HUB_AGENT,
+        ctx.agent.exports.HubAgent,
         parent.threadId
       );
 

@@ -1,48 +1,34 @@
 {
-  "compatibility_date": "2025-03-14",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_date": "2025-11-17",
+  "compatibility_flags": ["nodejs_compat", "allow_importable_env"],
   "assets": {
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/agencies", "/agency/*", "/plugins"]
-  },
-  "durable_objects": {
-    "bindings": [
-      {
-        "class_name": "HubAgent",
-        "name": "HUB_AGENT"
-      },
-      {
-        "class_name": "Agency",
-        "name": "AGENCY"
-      },
-      // {
-      //   "class_name": "Sandbox",
-      //   "name": "SANDBOX"
-      // }
-    ]
+    "run_worker_first": ["/api/*", "/agencies", "/agency/*", "/plugins"],
   },
   "r2_buckets": [
     {
       "binding": "FS",
-      // "bucket_name": "agents-hub-fs"
-    }
+      // "bucket_name": "agents-hub-fs",
+    },
   ],
-  // "containers": [
-  //   {
-  //     "class_name": "Sandbox",
-  //     "image": "./Dockerfile",
-  //     "instance_type": "lite",
-  //     // Increase for multiple concurrent code reviews
-  //     "max_instances": 5
-  //   }
-  // ],
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./Dockerfile",
+      "instance_type": "standard-2",
+      "max_instances": 2,
+    },
+  ],
   "main": "_generated.ts",
   "migrations": [
     {
-      // "new_sqlite_classes": ["HubAgent", "Agency", "Sandbox"],
       "new_sqlite_classes": ["HubAgent", "Agency"],
-      "tag": "v1"
-    }
+      "tag": "v1",
+    },
+    {
+      "new_sqlite_classes": ["Sandbox"],
+      "tag": "v2",
+    },
   ],
-  "name": "agents-hub"
+  "name": "agents-hub",
 }

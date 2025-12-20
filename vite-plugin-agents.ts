@@ -16,7 +16,6 @@ interface DiscoveredModule {
   exports: string[];
   hasDefault: boolean;
   inferredTags: string[];
-  blueprintCapabilities: string[];
 }
 
 interface DiscoveryResult {
@@ -29,12 +28,7 @@ interface AgentsPluginOptions {
   srcDir?: string;
   outFile?: string;
   defaultModel?: string;
-  secret?: string;
 }
-
-// ============================================================================
-// Discovery
-// ============================================================================
 
 const TS_EXTENSIONS = [".ts", ".tsx"];
 
@@ -63,12 +57,10 @@ function scanDirectory(dirPath: string): string[] {
 function parseExports(filePath: string): {
   exports: string[];
   hasDefault: boolean;
-  blueprintCapabilities: string[];
 } {
   const content = fs.readFileSync(filePath, "utf-8");
   const exports: string[] = [];
   let hasDefault = false;
-  const blueprintCapabilities: string[] = [];
 
   const namedExportRegex =
     /export\s+(?:const|let|var|function|class)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
@@ -90,17 +82,7 @@ function parseExports(filePath: string): {
     hasDefault = true;
   }
 
-  const capsMatch = content.match(/capabilities:\s*\[([^\]]+)\]/);
-  if (capsMatch) {
-    const capStrings = capsMatch[1].match(/["']([^"']+)["']/g);
-    if (capStrings) {
-      for (const c of capStrings) {
-        blueprintCapabilities.push(c.replace(/["']/g, ""));
-      }
-    }
-  }
-
-  return { exports: [...new Set(exports)], hasDefault, blueprintCapabilities };
+  return { exports: [...new Set(exports)], hasDefault };
 }
 
 function inferTags(filePath: string, baseDir: string): string[] {
@@ -127,8 +109,7 @@ function discoverModules(srcDir: string): DiscoveryResult {
     const files = scanDirectory(categoryDir);
 
     for (const filePath of files) {
-      const { exports, hasDefault, blueprintCapabilities } =
-        parseExports(filePath);
+      const { exports, hasDefault } = parseExports(filePath);
       const relativePath = path.relative(srcDir, filePath);
       const inferredTags = inferTags(filePath, srcDir);
 
@@ -138,7 +119,6 @@ function discoverModules(srcDir: string): DiscoveryResult {
         exports,
         hasDefault,
         inferredTags,
-        blueprintCapabilities,
       });
     }
   }
@@ -162,7 +142,6 @@ function generateCode(
   defaultModel: string,
   srcDir: string,
   outFile: string,
-  secret?: string
 ): string {
   const outDir = path.dirname(outFile);
   const imports: string[] = [];
@@ -172,10 +151,7 @@ function generateCode(
 
   imports.push('import { AgentHub } from "@runtime";');
 
-  // const hasSandboxCapability = discovery.agents.some((a) =>
-  //   a.blueprintCapabilities.includes("@sandbox")
-  // );
-  const hasSandboxCapability = false;
+  const hasSandboxCapability = !!process.env.SANDBOX;
   if (hasSandboxCapability) {
     imports.push('import { Sandbox } from "@cloudflare/sandbox";');
   }
@@ -183,7 +159,8 @@ function generateCode(
 
   for (const mod of discovery.tools) {
     const absPath = path.join(srcDir, mod.relativePath);
-    const importPath = "./" + path.relative(outDir, absPath).replace(/\.tsx?$/, "");
+    const importPath =
+      "./" + path.relative(outDir, absPath).replace(/\.tsx?$/, "");
     const toolExports = mod.exports.filter(
       (exp) =>
         exp.toLowerCase().endsWith("tool") || exp.toLowerCase().includes("tool")
@@ -203,7 +180,8 @@ function generateCode(
 
   for (const mod of discovery.plugins) {
     const absPath = path.join(srcDir, mod.relativePath);
-    const importPath = "./" + path.relative(outDir, absPath).replace(/\.tsx?$/, "");
+    const importPath =
+      "./" + path.relative(outDir, absPath).replace(/\.tsx?$/, "");
     if (mod.exports.length > 0) {
       imports.push(
         `import { ${mod.exports.join(", ")} } from "${importPath}";`
@@ -221,7 +199,8 @@ function generateCode(
 
   for (const mod of discovery.agents) {
     const absPath = path.join(srcDir, mod.relativePath);
-    const importPath = "./" + path.relative(outDir, absPath).replace(/\.tsx?$/, "");
+    const importPath =
+      "./" + path.relative(outDir, absPath).replace(/\.tsx?$/, "");
     const baseName = path.basename(
       mod.relativePath,
       path.extname(mod.relativePath)
@@ -239,7 +218,7 @@ function generateCode(
     "",
     ...imports,
     "",
-    `const hub = new AgentHub({ defaultModel: "${defaultModel}", secret: "${secret}" })`,
+    `const hub = new AgentHub({ defaultModel: "${defaultModel}"})`,
     ...toolRegistrations,
     ...pluginRegistrations,
     ...agentRegistrations,
@@ -272,7 +251,7 @@ export default function agentsPlugin(
 
   function regenerate() {
     const discovery = discoverModules(srcDir);
-    const code = generateCode(discovery, defaultModel, srcDir, outFile, options.secret);
+    const code = generateCode(discovery, defaultModel, srcDir, outFile);
 
     fs.mkdirSync(path.dirname(outFile), { recursive: true });
     fs.writeFileSync(outFile, code, "utf-8");

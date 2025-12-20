@@ -1,5 +1,5 @@
 import { getAgentByName } from "agents";
-import type { AgentBlueprint, ThreadRequestContext } from "./types";
+import type { AgentBlueprint, CfCtx, ThreadRequestContext } from "./types";
 import type { R2Bucket } from "@cloudflare/workers-types";
 import type { HubAgent } from "./agent";
 import type { Agency } from "./agency";
@@ -8,7 +8,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "*",
-  "Access-Control-Max-Age": "86400"
+  "Access-Control-Max-Age": "86400",
 };
 
 function withCors(response: Response): Response {
@@ -19,7 +19,7 @@ function withCors(response: Response): Response {
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
-    headers: newHeaders
+    headers: newHeaders,
   });
 }
 
@@ -30,7 +30,7 @@ const CF_CONTEXT_KEYS = [
   "region",
   "timezone",
   "postalCode",
-  "asOrganization"
+  "asOrganization",
 ] as const;
 
 type CfRequest = Request & { cf?: Record<string, unknown> };
@@ -42,7 +42,7 @@ function buildRequestContext(req: Request): ThreadRequestContext {
     userAgent: headers.get("user-agent") ?? undefined,
     ip: headers.get("cf-connecting-ip") ?? undefined,
     referrer: headers.get("referer") ?? undefined,
-    origin: headers.get("origin") ?? undefined
+    origin: headers.get("origin") ?? undefined,
   };
   if (cf) {
     const filtered: Record<string, unknown> = {};
@@ -72,24 +72,18 @@ export type ToolInfo = {
 
 export type HandlerOptions = {
   baseUrl?: string;
-  /** Secret to use for authorization. Optional means no check. */
-  secret?: string;
   agentDefinitions?: AgentBlueprint[];
-  /** Plugin metadata */
   plugins?: PluginInfo[];
-  /** Tool metadata */
   tools?: ToolInfo[];
 };
 
 type HandlerEnv = {
-  HUB_AGENT: DurableObjectNamespace<HubAgent>;
-  AGENCY: DurableObjectNamespace<Agency>;
   FS: R2Bucket;
 };
 
 export const createHandler = (opts: HandlerOptions = {}) => {
   return {
-    async fetch(req: Request, env: HandlerEnv, _ctx: ExecutionContext) {
+    async fetch(req: Request, env: HandlerEnv, ctx: CfCtx) {
       const url = new URL(req.url);
       const path = url.pathname;
 
@@ -99,18 +93,28 @@ export const createHandler = (opts: HandlerOptions = {}) => {
       }
 
       // Auth check - accept secret from header or query param
-      const providedSecret = req.headers.get("X-SECRET") || url.searchParams.get("key");
-      if (opts.secret && providedSecret !== opts.secret) {
+      const providedSecret =
+        req.headers.get("X-SECRET") || url.searchParams.get("key");
+      const secret = process.env.SECRET;
+      if (secret && providedSecret !== secret) {
         // Check if this is a WebSocket upgrade - return 401 for those
         if (req.headers.get("Upgrade")?.toLowerCase() === "websocket") {
           return withCors(new Response("Unauthorized", { status: 401 }));
         }
         // For API calls, return 401
-        if (path.startsWith("/api") || path.startsWith("/agency") || path.startsWith("/agencies") || path.startsWith("/plugins")) {
+        if (
+          path.startsWith("/api") ||
+          path.startsWith("/agency") ||
+          path.startsWith("/agencies") ||
+          path.startsWith("/plugins")
+        ) {
           return withCors(new Response("Unauthorized", { status: 401 }));
         }
         // For UI/asset requests, return 403 with hint
-        return new Response("Forbidden: Please provide ?key=YOUR_SECRET or set hub_secret in localStorage", { status: 403 });
+        return new Response(
+          "Forbidden: Please provide ?key=YOUR_SECRET or set hub_secret in localStorage",
+          { status: 403 }
+        );
       }
 
       // ======================================================
@@ -119,10 +123,12 @@ export const createHandler = (opts: HandlerOptions = {}) => {
 
       // GET /plugins -> List all plugins and tools with metadata
       if (req.method === "GET" && path === "/plugins") {
-        return withCors(Response.json({ 
-          plugins: opts.plugins || [],
-          tools: opts.tools || []
-        }));
+        return withCors(
+          Response.json({
+            plugins: opts.plugins || [],
+            tools: opts.tools || [],
+          })
+        );
       }
 
       // GET /agencies -> List all agencies (from R2 bucket)
@@ -182,7 +188,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
         const meta = {
           id: name,
           name: name,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         };
         await env.FS.put(`${name}/.agency.json`, JSON.stringify(meta));
 
@@ -200,7 +206,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
 
         let agencyStub: DurableObjectStub<Agency>;
         try {
-          agencyStub = await getAgentByName(env.AGENCY, agencyId);
+          agencyStub = await getAgentByName(ctx.exports.Agency, agencyId);
         } catch (e) {
           return withCors(new Response("Invalid Agency ID", { status: 400 }));
         }
@@ -246,7 +252,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
         if (req.method === "DELETE" && subPath.startsWith("/blueprints/")) {
           const res = await agencyStub.fetch(
             new Request(`http://do${subPath}`, {
-              method: "DELETE"
+              method: "DELETE",
             })
           );
           return withCors(res);
@@ -269,7 +275,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
             new Request("http://do/agents", {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify(body)
+              body: JSON.stringify(body),
             })
           );
           return withCors(res);
@@ -294,7 +300,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
             new Request("http://do/schedules", {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: req.body
+              body: req.body,
             })
           );
           return withCors(res);
@@ -320,7 +326,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
               new Request(`http://do/schedules/${scheduleId}`, {
                 method: "PATCH",
                 headers: { "content-type": "application/json" },
-                body: req.body
+                body: req.body,
               })
             );
             return withCors(res);
@@ -330,7 +336,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
           if (req.method === "DELETE" && scheduleAction === "") {
             const res = await agencyStub.fetch(
               new Request(`http://do/schedules/${scheduleId}`, {
-                method: "DELETE"
+                method: "DELETE",
               })
             );
             return withCors(res);
@@ -340,7 +346,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
           if (req.method === "POST" && scheduleAction === "/pause") {
             const res = await agencyStub.fetch(
               new Request(`http://do/schedules/${scheduleId}/pause`, {
-                method: "POST"
+                method: "POST",
               })
             );
             return withCors(res);
@@ -350,7 +356,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
           if (req.method === "POST" && scheduleAction === "/resume") {
             const res = await agencyStub.fetch(
               new Request(`http://do/schedules/${scheduleId}/resume`, {
-                method: "POST"
+                method: "POST",
               })
             );
             return withCors(res);
@@ -360,7 +366,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
           if (req.method === "POST" && scheduleAction === "/trigger") {
             const res = await agencyStub.fetch(
               new Request(`http://do/schedules/${scheduleId}/trigger`, {
-                method: "POST"
+                method: "POST",
               })
             );
             return withCors(res);
@@ -394,7 +400,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
             new Request("http://do/vars", {
               method: "PUT",
               headers: { "content-type": "application/json" },
-              body: req.body
+              body: req.body,
             })
           );
           return withCors(res);
@@ -419,7 +425,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
               new Request(`http://do/vars/${varKey}`, {
                 method: "PUT",
                 headers: { "content-type": "application/json" },
-                body: req.body
+                body: req.body,
               })
             );
             return withCors(res);
@@ -429,7 +435,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
           if (req.method === "DELETE") {
             const res = await agencyStub.fetch(
               new Request(`http://do/vars/${varKey}`, {
-                method: "DELETE"
+                method: "DELETE",
               })
             );
             return withCors(res);
@@ -446,7 +452,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
             new Request(`http://do${subPath}`, {
               method: req.method,
               headers: req.headers,
-              body: req.body
+              body: req.body,
             })
           );
           return withCors(res);
@@ -462,7 +468,10 @@ export const createHandler = (opts: HandlerOptions = {}) => {
           const agentId = matchAgent[1];
           const agentTail = matchAgent[2] || ""; // e.g. /invoke, /state, /ws
 
-          const hubAgentStub = await getAgentByName(env.HUB_AGENT, agentId);
+          const hubAgentStub = await getAgentByName(
+            ctx.exports.HubAgent,
+            agentId
+          );
 
           const doUrl = new URL(req.url);
           doUrl.pathname = agentTail; // strip /agency/:id/agent/:agentId
@@ -484,7 +493,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
             doReq = new Request(doUrl, {
               method: req.method,
               headers: req.headers,
-              body: JSON.stringify(body)
+              body: JSON.stringify(body),
             });
           } else {
             doReq = new Request(doUrl, req);
@@ -496,6 +505,6 @@ export const createHandler = (opts: HandlerOptions = {}) => {
       }
 
       return withCors(new Response("Not found", { status: 404 }));
-    }
+    },
   };
 };

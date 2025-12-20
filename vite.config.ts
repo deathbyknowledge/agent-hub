@@ -11,7 +11,6 @@ export default defineConfig({
       srcDir: "./hub",
       outFile: "./_generated.ts",
       defaultModel: "gpt-5-2025-08-07",
-      secret: "1234" // just use ur own or whatever
     }),
     cloudflare()
   ],

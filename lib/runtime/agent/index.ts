@@ -11,6 +11,7 @@ import type {
   RunState,
   AgentBlueprint,
   AgentEnv,
+  CfCtx,
 } from "../types";
 import { Agent, type AgentContext } from "agents";
 import { type AgentEvent, AgentEventType } from "../events";
@@ -77,6 +78,10 @@ export abstract class HubAgent<
 
   get sqlite() {
     return this.sql;
+  }
+
+  get exports() {
+    return (this.ctx as unknown as CfCtx).exports;
   }
 
   get messages() {
@@ -349,6 +354,7 @@ export abstract class HubAgent<
     // pop tool calls up to maxTools
     const calls = this.info.pendingToolCalls ?? [];
     if (calls.length <= maxTools) {
+      toolBatch = calls;
       this.info.pendingToolCalls = [];
     } else {
       toolBatch = calls.slice(0, maxTools);
