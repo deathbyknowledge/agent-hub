@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AgentHubClient,
@@ -152,7 +152,20 @@ async function fetchMemoryDisks(agencyId: string): Promise<MemoryDisk[]> {
 
 export function useAgency(agencyId: string | null) {
   const queryClient = useQueryClient();
-  const client = agencyId ? getClient().agency(agencyId) : null;
+  const client = useMemo(
+    () => (agencyId ? getClient().agency(agencyId) : null),
+    [agencyId]
+  );
+
+  // Stable function references for filesystem operations
+  const listDirectory = useCallback(
+    (path: string = "/") => client!.listDirectory(path),
+    [client]
+  );
+  const readFile = useCallback(
+    (path: string) => client!.readFile(path),
+    [client]
+  );
 
   // Queries
   const { data: agents = [], isLoading: loading, error } = useQuery({
@@ -296,8 +309,8 @@ export function useAgency(agencyId: string | null) {
     refreshVars: () => queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
     refreshMemoryDisks: () => queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId!) }),
     spawnAgent: spawnMutation.mutateAsync,
-    listDirectory: (path: string = "/") => client!.listDirectory(path),
-    readFile: (path: string) => client!.readFile(path),
+    listDirectory,
+    readFile,
     createSchedule: scheduleMutation.mutateAsync,
     deleteSchedule: deleteScheduleMutation.mutateAsync,
     pauseSchedule: pauseScheduleMutation.mutateAsync,
