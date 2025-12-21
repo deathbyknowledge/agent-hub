@@ -5,16 +5,6 @@ import { ConfirmModal } from "./ConfirmModal";
 import { Select } from "./Select";
 import { VarEditor } from "./VarEditor";
 import type { AgentBlueprint, PluginInfo, ToolInfo } from "@client";
-import {
-  Plus,
-  Trash,
-  Pencil,
-  Copy,
-  Play,
-  X,
-  CaretDown,
-  CaretRight,
-} from "@phosphor-icons/react";
 
 interface BlueprintEditorProps {
   blueprints: AgentBlueprint[];
@@ -228,9 +218,9 @@ function BlueprintForm({
                 <button
                   type="button"
                   onClick={() => removeCapability(cap)}
-                  className="hover:text-red-600 dark:hover:text-red-400"
+                  className="hover:text-red-600 dark:hover:text-red-400 text-[10px]"
                 >
-                  <X size={12} />
+                  [x]
                 </button>
               </span>
             ))}
@@ -319,11 +309,9 @@ function BlueprintCard({
         className="flex items-center gap-3 px-4 py-3 bg-neutral-50 dark:bg-neutral-900 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        {expanded ? (
-          <CaretDown size={14} className="text-neutral-400 shrink-0" />
-        ) : (
-          <CaretRight size={14} className="text-neutral-400 shrink-0" />
-        )}
+        <span className="text-neutral-400 shrink-0 text-xs">
+          {expanded ? "[-]" : "[+]"}
+        </span>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -355,34 +343,34 @@ function BlueprintCard({
           {onTest && (
             <button
               onClick={onTest}
-              className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-neutral-400 hover:text-green-600 transition-colors"
+              className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-neutral-400 hover:text-green-600 transition-colors text-xs"
               title="Test blueprint"
             >
-              <Play size={16} />
+              [▶]
             </button>
           )}
           <button
             onClick={onDuplicate}
-            className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 text-neutral-400 hover:text-blue-600 transition-colors"
+            className="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 text-neutral-400 hover:text-blue-600 transition-colors text-xs"
             title={isStatic ? "Duplicate to edit" : "Duplicate"}
           >
-            <Copy size={16} />
+            [CP]
           </button>
           {!isStatic && (
             <>
               <button
                 onClick={onEdit}
-                className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
+                className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors text-xs"
                 title="Edit"
               >
-                <Pencil size={16} />
+                [E]
               </button>
               <button
                 onClick={onDelete}
-                className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-600 transition-colors"
+                className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-600 transition-colors text-xs"
                 title="Delete"
               >
-                <Trash size={16} />
+                [X]
               </button>
             </>
           )}
@@ -586,7 +574,7 @@ export function BlueprintEditor({
             <Button
               variant="primary"
               size="sm"
-              icon={<Plus size={14} />}
+              icon={<span className="text-xs">[+]</span>}
               onClick={() => setShowCreateForm(true)}
             >
               New Blueprint

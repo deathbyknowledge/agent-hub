@@ -1,19 +1,5 @@
 import { useState, useMemo, createContext, useContext } from "react";
 import { cn } from "../lib/utils";
-import {
-  CaretRight,
-  CaretDown,
-  Check,
-  Clock,
-  Wrench,
-  Robot,
-  Play,
-  Pause,
-  XCircle,
-  Brain,
-  ArrowRight,
-  ArrowLeft,
-} from "@phosphor-icons/react";
 
 // ============================================================================
 // Types
@@ -51,26 +37,26 @@ const FilterContext = createContext<Set<EventFilter>>(
 
 const FILTER_CONFIG: Record<
   EventFilter,
-  { label: string; icon: React.ReactNode; events: string[] }
+  { label: string; tag: string; events: string[] }
 > = {
   model: {
-    label: "Model",
-    icon: <Brain size={12} />,
+    label: "MODEL",
+    tag: "[MODEL]",
     events: ["model.started"],
   },
   tool: {
-    label: "Tools",
-    icon: <Wrench size={12} />,
+    label: "TOOLS",
+    tag: "[TOOL]",
     events: ["tool.output", "tool.error"],
   },
   status: {
-    label: "Status",
-    icon: <Check size={12} />,
+    label: "STATUS",
+    tag: "[SYS]",
     events: ["run.paused", "run.resumed", "agent.completed", "agent.error"],
   },
   tick: {
-    label: "Ticks",
-    icon: <Play size={12} />,
+    label: "TICKS",
+    tag: "[TICK]",
     events: ["run.tick"],
   },
 };
@@ -82,90 +68,66 @@ const FILTER_CONFIG: Record<
 const EVENT_CONFIG: Record<
   string,
   {
-    icon: React.ReactNode;
+    tag: string;
     color: string;
-    bg: string;
-    dotColor: string;
     label: string;
   }
 > = {
   "run.tick": {
-    icon: <Play size={10} />,
-    color: "text-white/40",
-    bg: "bg-white/5",
-    dotColor: "bg-white/30",
+    tag: "[TICK]",
+    color: "text-white/30",
     label: "TICK",
   },
   "model.started": {
-    icon: <Brain size={10} />,
-    color: "text-[#00ff00]",
-    bg: "bg-[#00ff00]/10",
-    dotColor: "bg-[#00ff00]",
+    tag: "[MODEL]",
+    color: "text-white/50",
     label: "MODEL",
   },
   "tool.output": {
-    icon: <Wrench size={10} />,
-    color: "text-[#ffaa00]",
-    bg: "bg-[#ffaa00]/10",
-    dotColor: "bg-[#ffaa00]",
+    tag: "[TOOL]",
+    color: "text-[#00ff00]",
     label: "TOOL",
   },
   "tool.error": {
-    icon: <XCircle size={10} />,
+    tag: "[TOOL]",
     color: "text-[#ff0000]",
-    bg: "bg-[#ff0000]/10",
-    dotColor: "bg-[#ff0000]",
     label: "TOOL_ERR",
   },
   "run.paused": {
-    icon: <Pause size={10} />,
+    tag: "[SYS]",
     color: "text-[#ffaa00]",
-    bg: "bg-[#ffaa00]/10",
-    dotColor: "bg-[#ffaa00]",
     label: "PAUSED",
   },
   "run.resumed": {
-    icon: <Play size={10} />,
+    tag: "[SYS]",
     color: "text-[#00aaff]",
-    bg: "bg-[#00aaff]/10",
-    dotColor: "bg-[#00aaff]",
     label: "RESUMED",
   },
   "agent.completed": {
-    icon: <Check size={10} />,
+    tag: "[SYS]",
     color: "text-[#00ff00]",
-    bg: "bg-[#00ff00]/10",
-    dotColor: "bg-[#00ff00]",
-    label: "COMPLETE",
+    label: "DONE",
   },
   "agent.error": {
-    icon: <XCircle size={10} />,
+    tag: "[SYS]",
     color: "text-[#ff0000]",
-    bg: "bg-[#ff0000]/10",
-    dotColor: "bg-[#ff0000]",
     label: "ERROR",
   },
   "subagent.spawned": {
-    icon: <ArrowRight size={10} />,
+    tag: "[SUB]",
     color: "text-[#00aaff]",
-    bg: "bg-[#00aaff]/10",
-    dotColor: "bg-[#00aaff]",
     label: "SPAWN",
   },
   "subagent.completed": {
-    icon: <ArrowLeft size={10} />,
+    tag: "[SUB]",
     color: "text-[#00aaff]",
-    bg: "bg-[#00aaff]/10",
-    dotColor: "bg-[#00aaff]",
-    label: "RETURNED",
+    label: "RETURN",
   },
 };
 
 const DEFAULT_EVENT_CONFIG = {
-  icon: <Play size={10} />,
+  tag: "[EVT]",
   color: "text-white/40",
-  bg: "bg-white/5",
-  dotColor: "bg-white/30",
   label: "EVENT",
 };
 
@@ -273,10 +235,10 @@ function InlineAgentCard({
   const filters = useContext(FilterContext);
 
   const statusColors: Record<AgentStatus, string> = {
-    running: "border-l-[#00aaff]",
-    paused: "border-l-[#ffaa00]",
-    done: "border-l-[#00ff00]",
-    error: "border-l-[#ff0000]",
+    running: "border-l-white/50",
+    paused: "border-l-white/50",
+    done: "border-l-white/30",
+    error: "border-l-white/50",
   };
 
   const statusBadge: Record<AgentStatus, string> = {
@@ -361,23 +323,19 @@ function InlineAgentCard({
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-white/5 transition-colors border-b border-white/10"
       >
-        {expanded ? (
-          <CaretDown size={10} className="text-white/40 shrink-0" />
-        ) : (
-          <CaretRight size={10} className="text-white/40 shrink-0" />
-        )}
-        <span className="text-[10px] text-[#00ff00]">▶</span>
+        <span className="text-[10px] text-white/30 w-4">
+          {expanded ? "[-]" : "[+]"}
+        </span>
         <span className="text-[11px] uppercase tracking-wider text-white truncate">
           {agentType}
         </span>
         <span className="text-[10px] text-white/30 font-mono hidden sm:inline">
-          [{short(threadId)}]
+          {short(threadId)}
         </span>
         <div className="flex-1" />
         <div className="flex items-center gap-2 text-[10px] flex-wrap">
           {duration !== undefined && (
-            <span className="text-white/40 font-mono flex items-center gap-1">
-              <Clock size={10} />
+            <span className="text-white/40 font-mono">
               {formatDuration(duration)}
             </span>
           )}
@@ -406,34 +364,21 @@ function InlineAgentCard({
                 const label = getEventLabel(event);
 
                 return (
-                  <div
+                  <button
                     key={`${event.type}-${event.ts}-${idx}`}
-                    className="relative"
+                    onClick={() => onEventClick?.(event, label, event.type)}
+                    className="flex items-center gap-2 py-0.5 text-[11px] w-full text-left hover:bg-white/5 transition-colors"
                   >
-                    {/* Timeline dot */}
-                    <div
-                      className={cn(
-                        "absolute -left-[17px] top-1.5 w-2 h-2",
-                        config.dotColor
-                      )}
-                    />
-                    <button
-                      onClick={() => onEventClick?.(event, label, event.type)}
-                      className={cn(
-                        "flex items-center gap-2 px-2 py-1 text-[11px] w-full text-left",
-                        "hover:bg-white/5 transition-colors border-l border-transparent hover:border-white/30",
-                        config.bg
-                      )}
-                    >
-                      <span className={config.color}>{config.icon}</span>
-                      <span className="flex-1 truncate text-white/70 uppercase tracking-wider">
-                        {label}
-                      </span>
-                      <span className="text-[10px] text-white/30 font-mono">
-                        {formatTime(event.ts)}
-                      </span>
-                    </button>
-                  </div>
+                    <span className="text-[10px] text-white/30 font-mono w-16 shrink-0">
+                      {formatTime(event.ts)}
+                    </span>
+                    <span className={cn("text-[10px] w-14 shrink-0", config.color)}>
+                      {config.tag}
+                    </span>
+                    <span className="flex-1 truncate text-white/70 uppercase">
+                      {label}
+                    </span>
+                  </button>
                 );
               } else {
                 // Child agent - render inline recursively
@@ -464,8 +409,7 @@ function InlineAgentCard({
                 }
 
                 return (
-                  <div key={item.childId} className="relative py-1">
-                    <div className="absolute -left-[17px] top-3 w-2 h-2 bg-[#00aaff]" />
+                  <div key={item.childId} className="py-1">
                     <InlineAgentCard
                       threadId={item.childId}
                       agentType={item.agentType}
@@ -512,7 +456,7 @@ function FilterButton({
           : "bg-transparent text-white/40 border-white/20 hover:text-white hover:border-white/50"
       )}
     >
-      {config.icon}
+      <span>{config.tag}</span>
       <span>{config.label}</span>
     </button>
   );
@@ -676,15 +620,13 @@ export function TraceView({
               <span>{stats.totalEvents} EVENTS</span>
             </div>
             {stats.completed > 0 && (
-              <div className="flex items-center gap-1.5 text-[#00ff00]">
-                <Check size={10} />
-                <span>{stats.completed} OK</span>
+              <div className="text-[#00ff00]">
+                {stats.completed} OK
               </div>
             )}
             {stats.errors > 0 && (
-              <div className="flex items-center gap-1.5 text-[#ff0000]">
-                <XCircle size={10} />
-                <span>{stats.errors} ERR</span>
+              <div className="text-[#ff0000]">
+                {stats.errors} ERR
               </div>
             )}
           </div>

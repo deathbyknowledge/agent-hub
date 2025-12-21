@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { cn } from "../lib/utils";
-import { Copy, Check, Play, Stop, Trash, List } from "@phosphor-icons/react";
 
 export type TabId = "chat" | "trace" | "files" | "todos";
 
@@ -89,7 +88,7 @@ export function ContentHeader({
           className="md:hidden p-1.5 -ml-1 text-white/50 hover:text-white transition-colors"
           aria-label="Open menu"
         >
-          <List size={16} />
+          <span className="text-xs">[=]</span>
         </button>
       )}
 
@@ -120,11 +119,9 @@ export function ContentHeader({
           >
             <span className="hidden sm:inline">ID:{threadId.slice(0, 12)}</span>
             <span className="sm:hidden">ID:{threadId.slice(0, 8)}</span>
-            {copied ? (
-              <Check size={10} className="text-[#00ff00]" />
-            ) : (
-              <Copy size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-            )}
+            <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">
+              {copied ? "[OK]" : "[CP]"}
+            </span>
           </button>
         </div>
       </div>
@@ -153,9 +150,9 @@ export function ContentHeader({
         <div className="relative ml-1" ref={menuRef}>
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="p-1.5 text-white/50 hover:text-white hover:bg-white/10 transition-colors border border-white/20"
+            className="p-1 text-white/50 hover:text-white hover:bg-white/10 transition-colors border border-white/20"
           >
-            <span className="text-[10px]">[...]</span>
+            <span className="text-[10px] leading-none">⋮</span>
           </button>
           
           {showMenu && (
@@ -165,16 +162,14 @@ export function ContentHeader({
                   onClick={() => { onStop(); setShowMenu(false); }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wider text-[#ff0000] hover:bg-[#ff0000]/10"
                 >
-                  <Stop size={12} />
-                  TERMINATE
+                  [■] TERMINATE
                 </button>
               ) : !isRunning && onRestart ? (
                 <button
                   onClick={() => { onRestart(); setShowMenu(false); }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wider text-[#00ff00] hover:bg-[#00ff00]/10"
                 >
-                  <Play size={12} />
-                  RESTART
+                  [▶] RESTART
                 </button>
               ) : !onDelete ? (
                 <div className="px-3 py-1.5 text-[11px] uppercase tracking-wider text-white/30">
@@ -190,8 +185,7 @@ export function ContentHeader({
                     onClick={() => { onDelete(); setShowMenu(false); }}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wider text-[#ff0000] hover:bg-[#ff0000]/10"
                   >
-                    <Trash size={12} />
-                    DELETE
+                    [X] DELETE
                   </button>
                 </>
               )}

@@ -5,31 +5,6 @@ import { Select } from "./Select";
 import { LayerCard, LayerCardContent, LayerCardFooter } from "./LayerCard";
 import { ConfirmModal } from "./ConfirmModal";
 import { BlueprintEditor } from "./BlueprintEditor";
-import {
-  Blueprint,
-  Plus,
-  Trash,
-  Calendar,
-  Clock,
-  Play,
-  Pause,
-  Lightning,
-  Timer,
-  ArrowClockwise,
-  CaretDown,
-  CaretRight,
-  Key,
-  Eye,
-  EyeSlash,
-  Pencil,
-  Check,
-  X,
-  BlueprintIcon,
-  Brain,
-  Upload,
-  HardDrive,
-  Info
-} from "@phosphor-icons/react";
 import type {
   AgentBlueprint,
   AgentSchedule,
@@ -50,6 +25,7 @@ export interface MemoryDisk {
 interface SettingsViewProps {
   agencyId: string | null;
   agencyName?: string;
+  onMenuClick?: () => void;
   blueprints?: AgentBlueprint[];
   schedules?: AgentSchedule[];
   vars?: Record<string, unknown>;
@@ -102,11 +78,11 @@ function formatRelativeTime(date: string): string {
 function ScheduleTypeIcon({ type }: { type: AgentScheduleType }) {
   switch (type) {
     case "once":
-      return <Calendar size={14} />;
+      return <span className="text-xs">[1x]</span>;
     case "cron":
-      return <Clock size={14} />;
+      return <span className="text-xs">[CR]</span>;
     case "interval":
-      return <Timer size={14} />;
+      return <span className="text-xs">[IV]</span>;
   }
 }
 
@@ -158,11 +134,9 @@ function ScheduleRow({
         className="flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 bg-neutral-50 dark:bg-neutral-900 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        {expanded ? (
-          <CaretDown size={14} className="text-neutral-400 shrink-0" />
-        ) : (
-          <CaretRight size={14} className="text-neutral-400 shrink-0" />
-        )}
+        <span className="text-neutral-400 shrink-0 text-xs">
+          {expanded ? "[-]" : "[+]"}
+        </span>
 
         <ScheduleTypeIcon type={schedule.type} />
 
@@ -175,7 +149,6 @@ function ScheduleRow({
           </div>
           <div className="flex items-center gap-2 sm:gap-3 text-xs text-neutral-500 mt-0.5 flex-wrap">
             <span className="flex items-center gap-1">
-              <BlueprintIcon size={12} />
               {schedule.agentType}
             </span>
             {schedule.type === "cron" && schedule.cron && (
@@ -192,8 +165,7 @@ function ScheduleRow({
 
         <div className="hidden sm:flex items-center gap-4 text-xs text-neutral-500">
           {schedule.nextRunAt && (
-            <span className="flex items-center gap-1">
-              <Clock size={12} />
+            <span>
               Next: {formatRelativeTime(schedule.nextRunAt)}
             </span>
           )}
@@ -212,7 +184,7 @@ function ScheduleRow({
             className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
             title="Trigger now"
           >
-            <Lightning size={16} />
+<span className="text-xs">[⚡]</span>
           </button>
           {schedule.status === "active" ? (
             <button
@@ -220,7 +192,7 @@ function ScheduleRow({
               className="p-1.5 rounded hover:bg-yellow-100 dark:hover:bg-yellow-900/50 text-neutral-400 hover:text-yellow-600 transition-colors"
               title="Pause"
             >
-              <Pause size={16} />
+  <span className="text-xs">[||]</span>
             </button>
           ) : schedule.status === "paused" ? (
             <button
@@ -228,7 +200,7 @@ function ScheduleRow({
               className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/50 text-neutral-400 hover:text-green-600 transition-colors"
               title="Resume"
             >
-              <Play size={16} />
+  <span className="text-xs">[▶]</span>
             </button>
           ) : null}
           <button
@@ -236,7 +208,7 @@ function ScheduleRow({
             className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/50 text-neutral-400 hover:text-red-600 transition-colors"
             title="Delete"
           >
-            <Trash size={16} />
+<span className="text-xs">[X]</span>
           </button>
         </div>
       </div>
@@ -648,7 +620,7 @@ function VarsEditor({
               key={key}
               className="flex items-center gap-2 p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 overflow-hidden"
             >
-              <Key size={14} className="text-neutral-400 shrink-0" />
+              <span className="text-neutral-400 shrink-0 text-[10px]">[K]</span>
               <span className="font-mono text-sm text-neutral-700 dark:text-neutral-300 min-w-0 sm:min-w-[100px] truncate">
                 {key}
               </span>
@@ -666,13 +638,13 @@ function VarsEditor({
                     onClick={() => handleEdit(key)}
                     className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600"
                   >
-                    <Check size={14} />
+                    <span className="text-xs">[OK]</span>
                   </button>
                   <button
                     onClick={() => setEditingKey(null)}
-                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
+                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 text-xs"
                   >
-                    <X size={14} />
+                    [X]
                   </button>
                 </>
               ) : (
@@ -688,11 +660,7 @@ function VarsEditor({
                       className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
                       title={showSecrets[key] ? "Hide" : "Show"}
                     >
-                      {showSecrets[key] ? (
-                        <EyeSlash size={14} />
-                      ) : (
-                        <Eye size={14} />
-                      )}
+                      <span className="text-xs">{showSecrets[key] ? "[*]" : "[O]"}</span>
                     </button>
                   )}
                   <button
@@ -700,14 +668,14 @@ function VarsEditor({
                     className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
                     title="Edit"
                   >
-                    <Pencil size={14} />
+                    <span className="text-xs">[E]</span>
                   </button>
                   <button
                     onClick={() => onDeleteVar(key)}
-                    className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-600"
+                    className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-600 text-xs"
                     title="Delete"
                   >
-                    <Trash size={14} />
+                    [X]
                   </button>
                 </>
               )}
@@ -804,7 +772,7 @@ function MemoryDisksEditor({
               key={disk.name}
               className="flex items-center gap-3 p-3 rounded-lg border border-neutral-200 dark:border-neutral-700"
             >
-              <HardDrive size={18} className="text-neutral-400 shrink-0" />
+              <span className="text-neutral-400 shrink-0 text-xs">[HD]</span>
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-neutral-900 dark:text-neutral-100">
                   {disk.name}
@@ -830,23 +798,23 @@ function MemoryDisksEditor({
                     className="p-1 rounded bg-red-100 dark:bg-red-900/30 text-red-600"
                     title="Confirm delete"
                   >
-                    <Check size={14} />
+                    <span className="text-xs">[OK]</span>
                   </button>
                   <button
                     onClick={() => setDeleteConfirm(null)}
-                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
+                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 text-xs"
                     title="Cancel"
                   >
-                    <X size={14} />
+                    [X]
                   </button>
                 </div>
               ) : (
                 <button
                   onClick={() => setDeleteConfirm(disk.name)}
-                  className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-600"
+                  className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-600 text-xs"
                   title="Delete"
                 >
-                  <Trash size={14} />
+                  [X]
                 </button>
               )}
             </div>
@@ -908,7 +876,7 @@ function MemoryDisksEditor({
           <Button
             variant="secondary"
             size="sm"
-            icon={<Plus size={14} />}
+            icon={<span className="text-xs">[+]</span>}
             onClick={() => setShowCreate(true)}
           >
             New Disk
@@ -929,7 +897,7 @@ function MemoryDisksEditor({
               className="hidden"
               disabled={importing}
             />
-            <Upload size={14} />
+            <span className="text-xs">[↑]</span>
             {importing ? "Importing..." : "Import"}
           </label>
         </div>
@@ -943,6 +911,7 @@ type SettingsTab = "blueprints" | "schedules" | "variables" | "memory" | "info";
 export function SettingsView({
   agencyId,
   agencyName,
+  onMenuClick,
   blueprints = [],
   schedules = [],
   vars = {},
@@ -1001,14 +970,13 @@ export function SettingsView({
 
   const tabs: { id: SettingsTab; label: string; color: string }[] = [
     { id: "blueprints", label: "[BPT]", color: "text-[#ffaa00]" },
-    { id: "schedules", label: "[SCH]", color: "text-white" },
     { id: "variables", label: "[VAR]", color: "text-[#00ff00]" },
     { id: "memory", label: "[MEM]", color: "text-[#00aaff]" },
-    { id: "info", label: "[INF]", color: "text-white/50" },
+    { id: "schedules", label: "[SCH]", color: "text-white" },
   ];
 
   return (
-    <div className="h-full flex flex-col bg-black">
+    <div className="h-full flex flex-col bg-black relative">
       {/* Tab Navigation */}
       <div className="border-b-2 border-white bg-black">
         <div className="flex overflow-x-auto scrollbar-hide">
@@ -1031,42 +999,6 @@ export function SettingsView({
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6">
-        {/* Info Tab */}
-        {activeTab === "info" && (
-          <LayerCard>
-            <LayerCardFooter>
-              <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                Agency Details
-              </span>
-            </LayerCardFooter>
-            <LayerCardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <div>
-                  <div className="text-xs text-neutral-500 mb-1">Name</div>
-                  <div className="font-medium text-neutral-900 dark:text-neutral-100">
-                    {agencyName || "Unnamed"}
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs text-neutral-500 mb-1">ID</div>
-                  <div
-                    className="font-mono text-xs text-neutral-700 dark:text-neutral-300 truncate"
-                    title={agencyId}
-                  >
-                    {agencyId}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-neutral-500 mb-1">Blueprints</div>
-                  <div className="text-sm text-neutral-700 dark:text-neutral-300">
-                    {blueprints.length} available
-                  </div>
-                </div>
-              </div>
-            </LayerCardContent>
-          </LayerCard>
-        )}
-
         {/* Variables Tab */}
         {activeTab === "variables" && (
       <LayerCard>
@@ -1173,7 +1105,7 @@ export function SettingsView({
           <Button
             variant="secondary"
             size="sm"
-            icon={<ArrowClockwise size={14} />}
+            icon={<span className="text-xs">[↻]</span>}
             onClick={() => onRefreshMemoryDisks?.()}
           >
             Refresh
@@ -1244,7 +1176,7 @@ export function SettingsView({
           <Button
             variant="secondary"
             size="sm"
-            icon={<ArrowClockwise size={14} />}
+            icon={<span className="text-xs">[↻]</span>}
             onClick={() => onRefreshSchedules?.()}
           >
             <span className="hidden sm:inline">Refresh</span>
@@ -1252,7 +1184,7 @@ export function SettingsView({
           <Button
             variant="primary"
             size="sm"
-            icon={<Plus size={14} />}
+            icon={<span className="text-xs">[+]</span>}
             onClick={() => setShowCreateForm(true)}
           >
             <span className="hidden sm:inline">New</span>
@@ -1269,7 +1201,7 @@ export function SettingsView({
             />
           ) : schedules.length === 0 ? (
             <div className="text-center py-8 text-neutral-500">
-              <Clock size={32} className="mx-auto mb-2 opacity-50" />
+              <div className="text-2xl mx-auto mb-2 opacity-50">⏰</div>
               <p className="text-sm">No schedules configured</p>
               <p className="text-xs mt-1">
                 Create a schedule to run agents automatically

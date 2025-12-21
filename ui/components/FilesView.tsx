@@ -1,25 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import Prism from "prismjs";
-import "prismjs/components/prism-typescript";
-import "prismjs/components/prism-javascript";
-import "prismjs/components/prism-jsx";
-import "prismjs/components/prism-tsx";
-import "prismjs/components/prism-python";
-import "prismjs/components/prism-json";
-import "prismjs/components/prism-bash";
-import "prismjs/components/prism-yaml";
-import "prismjs/components/prism-markdown";
-import "prismjs/components/prism-css";
-import "prismjs/components/prism-sql";
-import "prismjs/components/prism-go";
-import "prismjs/components/prism-rust";
+import { useState, useEffect } from "react";
 import { cn } from "../lib/utils";
-import {
-  Folder,
-  Clock,
-  Download,
-  CircleNotch
-} from "@phosphor-icons/react";
 import { Button } from "./Button";
 
 // Types
@@ -92,74 +72,11 @@ function getFileExtension(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() || "";
 }
 
-// Map file extensions to Prism language names
-const LANG_MAP: Record<string, string> = {
-  ts: "typescript",
-  tsx: "tsx",
-  js: "javascript",
-  jsx: "jsx",
-  py: "python",
-  json: "json",
-  sh: "bash",
-  bash: "bash",
-  yml: "yaml",
-  yaml: "yaml",
-  md: "markdown",
-  markdown: "markdown",
-  css: "css",
-  scss: "css",
-  sql: "sql",
-  go: "go",
-  rs: "rust",
-  html: "markup",
-  xml: "markup"
-};
-
-function getLanguage(ext: string): string {
-  return LANG_MAP[ext] || "";
-}
-
 // Folder descriptions for tooltips
 const FOLDER_TIPS: Record<string, string> = {
   "~": "Agent's home directory - private to this agent",
   "shared": "Shared directory - accessible by all agents in this agency"
 };
-
-// Syntax highlighted code component
-function SyntaxHighlightedCode({ content, language }: { content: string; language: string }) {
-  const highlighted = useMemo(() => {
-    if (!language || !Prism.languages[language]) {
-      return null;
-    }
-    try {
-      return Prism.highlight(content, Prism.languages[language], language);
-    } catch {
-      return null;
-    }
-  }, [content, language]);
-
-  if (highlighted) {
-    return (
-      <pre className="text-sm font-mono whitespace-pre-wrap break-words">
-        <code
-          className={`language-${language}`}
-          dangerouslySetInnerHTML={{ __html: highlighted }}
-          style={{
-            color: "#e5e7eb",
-            background: "transparent"
-          }}
-        />
-      </pre>
-    );
-  }
-
-  // Fallback to plain text
-  return (
-    <pre className="text-sm text-neutral-800 dark:text-neutral-200 font-mono whitespace-pre-wrap break-words">
-      {content}
-    </pre>
-  );
-}
 
 function formatSize(bytes?: number): string {
   if (!bytes) return "";
@@ -349,7 +266,7 @@ export function FilesView({
         className="md:hidden fixed bottom-4 left-4 z-10 p-3 bg-white text-black border border-white"
         aria-label="Toggle file tree"
       >
-        <Folder size={16} />
+        <span className="text-xs">[/]</span>
       </button>
 
       {/* File tree */}
@@ -405,11 +322,7 @@ export function FilesView({
                     variant="secondary"
                     size="sm"
                     icon={
-                      loading ? (
-                        <CircleNotch size={12} className="animate-spin" />
-                      ) : (
-                        <Download size={12} />
-                      )
+                      <span className="text-[10px]">{loading ? "[~]" : "[↓]"}</span>
                     }
                     onClick={handleDownload}
                     disabled={loading}
@@ -423,10 +336,7 @@ export function FilesView({
                   <span>SIZE: {formatSize(selectedFile.size)}</span>
                 )}
                 {selectedFile.modifiedAt && (
-                  <span className="flex items-center gap-1">
-                    <Clock size={10} />
-                    {formatDate(selectedFile.modifiedAt)}
-                  </span>
+                  <span>{formatDate(selectedFile.modifiedAt)}</span>
                 )}
               </div>
             </div>
@@ -439,7 +349,7 @@ export function FilesView({
                 </div>
               ) : loading ? (
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[#00aaff]">
-                  <CircleNotch size={12} className="animate-spin" />
+                  <span className="blink-hard">[~]</span>
                   LOADING...
                 </div>
               ) : error ? (
@@ -463,7 +373,7 @@ export function FilesView({
                   <Button
                     variant="secondary"
                     size="sm"
-                    icon={<Download size={12} />}
+                    icon={<span className="text-[10px]">[↓]</span>}
                     onClick={handleDownload}
                   >
                     DOWNLOAD

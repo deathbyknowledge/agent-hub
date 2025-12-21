@@ -13,7 +13,6 @@ import {
   type FileNode,
   type Todo,
 } from "./components";
-import { List } from "@phosphor-icons/react";
 import {
   useAgencies,
   useAgency,
@@ -678,7 +677,7 @@ function AgentView({
 // Settings View Wrapper (handles /:agencyId/settings)
 // ============================================================================
 
-function SettingsRoute({ agencyId }: { agencyId: string }) {
+function SettingsRoute({ agencyId, onMenuClick }: { agencyId: string; onMenuClick?: () => void }) {
   const {
     blueprints,
     schedules,
@@ -709,11 +708,21 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
 
   return (
     <>
-      <div className="px-3 py-2 border-b border-white bg-black">
-        <h1 className="text-xs uppercase tracking-widest text-white">
+      <div className="px-3 py-2 border-b border-white bg-black relative">
+        {/* Mobile menu button */}
+        {onMenuClick && (
+          <button
+            onClick={onMenuClick}
+            className="md:hidden absolute top-2 left-2 p-2 text-white/50 hover:text-white transition-colors z-10"
+            aria-label="Open menu"
+          >
+            <span className="text-xs">[=]</span>
+          </button>
+        )}
+        <h1 className="text-xs uppercase tracking-widest text-white md:ml-0 ml-8">
           AGENCY_CONFIG
         </h1>
-        <p className="text-[10px] text-white/40 font-mono">
+        <p className="text-[10px] text-white/40 font-mono md:ml-0 ml-8">
           ID: {agency?.name || "UNKNOWN"}
         </p>
       </div>
@@ -721,6 +730,7 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
         <SettingsView
           agencyId={agencyId}
           agencyName={agency?.name}
+          onMenuClick={onMenuClick}
           blueprints={blueprints}
           schedules={schedules}
           vars={vars}
@@ -779,7 +789,7 @@ function EmptyState({
             className="md:hidden fixed top-4 left-4 p-2 text-white/50 hover:text-white transition-colors z-10"
             aria-label="Open menu"
           >
-            <List size={16} />
+            <span className="text-xs">[=]</span>
           </button>
         )}
         <div className="text-center max-w-md px-4 border border-white/20 p-8">
@@ -811,7 +821,7 @@ function EmptyState({
             className="md:hidden fixed top-4 left-4 p-2 text-white/50 hover:text-white transition-colors z-10"
             aria-label="Open menu"
           >
-            <List size={16} />
+            <span className="text-xs">[=]</span>
           </button>
         )}
         <div className="text-center max-w-md px-4 border border-dashed border-white/30 p-8">
@@ -839,7 +849,7 @@ function EmptyState({
           className="md:hidden fixed top-4 left-4 p-2 text-white/50 hover:text-white transition-colors z-10"
           aria-label="Open menu"
         >
-          <List size={16} />
+          <span className="text-xs">[=]</span>
         </button>
       )}
       <div className="text-center max-w-md px-4 border border-white/20 p-8">
@@ -880,7 +890,7 @@ function MainContent({
   }
 
   if (matchSettings) {
-    return <SettingsRoute agencyId={agencyId} />;
+    return <SettingsRoute agencyId={agencyId} onMenuClick={onMenuClick} />;
   }
 
   if (matchAgentTab && paramsAgentTab) {

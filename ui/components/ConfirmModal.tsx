@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { Button } from "./Button";
-import { Warning } from "@phosphor-icons/react";
 
 interface ConfirmModalProps {
   title: string;
@@ -48,7 +47,7 @@ export function ConfirmModal({
                   ? "bg-red-100 dark:bg-red-900/30 text-red-600" 
                   : "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600"
               }`}>
-                <Warning size={20} />
+<span className="text-lg">[!]</span>
               </div>
             )}
             <div className="flex-1 min-w-0">

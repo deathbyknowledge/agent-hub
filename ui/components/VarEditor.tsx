@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Key, Eye, EyeSlash, Pencil, Trash, Check, X, Plus } from "@phosphor-icons/react";
 import { Button } from "./Button";
 
 interface VarEditorProps {
@@ -81,7 +80,7 @@ export function VarEditor({ vars, onSetVar, onDeleteVar }: VarEditorProps) {
               key={key}
               className="flex items-center gap-2 p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 overflow-hidden"
             >
-              <Key size={14} className="text-neutral-400 shrink-0" />
+              <span className="text-neutral-400 shrink-0 text-[10px]">[K]</span>
               <span className="font-mono text-sm text-neutral-700 dark:text-neutral-300 min-w-0 sm:min-w-[100px] truncate">
                 {key}
               </span>
@@ -97,15 +96,15 @@ export function VarEditor({ vars, onSetVar, onDeleteVar }: VarEditorProps) {
                   />
                   <button
                     onClick={() => handleEdit(key)}
-                    className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600"
+                    className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 text-xs"
                   >
-                    <Check size={14} />
+                    [OK]
                   </button>
                   <button
                     onClick={() => setEditingKey(null)}
-                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
+                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 text-xs"
                   >
-                    <X size={14} />
+                    [X]
                   </button>
                 </>
               ) : (
@@ -118,29 +117,25 @@ export function VarEditor({ vars, onSetVar, onDeleteVar }: VarEditorProps) {
                       onClick={() =>
                         setShowSecrets((s) => ({ ...s, [key]: !s[key] }))
                       }
-                      className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
+                      className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 text-xs"
                       title={showSecrets[key] ? "Hide" : "Show"}
                     >
-                      {showSecrets[key] ? (
-                        <EyeSlash size={14} />
-                      ) : (
-                        <Eye size={14} />
-                      )}
+                      {showSecrets[key] ? "[*]" : "[O]"}
                     </button>
                   )}
                   <button
                     onClick={() => startEdit(key, value)}
-                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400"
+                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 text-xs"
                     title="Edit"
                   >
-                    <Pencil size={14} />
+                    [E]
                   </button>
                   <button
                     onClick={() => onDeleteVar(key)}
-                    className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-600"
+                    className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-600 text-xs"
                     title="Delete"
                   >
-                    <Trash size={14} />
+                    [X]
                   </button>
                 </>
               )}
@@ -179,7 +174,7 @@ export function VarEditor({ vars, onSetVar, onDeleteVar }: VarEditorProps) {
         <Button
           variant="secondary"
           size="sm"
-          icon={<Plus size={14} />}
+          icon={<span className="text-xs">[+]</span>}
           onClick={handleAdd}
           disabled={!newKey.trim()}
         >

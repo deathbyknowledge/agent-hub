@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { cn } from "../lib/utils";
-import { Check, Clock, Warning } from "@phosphor-icons/react";
 
 // Types
 type TodoStatus = "pending" | "in_progress" | "done" | "blocked";
@@ -23,25 +22,25 @@ interface TodosViewProps {
 
 const STATUS_CONFIG: Record<
   TodoStatus,
-  { icon: React.ReactNode; label: string; color: string }
+  { tag: string; label: string; color: string }
 > = {
   pending: {
-    icon: <Clock size={10} />,
+    tag: "[ ]",
     label: "PENDING",
     color: "text-white/40"
   },
   in_progress: {
-    icon: <Clock size={10} className="animate-pulse" />,
+    tag: "[~]",
     label: "EXEC",
     color: "text-[#00aaff]"
   },
   done: {
-    icon: <Check size={10} />,
+    tag: "[x]",
     label: "DONE",
     color: "text-[#00ff00]"
   },
   blocked: {
-    icon: <Warning size={10} />,
+    tag: "[!]",
     label: "BLOCKED",
     color: "text-[#ff0000]"
   }
@@ -94,7 +93,7 @@ function TodoCard({
               : "border-white/50 hover:border-white"
           )}
         >
-          {isDone && <Check size={10} />}
+          {isDone && <span className="text-[8px]">✓</span>}
         </button>
 
         <div className="flex-1 min-w-0">
@@ -128,7 +127,7 @@ function TodoCard({
           {/* Footer */}
           <div className="flex items-center gap-3 mt-2 text-[10px]">
             <span className={cn("flex items-center gap-1 uppercase tracking-wider", statusConfig.color)}>
-              {statusConfig.icon}
+              <span className="font-mono">{statusConfig.tag}</span>
               {statusConfig.label}
             </span>
             <span className="text-white/30 font-mono">

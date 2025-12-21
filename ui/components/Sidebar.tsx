@@ -3,7 +3,6 @@ import { Link, useLocation } from "wouter";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { Select } from "./Select";
-import { X } from "@phosphor-icons/react";
 
 // Types
 interface AgencyMeta {
@@ -126,10 +125,10 @@ export function Sidebar({
         {onClose && (
           <button
             onClick={onClose}
-            className="md:hidden absolute top-3 right-3 p-1 text-white/50 hover:text-white transition-colors"
+            className="md:hidden absolute top-2 right-3 p-1 text-white/50 hover:text-white transition-colors"
             aria-label="Close menu"
           >
-            <X size={16} />
+            <span className="text-xs">[X]</span>
           </button>
         )}
         <div className="flex items-center gap-2 mb-3">
@@ -137,7 +136,7 @@ export function Sidebar({
           <span className="text-xs uppercase tracking-widest text-white font-medium">
             AGENT_HUB
           </span>
-          <span className="text-white/30 text-[10px] ml-auto">v0.1</span>
+          <span className="text-white/30 text-[10px] ml-auto mr-7 md:mr-0">v0.1</span>
         </div>
 
         {/* Agency selector */}

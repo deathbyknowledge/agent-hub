@@ -17,4 +17,3 @@ export { SettingsView } from "./SettingsView";
 export { ConfirmModal } from "./ConfirmModal";
 export { BlueprintEditor } from "./BlueprintEditor";
 export { VarEditor } from "./VarEditor";
-export { Robot, Plus, ChatCircle } from "@phosphor-icons/react";

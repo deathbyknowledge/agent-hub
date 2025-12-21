@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
     <!-- Progressive Web App support -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#000000" />
@@ -17,17 +18,45 @@
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: light)" />
     
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <title>AGENT_HUB // CONTROL TERMINAL</title>
+    <title>AGENT_HUB</title>
     <style>
       /* Berkeley Mono - Industrial Monospace */
       @font-face {
         font-family: 'Berkeley Mono';
-        src: url('/BerkeleyMonoTrial-Regular.ttf') format('truetype');
+        src: local('Berkeley Mono Regular'), local('BerkeleyMono-Regular'),
+             url('https://fonts.deathbyknowledge.com/BerkeleyMono-Regular.woff2') format('woff2');
         font-weight: 400;
         font-style: normal;
         font-display: swap;
       }
-      
+
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: local('Berkeley Mono Bold'), local('BerkeleyMono-Bold'),
+             url('https://fonts.deathbyknowledge.com/BerkeleyMono-Bold.woff2') format('woff2');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: local('Berkeley Mono Oblique'), local('BerkeleyMono-Oblique'),
+             url('https://fonts.deathbyknowledge.com/BerkeleyMono-Oblique.woff2') format('woff2');
+        font-weight: 400;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: local('Berkeley Mono Bold Oblique'), local('BerkeleyMono-Bold-Oblique'),
+             url('https://fonts.deathbyknowledge.com/BerkeleyMono-Bold-Oblique.woff2') format('woff2');
+        font-weight: 700;
+        font-style: italic;
+        font-display: swap;
+      }
+
       /* ============================================
          INDUSTRIAL RETRO-COMPUTING DESIGN SYSTEM
          "Data > Decoration"
@@ -98,7 +127,7 @@
         border-radius: 0 !important;
       }
       
-      /* Selection - inverted for visibility on both dark and light backgrounds */
+      /* Selections */
       ::selection {
         background: #000;
         color: #fff;
@@ -152,6 +181,41 @@
       
       .blink-hard {
         animation: blink-hard 1s steps(2) infinite;
+      }
+      
+      /* Override default focus styles for brutalist aesthetic */
+      input:focus, textarea:focus, select:focus, button:focus {
+        outline: none !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+      }
+      
+      input:focus, textarea:focus, select:focus {
+        border-color: #fff !important;
+      }
+      
+      /* Ensure all clickable elements show pointer cursor */
+      button, [role="button"], a, select, label[for], .cursor-pointer {
+        cursor: pointer;
+      }
+      
+      /* Style datetime-local inputs for brutalist aesthetic */
+      input[type="datetime-local"],
+      input[type="date"],
+      input[type="time"] {
+        background: #000 !important;
+        color: #fff !important;
+        border: 1px solid #fff !important;
+        padding: 8px 12px !important;
+        font-family: inherit !important;
+        color-scheme: dark;
+      }
+      
+      input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+      input[type="date"]::-webkit-calendar-picker-indicator,
+      input[type="time"]::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+        cursor: pointer;
       }
     </style>
   </head>
