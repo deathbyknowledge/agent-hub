@@ -8,16 +8,16 @@
   "r2_buckets": [
     {
       "binding": "FS",
-      // "bucket_name": "agents-hub-fs",
+      "bucket_name": "agents-hub-fs",
     },
   ],
   "durable_objects": {
     "bindings": [
       {
         "class_name": "Sandbox",
-        "name": "SANDBOX"
-      }
-    ]
+        "name": "SANDBOX", // containers depends on a binding even tho we can use exports
+      },
+    ],
   },
   "containers": [
     {
@@ -39,4 +39,11 @@
     },
   ],
   "name": "agents-hub",
+  "routes": [
+    {
+      "pattern": "hub.deathbyknowledge.com", // don't add this to yours :)
+      "zone_name": "deathbyknowledge.com",
+      "custom_domain": true,
+    },
+  ],
 }
