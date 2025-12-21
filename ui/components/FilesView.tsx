@@ -222,11 +222,11 @@ function FileTreeNode({
             ))}
         </span>
 
-        {/* Icon */}
+        {/* Icon - ASCII style */}
         {isDir ? (
-          <span className="text-[#ffaa00] text-[10px]">■</span>
+          <span className="text-[#ffaa00] text-[10px] font-bold">[DIR]</span>
         ) : (
-          <span className="text-white/30 text-[10px]">□</span>
+          <span className="text-white/30 text-[10px]">DOC_</span>
         )}
 
         {/* Name with tooltip for special folders */}
@@ -362,7 +362,7 @@ export function FilesView({
 
       {/* File tree */}
       <div className={cn(
-        "w-56 border-r border-white overflow-y-auto p-2 bg-black",
+        "w-56 border-r-2 border-white overflow-y-auto p-2 bg-black",
         "md:relative md:translate-x-0",
         "absolute inset-y-0 left-0 z-20",
         "transform transition-transform duration-200",
@@ -391,13 +391,13 @@ export function FilesView({
         {selectedFile ? (
           <>
             {/* Header */}
-            <div className="px-3 py-2 border-b border-white bg-black">
+            <div className="px-3 py-2 border-b-2 border-white bg-black">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {selectedFile.type === "directory" ? (
-                    <span className="text-[#ffaa00] text-xs">■</span>
+                    <span className="text-[#ffaa00] text-[10px] font-bold">[DIR]</span>
                   ) : (
-                    <span className="text-white/30 text-xs">□</span>
+                    <span className="text-white/30 text-[10px]">DOC_</span>
                   )}
                   <span className="text-[11px] uppercase tracking-wider text-white">
                     {selectedFile.name}

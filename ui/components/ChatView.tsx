@@ -322,9 +322,9 @@ export function ChatView({
       </div>
 
       {/* Input area */}
-      <div className="border-t border-white bg-black p-3">
+      <div className="border-t-2 border-white bg-black p-3">
         <div className="flex items-end gap-2">
-          <div className="flex-1 flex items-center border border-white/50 focus-within:border-white transition-colors">
+          <div className="flex-1 flex items-center border border-white/50 focus-within:border-[#00ff00] focus-within:bg-black transition-colors">
             <span className="px-2 text-[#00ff00] text-xs">&gt;</span>
             <textarea
               ref={textareaRef}
@@ -335,8 +335,8 @@ export function ChatView({
               disabled={isLoading}
               rows={1}
               className={cn(
-                "w-full px-2 py-2 bg-transparent text-white text-xs",
-                "placeholder:text-white/30 placeholder:uppercase placeholder:tracking-wider resize-none",
+                "w-full px-2 py-2 bg-transparent text-[#00ff00] text-xs font-mono",
+                "placeholder:text-white/10 placeholder:uppercase placeholder:tracking-wider resize-none",
                 "focus:outline-none",
                 "disabled:opacity-30"
               )}
@@ -344,7 +344,7 @@ export function ChatView({
           </div>
 
           {isLoading && onStop ? (
-            <Button variant="danger" onClick={onStop} icon={<Stop size={12} />} size="sm">
+            <Button variant="danger" onClick={onStop} icon={<span className="blink-hard">■</span>} size="sm">
               <span className="hidden sm:inline">ABORT</span>
             </Button>
           ) : (

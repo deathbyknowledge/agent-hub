@@ -78,7 +78,7 @@ export function ContentHeader({
   }, [showMenu]);
 
   return (
-    <div className="flex items-center justify-between px-3 py-2 border-b border-white bg-black">
+    <div className="px-3 py-2 flex items-center gap-3 border-b-2 border-white bg-black min-h-[44px]">
       {/* Mobile menu button */}
       {onMenuClick && (
         <button

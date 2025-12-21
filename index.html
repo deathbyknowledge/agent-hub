@@ -120,6 +120,35 @@
         background: var(--color-fg);
         color: var(--color-bg);
       }
+      
+      /* Scanline texture - CRT monitor effect */
+      body::after {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(0, 0, 0, 0.15),
+          rgba(0, 0, 0, 0.15) 1px,
+          transparent 1px,
+          transparent 2px
+        );
+        pointer-events: none;
+        z-index: 9999;
+      }
+      
+      /* Industrial stepped blink - no smooth fade */
+      @keyframes blink-hard {
+        0%, 49% { opacity: 1; }
+        50%, 100% { opacity: 0; }
+      }
+      
+      .blink-hard {
+        animation: blink-hard 1s steps(2) infinite;
+      }
     </style>
   </head>
   <body>

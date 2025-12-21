@@ -158,7 +158,7 @@ export function TodosView({ todos, onToggle }: TodosViewProps) {
   return (
     <div className="h-full overflow-y-auto bg-black">
       {/* Stats bar */}
-      <div className="sticky top-0 bg-black border-b border-white px-3 py-2">
+      <div className="sticky top-0 bg-black border-b-2 border-white px-3 py-2">
         <div className="flex items-center gap-4 text-[10px] uppercase tracking-wider flex-wrap">
           <span className="text-white/50">
             TOTAL: <span className="text-white">{stats.total}</span>
@@ -210,7 +210,7 @@ export function TodosView({ todos, onToggle }: TodosViewProps) {
               <div>
                 <button
                   onClick={() => setShowCompleted(!showCompleted)}
-                  className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/30 mb-2 hover:text-white transition-colors border-b border-white/10 pb-1 w-full"
+                  className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/30 mb-2 hover:text-black hover:bg-white transition-colors border-b border-white/10 pb-1 w-full"
                 >
                   {showCompleted ? <CaretDown size={10} /> : <CaretRight size={10} />}
                   COMPLETED [{completedTodos.length}]

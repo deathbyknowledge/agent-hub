@@ -114,7 +114,7 @@ export function Sidebar({
       {/* Sidebar */}
       <div
         className={cn(
-          "w-64 h-full flex flex-col bg-black border-r border-white",
+          "w-64 h-full flex flex-col bg-black border-r-2 border-white",
           "fixed md:relative inset-y-0 left-0 z-50 md:z-auto",
           "transform transition-transform duration-200 ease-out md:transform-none",
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
@@ -166,7 +166,7 @@ export function Sidebar({
       <div className="flex-1 overflow-y-auto">
         <button
           onClick={() => setAgentsExpanded(!agentsExpanded)}
-          className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/5 transition-colors border-b border-white/20"
+          className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-medium text-white/50 hover:text-black hover:bg-white transition-colors border-b border-white/20"
         >
           {agentsExpanded ? <CaretDown size={10} /> : <CaretRight size={10} />}
           <span className="uppercase tracking-widest">AGENTS</span>
@@ -181,8 +181,8 @@ export function Sidebar({
               disabled={!selectedAgencyId}
               className={cn(
                 "w-full flex items-center gap-2 px-2 py-1.5 text-[11px] uppercase tracking-wider transition-colors border border-dashed border-white/30",
-                "text-white/50 hover:text-white hover:border-white hover:bg-white/5",
-                "disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-white/30 disabled:hover:bg-transparent"
+                "text-white/50 hover:text-black hover:border-white hover:bg-white",
+                "disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-white/30 disabled:hover:bg-transparent disabled:hover:text-white/50"
               )}
             >
               <Plus size={12} />
@@ -223,21 +223,17 @@ export function Sidebar({
                           ? "bg-white text-black border-white"
                           : isRunning
                             ? "bg-[#00aaff]/10 text-[#00aaff] border-[#00aaff]/50 hover:border-[#00aaff]"
-                            : "text-white/70 border-white/20 hover:text-white hover:border-white hover:bg-white/5"
+                            : "text-white/70 border-white/20 hover:text-black hover:border-white hover:bg-white"
                       )}
                     >
                       {/* Status indicator */}
-                      <span className="relative shrink-0 flex items-center justify-center w-3">
-                        <span
-                          className={cn(
-                            "block w-1.5 h-1.5",
-                            STATUS_COLORS[status]
-                          )}
-                        />
-                        {isRunning && (
+                      <span className="relative shrink-0 flex items-center justify-center w-4">
+                        {isRunning ? (
+                          <span className="text-[#00aaff] blink-hard">●</span>
+                        ) : (
                           <span
                             className={cn(
-                              "absolute w-1.5 h-1.5 animate-ping",
+                              "block w-1.5 h-1.5",
                               STATUS_COLORS[status]
                             )}
                           />
@@ -269,7 +265,7 @@ export function Sidebar({
             "w-full flex items-center gap-2 px-2 py-1.5 text-[11px] uppercase tracking-wider transition-colors border",
             isOnSettings
               ? "bg-white text-black border-white"
-              : "text-white/50 border-white/30 hover:text-white hover:border-white hover:bg-white/5",
+              : "text-white/50 border-white/30 hover:text-black hover:border-white hover:bg-white",
             !selectedAgencyId && "opacity-30 pointer-events-none"
           )}
         >
