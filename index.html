@@ -98,6 +98,16 @@
         border-radius: 0 !important;
       }
       
+      /* Selection - inverted for visibility on both dark and light backgrounds */
+      ::selection {
+        background: #000;
+        color: #fff;
+      }
+      ::-moz-selection {
+        background: #000;
+        color: #fff;
+      }
+
       /* Industrial scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
@@ -113,12 +123,6 @@
       }
       ::-webkit-scrollbar-thumb:hover {
         background: var(--color-fg);
-      }
-      
-      /* Selection */
-      ::selection {
-        background: var(--color-fg);
-        color: var(--color-bg);
       }
       
       /* Scanline texture - CRT monitor effect */

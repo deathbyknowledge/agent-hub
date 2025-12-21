@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, memo, useMemo } from "react";
 import Markdown from "react-markdown";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
-import { Wrench, Copy, Check } from "@phosphor-icons/react";
 
 // Types
 interface ToolCall {
@@ -66,10 +65,10 @@ function CodeBlock({ children, className }: { children: string; className?: stri
         </span>
         <button
           onClick={copyCode}
-          className="p-1 text-white/30 hover:text-white transition-colors"
+          className="text-[10px] text-white/30 hover:text-white transition-colors px-1"
           title="Copy code"
         >
-          {copied ? <Check size={10} /> : <Copy size={10} />}
+          {copied ? "[OK]" : "[CP]"}
         </button>
       </div>
       <pre className="bg-black text-[#00ff00] p-3 overflow-x-auto text-xs">
@@ -144,16 +143,9 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <div className={cn("flex gap-3 mb-4", isUser ? "flex-row-reverse" : "")}>
       {/* Terminal prompt indicator */}
-      <div
-        className={cn(
-          "w-6 h-6 flex items-center justify-center shrink-0 border text-[10px] font-bold",
-          isUser
-            ? "border-white bg-white text-black"
-            : "border-[#00ff00] text-[#00ff00]"
-        )}
-      >
-        {isUser ? ">" : "<"}
-      </div>
+      <span className="shrink-0 text-[10px] font-mono pt-2 text-white">
+        {isUser ? "[USR]" : "[AI]"}
+      </span>
 
       {/* Content */}
       <div
@@ -162,18 +154,9 @@ function MessageBubble({ message }: { message: Message }) {
         {/* Only show text bubble if there's actual content */}
         {hasContent && (
           <div
-            className={cn(
-              "px-3 py-2 text-xs border",
-              isUser
-                ? "bg-white text-black border-white"
-                : "bg-black text-white/90 border-white/30"
-            )}
+            className="px-3 py-2 text-xs border bg-white text-black border-white"
           >
-            {isUser ? (
-              <p className="whitespace-pre-wrap">{message.content}</p>
-            ) : (
-              <MarkdownContent content={message.content} />
-            )}
+            <p className="whitespace-pre-wrap">{message.content}</p>
           </div>
         )}
 
@@ -198,54 +181,71 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   const [expanded, setExpanded] = useState(false);
 
   const statusConfig = {
-    pending: { color: "text-white/40", borderColor: "border-white/20", label: "PENDING" },
-    running: { color: "text-[#00aaff]", borderColor: "border-[#00aaff]", label: "EXEC..." },
-    done: { color: "text-[#00ff00]", borderColor: "border-[#00ff00]/50", label: "OK" },
-    error: { color: "text-[#ff0000]", borderColor: "border-[#ff0000]", label: "FAIL" }
+    pending: { label: "WAIT", border: "border-white/30", text: "text-white/40" },
+    running: { label: "EXEC", border: "border-[#00aaff]", text: "text-[#00aaff]" },
+    done: { label: "OK", border: "border-[#00ff00]/50", text: "text-[#00ff00]" },
+    error: { label: "ERR", border: "border-[#ff0000]", text: "text-[#ff0000]" }
   };
   
   const config = statusConfig[toolCall.status];
   const isRunning = toolCall.status === "running";
+  const isError = toolCall.status === "error";
 
   return (
-    <div className={cn(
-      "border overflow-hidden bg-black",
-      config.borderColor
-    )}>
+    <div className="border-l border-white/30 pl-2 py-0.5 font-mono">
+      {/* Main tool call line - log style */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-white/5 transition-colors"
+        className="w-full flex items-center gap-2 text-left hover:bg-white/5 transition-colors py-0.5 group"
       >
-        <Wrench size={12} className={cn(config.color, isRunning && "animate-spin")} />
-        <span className="text-[11px] uppercase tracking-wider text-white/70 truncate">
+        {/* Expand indicator */}
+        <span className="text-[10px] text-white/30 w-4">
+          {expanded ? "[-]" : "[+]"}
+        </span>
+        
+        {/* Type tag */}
+        <span className="text-[10px] text-white/50">[TOOL]</span>
+        
+        {/* Tool name - UPPERCASE */}
+        <span className="text-[11px] text-white/80 truncate flex-1 uppercase">
           {toolCall.name}
         </span>
-        <span className={cn("text-[10px] ml-auto flex items-center gap-1 uppercase tracking-wider", config.color)}>
-          {isRunning && (
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full bg-[#00aaff] opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 bg-[#00aaff]" />
-            </span>
-          )}
-          [{config.label}]
+        
+        {/* Status badge - colored */}
+        <span className={cn(
+          "text-[10px] px-1 border",
+          config.border,
+          config.text,
+          isRunning && "blink-hard"
+        )}>
+          {config.label}
         </span>
       </button>
 
+      {/* Expanded details */}
       {expanded && (
-        <div className="px-2 py-2 border-t border-white/20 text-xs overflow-hidden">
-          <div className="mb-2 min-w-0">
-            <span className="text-[10px] uppercase tracking-wider text-white/40">INPUT:</span>
-            <pre className="mt-1 p-2 bg-white/5 border border-white/10 text-[#ffaa00] overflow-x-auto whitespace-pre-wrap break-words max-w-full text-[11px]">
-              {JSON.stringify(toolCall.args, null, 2)}
+        <div className="mt-1 ml-4 text-[11px] space-y-2 text-white/60">
+          {/* Args - pretty printed */}
+          <div>
+            <span className="text-white/30">ARGS:</span>
+            <pre className="mt-1 overflow-x-auto whitespace-pre">
+{JSON.stringify(toolCall.args, null, 2)}
             </pre>
           </div>
+          
+          {/* Result */}
           {toolCall.result !== undefined && (
-            <div className="min-w-0">
-              <span className="text-[10px] uppercase tracking-wider text-white/40">OUTPUT:</span>
-              <pre className="mt-1 p-2 bg-white/5 border border-white/10 text-[#00ff00] overflow-x-auto whitespace-pre-wrap break-words max-w-full text-[11px]">
-                {typeof toolCall.result === "string"
-                  ? toolCall.result
-                  : JSON.stringify(toolCall.result, null, 2)}
+            <div>
+              <span className={isError ? "text-[#ff0000]" : "text-white/30"}>
+                {isError ? "ERR:" : "OUT:"}
+              </span>
+              <pre className={cn(
+                "mt-1 overflow-x-auto whitespace-pre",
+                isError && "text-[#ff0000]"
+              )}>
+{typeof toolCall.result === "string"
+  ? toolCall.result.slice(0, 500) + (toolCall.result.length > 500 ? "..." : "")
+  : JSON.stringify(toolCall.result, null, 2).slice(0, 500)}
               </pre>
             </div>
           )}
