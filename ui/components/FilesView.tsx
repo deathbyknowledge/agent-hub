@@ -16,9 +16,6 @@ import "prismjs/components/prism-rust";
 import { cn } from "../lib/utils";
 import {
   Folder,
-  File,
-  CaretRight,
-  CaretDown,
   Clock,
   Download,
   CircleNotch
@@ -213,13 +210,8 @@ function FileTreeNode({
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
       >
         {/* Expand/collapse for directories */}
-        <span className="w-3 shrink-0">
-          {hasChildren &&
-            (expanded ? (
-              <CaretDown size={10} className="text-current opacity-50" />
-            ) : (
-              <CaretRight size={10} className="text-current opacity-50" />
-            ))}
+        <span className="w-4 shrink-0 text-[10px] opacity-50">
+          {hasChildren && (expanded ? "[-]" : "[+]")}
         </span>
 
         {/* Icon - ASCII style */}

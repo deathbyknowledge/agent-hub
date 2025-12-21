@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect, memo } from "react";
+import { useState, useRef, useEffect, memo, useMemo } from "react";
 import Markdown from "react-markdown";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
-import { PaperPlaneTiltIcon, User, Robot, Stop, Wrench, Copy, Check } from "@phosphor-icons/react";
+import { Wrench, Copy, Check } from "@phosphor-icons/react";
 
 // Types
 interface ToolCall {
@@ -323,9 +323,14 @@ export function ChatView({
 
       {/* Input area */}
       <div className="border-t-2 border-white bg-black p-3">
-        <div className="flex items-end gap-2">
-          <div className="flex-1 flex items-center border border-white/50 focus-within:border-[#00ff00] focus-within:bg-black transition-colors">
-            <span className="px-2 text-[#00ff00] text-xs">&gt;</span>
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex items-stretch border border-white/50 focus-within:border-[#00ff00] focus-within:bg-black transition-colors">
+            {/* Line carets - one > per line */}
+            <div className="flex flex-col py-2 pl-2 pr-1 text-[#00ff00] text-xs font-mono select-none">
+              {Array.from({ length: Math.max(1, input.split('\n').length) }).map((_, i) => (
+                <span key={i} className="leading-[1.5] h-[18px]">&gt;</span>
+              ))}
+            </div>
             <textarea
               ref={textareaRef}
               value={input}
@@ -334,9 +339,10 @@ export function ChatView({
               placeholder={placeholder}
               disabled={isLoading}
               rows={1}
+              style={{ caretColor: '#00ff00' }}
               className={cn(
-                "w-full px-2 py-2 bg-transparent text-[#00ff00] text-xs font-mono",
-                "placeholder:text-white/10 placeholder:uppercase placeholder:tracking-wider resize-none",
+                "w-full px-1 py-2 bg-transparent text-[#00ff00] text-xs font-mono leading-[1.5]",
+                "placeholder:text-white/30 placeholder:uppercase placeholder:tracking-wider resize-none",
                 "focus:outline-none",
                 "disabled:opacity-30"
               )}
@@ -352,10 +358,9 @@ export function ChatView({
               variant="primary"
               onClick={handleSubmit}
               disabled={!input.trim() || isLoading}
-              icon={<PaperPlaneTiltIcon size={12} />}
               size="sm"
             >
-              <span className="hidden sm:inline">EXEC</span>
+              [EXEC]
             </Button>
           )}
         </div>

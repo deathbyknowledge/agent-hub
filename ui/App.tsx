@@ -13,17 +13,16 @@ import {
   type FileNode,
   type Todo,
 } from "./components";
+import { List } from "@phosphor-icons/react";
 import {
-  Robot,
-  Plus,
-  ChatCircle,
-  Trash,
-  Play,
-  Stop,
-  HeadCircuitIcon as BlueprintIcon,
-  List,
-} from "@phosphor-icons/react";
-import { useAgencies, useAgency, useAgent, usePlugins, getStoredSecret, setStoredSecret, QueryClient, QueryClientProvider } from "./hooks";
+  useAgencies,
+  useAgency,
+  useAgent,
+  usePlugins,
+  setStoredSecret,
+  QueryClient,
+  QueryClientProvider,
+} from "./hooks";
 import type {
   AgentBlueprint,
   ChatMessage,
@@ -328,7 +327,9 @@ function AuthUnlockForm({
       <div className="max-w-md w-full border border-white p-6">
         <div className="text-center mb-6">
           <div className="text-[#00ff00] text-4xl mb-4 font-mono">█</div>
-          <h1 className="text-xs uppercase tracking-widest text-white mb-2">AGENT_HUB // SECURE ACCESS</h1>
+          <h1 className="text-xs uppercase tracking-widest text-white mb-2">
+            AGENT_HUB // SECURE ACCESS
+          </h1>
           <p className="text-[10px] uppercase tracking-wider text-white/40">
             AUTHENTICATION REQUIRED
           </p>
@@ -398,7 +399,9 @@ function EventDetailModal({
             <h2 className="text-[11px] uppercase tracking-wider text-white truncate">
               {label}
             </h2>
-            <p className="text-[10px] text-white/40 font-mono truncate">{type}</p>
+            <p className="text-[10px] text-white/40 font-mono truncate">
+              {type}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -482,7 +485,9 @@ function AgentView({
     type: string;
   } | null>(null);
 
-  const activeTab = (["chat", "trace", "files", "todos"].includes(tab) ? tab : "chat") as TabId;
+  const activeTab = (
+    ["chat", "trace", "files", "todos"].includes(tab) ? tab : "chat"
+  ) as TabId;
   const selectedAgent = agents.find((a) => a.id === agentId);
 
   // Get messages from agent state
@@ -502,7 +507,9 @@ function AgentView({
   // Derive todos from agent state
   const todos = useMemo((): Todo[] => {
     const stateTodos = (
-      agentState as { todos?: Array<{ content: string; status: string }> } | null
+      agentState as {
+        todos?: Array<{ content: string; status: string }>;
+      } | null
     )?.todos;
     if (!stateTodos) return [];
     return stateTodos.map((t, i) => ({
@@ -750,7 +757,15 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
 // Empty State (no agent selected)
 // ============================================================================
 
-function EmptyState({ hasAgency, hasAgents, onMenuClick }: { hasAgency: boolean; hasAgents?: boolean; onMenuClick?: () => void }) {
+function EmptyState({
+  hasAgency,
+  hasAgents,
+  onMenuClick,
+}: {
+  hasAgency: boolean;
+  hasAgents?: boolean;
+  onMenuClick?: () => void;
+}) {
   if (!hasAgency) {
     return (
       <div className="flex-1 flex items-center justify-center relative bg-black">
@@ -782,7 +797,7 @@ function EmptyState({ hasAgency, hasAgents, onMenuClick }: { hasAgency: boolean;
       </div>
     );
   }
-  
+
   if (!hasAgents) {
     return (
       <div className="flex-1 flex items-center justify-center relative bg-black">
@@ -814,7 +829,7 @@ function EmptyState({ hasAgency, hasAgents, onMenuClick }: { hasAgency: boolean;
       </div>
     );
   }
-  
+
   return (
     <div className="flex-1 flex items-center justify-center relative bg-black">
       {/* Mobile menu button */}
@@ -844,10 +859,20 @@ function EmptyState({ hasAgency, hasAgents, onMenuClick }: { hasAgency: boolean;
 // Main Content Router
 // ============================================================================
 
-function MainContent({ agencyId, hasAgents, onMenuClick }: { agencyId: string | null; hasAgents: boolean; onMenuClick: () => void }) {
+function MainContent({
+  agencyId,
+  hasAgents,
+  onMenuClick,
+}: {
+  agencyId: string | null;
+  hasAgents: boolean;
+  onMenuClick: () => void;
+}) {
   // Match agent routes
   const [matchAgent, paramsAgent] = useRoute("/:agencyId/agent/:agentId");
-  const [matchAgentTab, paramsAgentTab] = useRoute("/:agencyId/agent/:agentId/:tab");
+  const [matchAgentTab, paramsAgentTab] = useRoute(
+    "/:agencyId/agent/:agentId/:tab"
+  );
   const [matchSettings] = useRoute("/:agencyId/settings");
 
   if (!agencyId) {
@@ -879,7 +904,13 @@ function MainContent({ agencyId, hasAgents, onMenuClick }: { agencyId: string | 
     );
   }
 
-  return <EmptyState hasAgency={true} hasAgents={hasAgents} onMenuClick={onMenuClick} />;
+  return (
+    <EmptyState
+      hasAgency={true}
+      hasAgents={hasAgents}
+      onMenuClick={onMenuClick}
+    />
+  );
 }
 
 // ============================================================================
@@ -895,7 +926,7 @@ export default function App() {
 
   // Mobile menu state - default to true for desktop, false for mobile
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       return window.innerWidth >= 768;
     }
     return true;
@@ -907,7 +938,11 @@ export default function App() {
   const agentId = pathParts[1] === "agent" ? pathParts[2] || null : null;
 
   // Data hooks
-  const { agencies, create: createAgency, error: agenciesError } = useAgencies();
+  const {
+    agencies,
+    create: createAgency,
+    error: agenciesError,
+  } = useAgencies();
   const { agents, blueprints, spawnAgent } = useAgency(agencyId);
   const { run: runState } = useAgent(agencyId, agentId);
 
@@ -933,7 +968,10 @@ export default function App() {
 
   // Derive agent status
   const agentStatus = useMemo(() => {
-    const status: Record<string, "running" | "paused" | "done" | "error" | "idle"> = {};
+    const status: Record<
+      string,
+      "running" | "paused" | "done" | "error" | "idle"
+    > = {};
     agents.forEach((a) => {
       if (a.id === agentId && runState) {
         status[a.id] =
@@ -1017,7 +1055,11 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <MainContent agencyId={agencyId} hasAgents={agents.length > 0} onMenuClick={() => setIsMobileMenuOpen(true)} />
+        <MainContent
+          agencyId={agencyId}
+          hasAgents={agents.length > 0}
+          onMenuClick={() => setIsMobileMenuOpen(true)}
+        />
       </div>
     </div>
   );

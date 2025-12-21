@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { Select } from "./Select";
-import { Plus, HeadCircuitIcon, Gear, CaretDown, CaretRight, X } from "@phosphor-icons/react";
+import { X } from "@phosphor-icons/react";
 
 // Types
 interface AgencyMeta {
@@ -155,7 +155,7 @@ export function Sidebar({
           <Button
             variant="secondary"
             size="sm"
-            icon={<Plus size={12} />}
+            icon={<span className="text-[10px]">[+]</span>}
             onClick={() => onCreateAgency()}
             title="New Agency"
           />
@@ -168,7 +168,7 @@ export function Sidebar({
           onClick={() => setAgentsExpanded(!agentsExpanded)}
           className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-medium text-white/50 hover:text-black hover:bg-white transition-colors border-b border-white/20"
         >
-          {agentsExpanded ? <CaretDown size={10} /> : <CaretRight size={10} />}
+          <span className="text-[10px]">{agentsExpanded ? "[-]" : "[+]"}</span>
           <span className="uppercase tracking-widest">AGENTS</span>
           <span className="ml-auto font-mono">[{agents.length}]</span>
         </button>
@@ -185,8 +185,7 @@ export function Sidebar({
                 "disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-white/30 disabled:hover:bg-transparent disabled:hover:text-white/50"
               )}
             >
-              <Plus size={12} />
-              + NEW_AGENT
+              [+] NEW_AGENT
             </button>
 
             {/* Loading state */}
@@ -269,8 +268,7 @@ export function Sidebar({
             !selectedAgencyId && "opacity-30 pointer-events-none"
           )}
         >
-          <Gear size={12} />
-          SETTINGS
+          [CFG] SETTINGS
         </Link>
       </div>
     </div>

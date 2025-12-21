@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { cn } from "../lib/utils";
-import { ChatCircle, Graph, Folder, ListChecks, Copy, Check, DotsThreeVertical, Play, Stop, Trash, List } from "@phosphor-icons/react";
+import { Copy, Check, Play, Stop, Trash, List } from "@phosphor-icons/react";
 
 export type TabId = "chat" | "trace" | "files" | "todos";
 
@@ -12,10 +12,10 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
-  { id: "chat", label: "CHAT", icon: <ChatCircle size={12} /> },
-  { id: "trace", label: "TRACE", icon: <Graph size={12} /> },
-  { id: "files", label: "FILES", icon: <Folder size={12} /> },
-  { id: "todos", label: "TASKS", icon: <ListChecks size={12} /> }
+  { id: "chat", label: "CHAT", icon: <span className="text-[10px]">[&gt;]</span> },
+  { id: "trace", label: "TRACE", icon: <span className="text-[10px]">[~]</span> },
+  { id: "files", label: "FILES", icon: <span className="text-[10px]">[/]</span> },
+  { id: "todos", label: "TASKS", icon: <span className="text-[10px]">[*]</span> }
 ];
 
 interface ContentHeaderProps {
@@ -155,7 +155,7 @@ export function ContentHeader({
             onClick={() => setShowMenu(!showMenu)}
             className="p-1.5 text-white/50 hover:text-white hover:bg-white/10 transition-colors border border-white/20"
           >
-            <DotsThreeVertical size={14} />
+            <span className="text-[10px]">[...]</span>
           </button>
           
           {showMenu && (

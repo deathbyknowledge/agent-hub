@@ -11,6 +11,14 @@
       // "bucket_name": "agents-hub-fs",
     },
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "Sandbox",
+        "name": "SANDBOX"
+      }
+    ]
+  },
   "containers": [
     {
       "class_name": "Sandbox",

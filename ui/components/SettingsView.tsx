@@ -113,18 +113,15 @@ function ScheduleTypeIcon({ type }: { type: AgentScheduleType }) {
 // Status badge
 function StatusBadge({ status }: { status: AgentSchedule["status"] }) {
   const styles = {
-    active:
-      "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
-    paused:
-      "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300",
-    disabled:
-      "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
+    active: "border-[#00ff00] text-[#00ff00]",
+    paused: "border-[#ffaa00] text-[#ffaa00]",
+    disabled: "border-white/30 text-white/30"
   };
 
   return (
     <span
       className={cn(
-        "px-2 py-0.5 rounded-full text-xs font-medium",
+        "px-1 py-0.5 border text-[10px] uppercase tracking-wider",
         styles[status]
       )}
     >
@@ -1002,31 +999,30 @@ export function SettingsView({
     }
   };
 
-  const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-    { id: "blueprints", label: "Blueprints", icon: <BlueprintIcon size={16} /> },
-    { id: "schedules", label: "Schedules", icon: <Calendar size={16} /> },
-    { id: "variables", label: "Variables", icon: <Key size={16} /> },
-    { id: "memory", label: "Memory", icon: <Brain size={16} /> },
-    { id: "info", label: "Info", icon: <Info size={16} /> },
+  const tabs: { id: SettingsTab; label: string; color: string }[] = [
+    { id: "blueprints", label: "[BPT]", color: "text-[#ffaa00]" },
+    { id: "schedules", label: "[SCH]", color: "text-white" },
+    { id: "variables", label: "[VAR]", color: "text-[#00ff00]" },
+    { id: "memory", label: "[MEM]", color: "text-[#00aaff]" },
+    { id: "info", label: "[INF]", color: "text-white/50" },
   ];
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-black">
       {/* Tab Navigation */}
-      <div className="border-b border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900">
+      <div className="border-b-2 border-white bg-black">
         <div className="flex overflow-x-auto scrollbar-hide">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+                "px-3 py-2 text-[11px] tracking-wider transition-colors whitespace-nowrap border-r border-white/20",
                 activeTab === tab.id
-                  ? "border-orange-500 text-orange-600 dark:text-orange-400"
-                  : "border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-600"
+                  ? "bg-white text-black"
+                  : cn(tab.color, "hover:text-black hover:bg-white")
               )}
             >
-              {tab.icon}
               {tab.label}
             </button>
           ))}
@@ -1076,8 +1072,8 @@ export function SettingsView({
       <LayerCard>
         <LayerCardFooter className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Key size={16} className="text-purple-500" />
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
+            <span className="text-[10px] text-[#00ff00]">[VAR]</span>
+            <span className="text-[11px] uppercase tracking-wider text-white">
               Variables
             </span>
           </div>
@@ -1169,8 +1165,8 @@ export function SettingsView({
       <LayerCard>
         <LayerCardFooter className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Brain size={16} className="text-pink-500" />
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
+            <span className="text-[10px] text-[#00aaff]">[MEM]</span>
+            <span className="text-[11px] uppercase tracking-wider text-white">
               Memory
             </span>
           </div>
@@ -1208,8 +1204,8 @@ export function SettingsView({
       <LayerCard>
         <LayerCardFooter className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <BlueprintIcon size={16} className="text-orange-500" />
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
+            <span className="text-[10px] text-[#ffaa00]">[BPT]</span>
+            <span className="text-[11px] uppercase tracking-wider text-white">
               Agent Blueprints
             </span>
           </div>
@@ -1239,8 +1235,8 @@ export function SettingsView({
       <LayerCard>
         <LayerCardFooter className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Calendar size={16} className="text-blue-500" />
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
+            <span className="text-[10px] text-white/50">[SCH]</span>
+            <span className="text-[11px] uppercase tracking-wider text-white">
               Scheduled Runs
             </span>
           </div>

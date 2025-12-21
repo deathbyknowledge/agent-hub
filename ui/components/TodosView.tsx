@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cn } from "../lib/utils";
-import { Check, Clock, Warning, CaretDown, CaretRight } from "@phosphor-icons/react";
+import { Check, Clock, Warning } from "@phosphor-icons/react";
 
 // Types
 type TodoStatus = "pending" | "in_progress" | "done" | "blocked";
@@ -212,7 +212,7 @@ export function TodosView({ todos, onToggle }: TodosViewProps) {
                   onClick={() => setShowCompleted(!showCompleted)}
                   className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/30 mb-2 hover:text-black hover:bg-white transition-colors border-b border-white/10 pb-1 w-full"
                 >
-                  {showCompleted ? <CaretDown size={10} /> : <CaretRight size={10} />}
+                  <span>{showCompleted ? "[-]" : "[+]"}</span>
                   COMPLETED [{completedTodos.length}]
                 </button>
                 {showCompleted && (
