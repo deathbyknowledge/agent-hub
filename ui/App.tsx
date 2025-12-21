@@ -23,13 +23,22 @@ import {
   HeadCircuitIcon as BlueprintIcon,
   List,
 } from "@phosphor-icons/react";
-import { useAgencies, useAgency, useAgent, usePlugins, getStoredSecret, setStoredSecret } from "./hooks";
+import { useAgencies, useAgency, useAgent, usePlugins, getStoredSecret, setStoredSecret, QueryClient, QueryClientProvider } from "./hooks";
 import type {
   AgentBlueprint,
   ChatMessage,
   ToolCall as APIToolCall,
 } from "@client";
 import { createRoot } from "react-dom/client";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60,
+      retry: 1,
+    },
+  },
+});
 
 // ============================================================================
 // Helper Functions
@@ -443,6 +452,7 @@ function AgentView({
     spawnAgent,
     listDirectory,
     readFile,
+    loading: agencyLoading,
   } = useAgency(agencyId);
   const {
     state: agentState,
@@ -451,6 +461,7 @@ function AgentView({
     sendMessage,
     cancel,
     loading: agentLoading,
+    error: agentError,
   } = useAgent(agencyId, agentId);
 
   // File loading state
@@ -606,6 +617,13 @@ function AgentView({
   };
 
   if (!selectedAgent) {
+    if (agencyLoading) {
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="animate-pulse text-neutral-500">Loading agent...</div>
+        </div>
+      );
+    }
     return (
       <div className="flex-1 flex items-center justify-center text-neutral-400">
         <p className="text-lg">Agent not found</p>
@@ -999,6 +1017,8 @@ export default function App() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
   </StrictMode>
 );

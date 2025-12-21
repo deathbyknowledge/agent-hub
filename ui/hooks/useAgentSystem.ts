@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AgentHubClient,
-  AgencyClient,
   AgentClient,
   type AgencyMeta,
   type AgentSummary,
@@ -32,7 +32,6 @@ export function getStoredSecret(): string | undefined {
 // Set secret in localStorage
 export function setStoredSecret(secret: string): void {
   localStorage.setItem("hub_secret", secret);
-  // Reset the client so it picks up the new secret
   clientInstance = null;
 }
 
@@ -55,71 +54,67 @@ export function getClient(): AgentHubClient {
   return clientInstance;
 }
 
+// Query keys for cache management
+export const queryKeys = {
+  agencies: ["agencies"] as const,
+  plugins: ["plugins"] as const,
+  agents: (agencyId: string) => ["agents", agencyId] as const,
+  blueprints: (agencyId: string) => ["blueprints", agencyId] as const,
+  schedules: (agencyId: string) => ["schedules", agencyId] as const,
+  vars: (agencyId: string) => ["vars", agencyId] as const,
+  memoryDisks: (agencyId: string) => ["memoryDisks", agencyId] as const,
+};
+
 // ============================================================================
 // useAgencies - List and manage agencies
 // ============================================================================
 
 export function useAgencies() {
-  const [agencies, setAgencies] = useState<AgencyMeta[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const queryClient = useQueryClient();
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const client = getClient();
-      const { agencies } = await client.listAgencies();
-      setAgencies(agencies);
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data: agencies = [], isLoading: loading, error } = useQuery({
+    queryKey: queryKeys.agencies,
+    queryFn: async () => {
+      const { agencies } = await getClient().listAgencies();
+      return agencies;
+    },
+  });
 
-  const create = useCallback(async (name?: string) => {
-    const client = getClient();
-    const agency = await client.createAgency({ name });
-    setAgencies((prev) => [...prev, agency]);
-    return agency;
-  }, []);
+  const createMutation = useMutation({
+    mutationFn: async (name?: string) => {
+      return getClient().createAgency({ name });
+    },
+    onSuccess: (newAgency) => {
+      queryClient.setQueryData<AgencyMeta[]>(queryKeys.agencies, (old) => 
+        old ? [...old, newAgency] : [newAgency]
+      );
+    },
+  });
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  return { agencies, loading, error, refresh, create };
+  return {
+    agencies,
+    loading,
+    error: error as Error | null,
+    refresh: () => queryClient.invalidateQueries({ queryKey: queryKeys.agencies }),
+    create: createMutation.mutateAsync,
+  };
 }
 
 // ============================================================================
-// useVarHints - Get plugin var hints
+// usePlugins - Get plugin and tool info
 // ============================================================================
 
 export function usePlugins() {
-  const [plugins, setPlugins] = useState<PluginInfo[]>([]);
-  const [tools, setTools] = useState<ToolInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading: loading } = useQuery({
+    queryKey: queryKeys.plugins,
+    queryFn: async () => getClient().getPlugins(),
+  });
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const client = getClient();
-      const { plugins, tools } = await client.getPlugins();
-      setPlugins(plugins);
-      setTools(tools);
-    } catch (e) {
-      console.error("Failed to fetch plugins:", e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  return { plugins, tools, loading, refresh };
+  return {
+    plugins: data?.plugins ?? [],
+    tools: data?.tools ?? [],
+    loading,
+  };
 }
 
 // ============================================================================
@@ -132,223 +127,123 @@ export type MemoryDisk = {
   size?: number;
 };
 
-export function useAgency(agencyId: string | null) {
-  const [agencyClient, setAgencyClient] = useState<AgencyClient | null>(null);
-  const [agents, setAgents] = useState<AgentSummary[]>([]);
-  const [blueprints, setBlueprints] = useState<AgentBlueprint[]>([]);
-  const [schedules, setSchedules] = useState<AgentSchedule[]>([]);
-  const [vars, setVars] = useState<Record<string, unknown>>({});
-  const [memoryDisks, setMemoryDisks] = useState<MemoryDisk[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-
-  // Update agency client when ID changes
-  useEffect(() => {
-    if (agencyId) {
-      const client = getClient();
-      setAgencyClient(client.agency(agencyId));
-    } else {
-      setAgencyClient(null);
-      setAgents([]);
-      setBlueprints([]);
-    }
-  }, [agencyId]);
-
-  // Fetch agents when agency client changes
-  const refreshAgents = useCallback(async () => {
-    if (!agencyClient) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const { agents } = await agencyClient.listAgents();
-      setAgents(agents);
-    } catch (e) {
-      setError(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-      setLoading(false);
-    }
-  }, [agencyClient]);
-
-  // Fetch blueprints
-  const refreshBlueprints = useCallback(async () => {
-    if (!agencyClient) return;
-    try {
-      const { blueprints } = await agencyClient.listBlueprints();
-      setBlueprints(blueprints);
-    } catch (e) {
-      console.error("Failed to fetch blueprints:", e);
-    }
-  }, [agencyClient]);
-
-  // Fetch schedules
-  const refreshSchedules = useCallback(async () => {
-    if (!agencyClient) return;
-    try {
-      const { schedules } = await agencyClient.listSchedules();
-      setSchedules(schedules);
-    } catch (e) {
-      console.error("Failed to fetch schedules:", e);
-    }
-  }, [agencyClient]);
-
-  // Fetch vars
-  const refreshVars = useCallback(async () => {
-    if (!agencyClient) return;
-    try {
-      const { vars } = await agencyClient.getVars();
-      setVars(vars);
-    } catch (e) {
-      console.error("Failed to fetch vars:", e);
-    }
-  }, [agencyClient]);
-
-  // Fetch memory disks
-  const refreshMemoryDisks = useCallback(async () => {
-    if (!agencyClient) return;
-    try {
-      const { entries } = await agencyClient.listDirectory("/shared/memories");
-      const disks: MemoryDisk[] = [];
-      for (const entry of entries) {
-        if (entry.type === "file" && entry.path.endsWith(".idz")) {
-          const name = entry.path.replace(/.*\//, "").replace(/\.idz$/, "");
-          // Try to read the file to get description and size
-          try {
-            const { content } = await agencyClient.readFile(entry.path);
-            const data = JSON.parse(content) as { description?: string; entries?: unknown[] };
-            disks.push({
-              name,
-              description: data.description,
-              size: data.entries?.length,
-            });
-          } catch {
-            disks.push({ name });
-          }
+async function fetchMemoryDisks(agencyId: string): Promise<MemoryDisk[]> {
+  const client = getClient().agency(agencyId);
+  try {
+    const { entries } = await client.listDirectory("/shared/memories");
+    const disks: MemoryDisk[] = [];
+    for (const entry of entries) {
+      if (entry.type === "file" && entry.path.endsWith(".idz")) {
+        const name = entry.path.replace(/.*\//, "").replace(/\.idz$/, "");
+        try {
+          const { content } = await client.readFile(entry.path);
+          const data = JSON.parse(content) as { description?: string; entries?: unknown[] };
+          disks.push({ name, description: data.description, size: data.entries?.length });
+        } catch {
+          disks.push({ name });
         }
       }
-      setMemoryDisks(disks);
-    } catch {
-      // Directory might not exist yet
-      setMemoryDisks([]);
     }
-  }, [agencyClient]);
+    return disks;
+  } catch {
+    return [];
+  }
+}
 
-  useEffect(() => {
-    if (agencyClient) {
-      refreshAgents();
-      refreshBlueprints();
-      refreshSchedules();
-      refreshVars();
-      refreshMemoryDisks();
-    }
-  }, [agencyClient, refreshAgents, refreshBlueprints, refreshSchedules, refreshVars, refreshMemoryDisks]);
+export function useAgency(agencyId: string | null) {
+  const queryClient = useQueryClient();
+  const client = agencyId ? getClient().agency(agencyId) : null;
 
-  const spawnAgent = useCallback(
-    async (agentType: string) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      const agent = await agencyClient.spawnAgent({ agentType });
-      // Refresh the list to get the new agent
-      await refreshAgents();
-      return agent;
+  // Queries
+  const { data: agents = [], isLoading: loading, error } = useQuery({
+    queryKey: queryKeys.agents(agencyId!),
+    queryFn: async () => {
+      const { agents } = await client!.listAgents();
+      return agents;
     },
-    [agencyClient, refreshAgents]
-  );
+    enabled: !!agencyId,
+  });
 
-  // Filesystem operations
-  const listDirectory = useCallback(
-    async (path: string = "/") => {
-      if (!agencyClient) throw new Error("No agency selected");
-      return agencyClient.listDirectory(path);
+  const { data: blueprints = [] } = useQuery({
+    queryKey: queryKeys.blueprints(agencyId!),
+    queryFn: async () => {
+      const { blueprints } = await client!.listBlueprints();
+      return blueprints;
     },
-    [agencyClient]
-  );
+    enabled: !!agencyId,
+  });
 
-  const readFile = useCallback(
-    async (path: string) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      return agencyClient.readFile(path);
+  const { data: schedules = [] } = useQuery({
+    queryKey: queryKeys.schedules(agencyId!),
+    queryFn: async () => {
+      const { schedules } = await client!.listSchedules();
+      return schedules;
     },
-    [agencyClient]
-  );
+    enabled: !!agencyId,
+  });
 
-  // Schedule operations
-  const createSchedule = useCallback(
-    async (request: CreateScheduleRequest) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      const { schedule } = await agencyClient.createSchedule(request);
-      await refreshSchedules();
+  const { data: vars = {} } = useQuery({
+    queryKey: queryKeys.vars(agencyId!),
+    queryFn: async () => {
+      const { vars } = await client!.getVars();
+      return vars;
+    },
+    enabled: !!agencyId,
+  });
+
+  const { data: memoryDisks = [] } = useQuery({
+    queryKey: queryKeys.memoryDisks(agencyId!),
+    queryFn: () => fetchMemoryDisks(agencyId!),
+    enabled: !!agencyId,
+  });
+
+  // Mutations
+  const spawnMutation = useMutation({
+    mutationFn: async (agentType: string) => client!.spawnAgent({ agentType }),
+    onSuccess: (newAgent) => {
+      queryClient.setQueryData<AgentSummary[]>(queryKeys.agents(agencyId!), (old) =>
+        old ? [...old, newAgent] : [newAgent]
+      );
+    },
+  });
+
+  const scheduleMutation = useMutation({
+    mutationFn: async (request: CreateScheduleRequest) => {
+      const { schedule } = await client!.createSchedule(request);
       return schedule;
     },
-    [agencyClient, refreshSchedules]
-  );
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
+  });
 
-  const deleteSchedule = useCallback(
-    async (scheduleId: string) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      await agencyClient.deleteSchedule(scheduleId);
-      await refreshSchedules();
+  const deleteScheduleMutation = useMutation({
+    mutationFn: (scheduleId: string) => client!.deleteSchedule(scheduleId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
+  });
+
+  const pauseScheduleMutation = useMutation({
+    mutationFn: (scheduleId: string) => client!.pauseSchedule(scheduleId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
+  });
+
+  const resumeScheduleMutation = useMutation({
+    mutationFn: (scheduleId: string) => client!.resumeSchedule(scheduleId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
+  });
+
+  const setVarMutation = useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
+      await client!.setVar(key, value);
     },
-    [agencyClient, refreshSchedules]
-  );
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
+  });
 
-  const pauseSchedule = useCallback(
-    async (scheduleId: string) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      await agencyClient.pauseSchedule(scheduleId);
-      await refreshSchedules();
-    },
-    [agencyClient, refreshSchedules]
-  );
+  const deleteVarMutation = useMutation({
+    mutationFn: (key: string) => client!.deleteVar(key),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
+  });
 
-  const resumeSchedule = useCallback(
-    async (scheduleId: string) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      await agencyClient.resumeSchedule(scheduleId);
-      await refreshSchedules();
-    },
-    [agencyClient, refreshSchedules]
-  );
-
-  const triggerSchedule = useCallback(
-    async (scheduleId: string) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      const { run } = await agencyClient.triggerSchedule(scheduleId);
-      return run;
-    },
-    [agencyClient]
-  );
-
-  const getScheduleRuns = useCallback(
-    async (scheduleId: string): Promise<ScheduleRun[]> => {
-      if (!agencyClient) throw new Error("No agency selected");
-      const { runs } = await agencyClient.getScheduleRuns(scheduleId);
-      return runs;
-    },
-    [agencyClient]
-  );
-
-  // Vars operations
-  const setVar = useCallback(
-    async (key: string, value: unknown) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      await agencyClient.setVar(key, value);
-      await refreshVars();
-    },
-    [agencyClient, refreshVars]
-  );
-
-  const deleteVar = useCallback(
-    async (key: string) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      await agencyClient.deleteVar(key);
-      await refreshVars();
-    },
-    [agencyClient, refreshVars]
-  );
-
-  // Memory disk operations
-  const createMemoryDisk = useCallback(
-    async (name: string, description?: string, entries?: string[]) => {
-      if (!agencyClient) throw new Error("No agency selected");
+  const createMemoryDiskMutation = useMutation({
+    mutationFn: async ({ name, description, entries }: { name: string; description?: string; entries?: string[] }) => {
       const idz = {
         version: 1,
         name,
@@ -356,92 +251,74 @@ export function useAgency(agencyId: string | null) {
         hasEmbeddings: false,
         entries: entries?.map((content) => ({ content })) ?? [],
       };
-      await agencyClient.writeFile(`/shared/memories/${name}.idz`, JSON.stringify(idz));
-      await refreshMemoryDisks();
+      await client!.writeFile(`/shared/memories/${name}.idz`, JSON.stringify(idz));
     },
-    [agencyClient, refreshMemoryDisks]
-  );
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId!) }),
+  });
 
-  const importMemoryDisk = useCallback(
-    async (file: File) => {
-      if (!agencyClient) throw new Error("No agency selected");
+  const importMemoryDiskMutation = useMutation({
+    mutationFn: async (file: File) => {
       const content = await file.text();
-      // Validate it's valid JSON
       const data = JSON.parse(content) as { name?: string };
       const name = data.name || file.name.replace(/\.(idz|json)$/, "");
-      await agencyClient.writeFile(`/shared/memories/${name}.idz`, content);
-      await refreshMemoryDisks();
+      await client!.writeFile(`/shared/memories/${name}.idz`, content);
     },
-    [agencyClient, refreshMemoryDisks]
-  );
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId!) }),
+  });
 
-  const deleteMemoryDisk = useCallback(
-    async (name: string) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      await agencyClient.deleteFile(`/shared/memories/${name}.idz`);
-      await refreshMemoryDisks();
-    },
-    [agencyClient, refreshMemoryDisks]
-  );
+  const deleteMemoryDiskMutation = useMutation({
+    mutationFn: (name: string) => client!.deleteFile(`/shared/memories/${name}.idz`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId!) }),
+  });
 
-  const createBlueprint = useCallback(
-    async (blueprint: Omit<AgentBlueprint, "createdAt" | "updatedAt">) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      await agencyClient.createBlueprint(blueprint);
-      await refreshBlueprints();
-    },
-    [agencyClient, refreshBlueprints]
-  );
+  const blueprintMutation = useMutation({
+    mutationFn: (blueprint: Omit<AgentBlueprint, "createdAt" | "updatedAt"> | AgentBlueprint) =>
+      client!.createBlueprint(blueprint),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId!) }),
+  });
 
-  const updateBlueprint = useCallback(
-    async (blueprint: AgentBlueprint) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      await agencyClient.createBlueprint(blueprint);
-      await refreshBlueprints();
-    },
-    [agencyClient, refreshBlueprints]
-  );
-
-  const deleteBlueprint = useCallback(
-    async (name: string) => {
-      if (!agencyClient) throw new Error("No agency selected");
-      await agencyClient.deleteBlueprint(name);
-      await refreshBlueprints();
-    },
-    [agencyClient, refreshBlueprints]
-  );
+  const deleteBlueprintMutation = useMutation({
+    mutationFn: (name: string) => client!.deleteBlueprint(name),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId!) }),
+  });
 
   return {
-    agencyClient,
     agents,
     blueprints,
     schedules,
     vars,
-    loading,
-    error,
-    refreshAgents,
-    refreshBlueprints,
-    refreshSchedules,
-    spawnAgent,
-    listDirectory,
-    readFile,
-    createSchedule,
-    deleteSchedule,
-    pauseSchedule,
-    resumeSchedule,
-    triggerSchedule,
-    getScheduleRuns,
-    refreshVars,
-    setVar,
-    deleteVar,
     memoryDisks,
-    refreshMemoryDisks,
-    createMemoryDisk,
-    importMemoryDisk,
-    deleteMemoryDisk,
-    createBlueprint,
-    updateBlueprint,
-    deleteBlueprint,
+    loading,
+    error: error as Error | null,
+    refreshAgents: () => queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId!) }),
+    refreshBlueprints: () => queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId!) }),
+    refreshSchedules: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
+    refreshVars: () => queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
+    refreshMemoryDisks: () => queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId!) }),
+    spawnAgent: spawnMutation.mutateAsync,
+    listDirectory: (path: string = "/") => client!.listDirectory(path),
+    readFile: (path: string) => client!.readFile(path),
+    createSchedule: scheduleMutation.mutateAsync,
+    deleteSchedule: deleteScheduleMutation.mutateAsync,
+    pauseSchedule: pauseScheduleMutation.mutateAsync,
+    resumeSchedule: resumeScheduleMutation.mutateAsync,
+    triggerSchedule: async (scheduleId: string) => {
+      const { run } = await client!.triggerSchedule(scheduleId);
+      return run;
+    },
+    getScheduleRuns: async (scheduleId: string): Promise<ScheduleRun[]> => {
+      const { runs } = await client!.getScheduleRuns(scheduleId);
+      return runs;
+    },
+    setVar: (key: string, value: unknown) => setVarMutation.mutateAsync({ key, value }),
+    deleteVar: deleteVarMutation.mutateAsync,
+    createMemoryDisk: (name: string, description?: string, entries?: string[]) =>
+      createMemoryDiskMutation.mutateAsync({ name, description, entries }),
+    importMemoryDisk: importMemoryDiskMutation.mutateAsync,
+    deleteMemoryDisk: deleteMemoryDiskMutation.mutateAsync,
+    createBlueprint: blueprintMutation.mutateAsync,
+    updateBlueprint: blueprintMutation.mutateAsync,
+    deleteBlueprint: deleteBlueprintMutation.mutateAsync,
   };
 }
 

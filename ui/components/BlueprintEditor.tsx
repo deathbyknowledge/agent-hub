@@ -20,10 +20,10 @@ interface BlueprintEditorProps {
   blueprints: AgentBlueprint[];
   plugins: PluginInfo[];
   tools: ToolInfo[];
-  onCreateBlueprint: (blueprint: Omit<AgentBlueprint, "createdAt" | "updatedAt">) => Promise<void>;
-  onUpdateBlueprint: (blueprint: AgentBlueprint) => Promise<void>;
-  onDeleteBlueprint: (name: string) => Promise<void>;
-  onTestBlueprint?: (name: string) => Promise<void>;
+  onCreateBlueprint: (blueprint: Omit<AgentBlueprint, "createdAt" | "updatedAt">) => Promise<unknown>;
+  onUpdateBlueprint: (blueprint: AgentBlueprint) => Promise<unknown>;
+  onDeleteBlueprint: (name: string) => Promise<unknown>;
+  onTestBlueprint?: (name: string) => Promise<unknown>;
 }
 
 function isStaticBlueprint(blueprint: AgentBlueprint): boolean {
