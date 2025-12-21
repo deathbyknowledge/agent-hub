@@ -378,27 +378,16 @@ function BlueprintCard({
       </div>
 
       {expanded && (
-        <div className="px-4 py-3 border-t border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-950 space-y-3">
+        <div className="px-4 py-3 border-t border-white/20 bg-black space-y-3">
           <div>
-            <div className="text-xs font-medium text-neutral-500 mb-1">Model</div>
-            <div className="text-sm text-neutral-900 dark:text-neutral-100">
-              {blueprint.model || "Default"}
+            <div className="text-[10px] uppercase tracking-wider text-white/50 mb-1">Model</div>
+            <div className="text-xs text-white font-mono">
+              {blueprint.model || "default"}
             </div>
           </div>
 
-          {blueprint.vars && Object.keys(blueprint.vars).length > 0 && (
-            <div>
-              <div className="text-xs font-medium text-neutral-500 mb-1">
-                Variables
-              </div>
-              <pre className="text-xs bg-neutral-100 dark:bg-neutral-900 p-3 rounded-lg overflow-auto max-h-48 text-neutral-800 dark:text-neutral-200">
-                {JSON.stringify(blueprint.vars, null, 2)}
-              </pre>
-            </div>
-          )}
-
           <div>
-            <div className="text-xs font-medium text-neutral-500 mb-1">
+            <div className="text-[10px] uppercase tracking-wider text-white/50 mb-1">
               Capabilities ({blueprint.capabilities.length})
             </div>
             <div className="flex flex-wrap gap-1">
@@ -406,10 +395,10 @@ function BlueprintCard({
                 <span
                   key={cap}
                   className={cn(
-                    "px-2 py-0.5 rounded text-xs font-medium",
+                    "px-2 py-0.5 text-[10px] font-mono border",
                     cap.startsWith("@")
-                      ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
-                      : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                      ? "border-[#ffaa00]/50 text-[#ffaa00]"
+                      : "border-white/30 text-white/70"
                   )}
                 >
                   {cap}
@@ -419,22 +408,46 @@ function BlueprintCard({
           </div>
 
           <div>
-            <div className="text-xs font-medium text-neutral-500 mb-1">
+            <div className="text-[10px] uppercase tracking-wider text-white/50 mb-1">
               System Prompt
             </div>
-            <pre className="text-xs bg-neutral-100 dark:bg-neutral-900 p-3 rounded-lg overflow-auto max-h-48 text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap">
+            <pre className="text-xs bg-white/5 border border-white/20 p-3 overflow-auto max-h-48 text-white/80 whitespace-pre-wrap font-mono">
               {blueprint.prompt}
             </pre>
           </div>
 
           {(blueprint.createdAt || blueprint.updatedAt) && (
-            <div className="flex gap-4 text-xs text-neutral-500 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+            <div className="flex gap-4 text-[10px] text-white/30 pt-2 border-t border-white/10 font-mono">
               {blueprint.createdAt && (
-                <span>Created: {new Date(blueprint.createdAt).toLocaleString()}</span>
+                <span>CREATED: {new Date(blueprint.createdAt).toLocaleString()}</span>
               )}
               {blueprint.updatedAt && (
-                <span>Updated: {new Date(blueprint.updatedAt).toLocaleString()}</span>
+                <span>UPDATED: {new Date(blueprint.updatedAt).toLocaleString()}</span>
               )}
+            </div>
+          )}
+
+          {blueprint.vars && Object.keys(blueprint.vars).length > 0 && (
+            <div className="pt-2 border-t border-white/10">
+              <div className="text-[10px] uppercase tracking-wider text-white/50 mb-2">
+                Variables ({Object.keys(blueprint.vars).length})
+              </div>
+              <div className="space-y-1">
+                {Object.entries(blueprint.vars).map(([key, value]) => (
+                  <div
+                    key={key}
+                    className="flex items-center gap-2 p-2 border border-white/20 bg-white/5"
+                  >
+                    <span className="font-mono text-xs text-white min-w-[80px]">
+                      {key}
+                    </span>
+                    <span className="text-white/30">→</span>
+                    <span className="font-mono text-xs text-white/60 truncate">
+                      {typeof value === 'string' ? value : JSON.stringify(value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

@@ -538,6 +538,153 @@ function ScheduleRunsModal({
   );
 }
 
+// Built-in runtime variables help dropdown
+const BUILTIN_VARS = [
+  { name: "LLM_API_KEY", description: "API key for the LLM provider", required: true },
+  { name: "LLM_BASE_URL", description: "Base URL for the LLM API endpoint", required: false },
+];
+
+function BuiltInVarsHelp({ vars }: { vars: Record<string, unknown> }) {
+  const [expanded, setExpanded] = useState(false);
+  
+  return (
+    <div className="mt-4 pt-4 border-t border-white/20">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/50 hover:text-white/70 w-full"
+      >
+        <span>{expanded ? "[-]" : "[+]"}</span>
+        <span>Runtime Variables</span>
+        <span className="text-white/30 ml-auto">built-in overrides</span>
+      </button>
+      
+      {expanded && (
+        <div className="mt-2 space-y-1">
+          {BUILTIN_VARS.map((v) => {
+            const isSet = v.name in vars;
+            return (
+              <div
+                key={v.name}
+                className="flex items-start gap-2 text-xs text-white/50"
+              >
+                <span className={cn("font-mono shrink-0", isSet && "text-[#00ff00]")}>
+                  {isSet ? "[OK]" : v.required ? "[ ]" : "[·]"} {v.name}
+                </span>
+                <span className="text-white/30 truncate">— {v.description}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Plugin requirements dropdown
+function PluginRequirementsDropdown({
+  plugins,
+  tools,
+  vars
+}: {
+  plugins: PluginInfo[];
+  tools: ToolInfo[];
+  vars: Record<string, unknown>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  
+  const itemsWithHints = [
+    ...plugins.filter(p => p.varHints?.length),
+    ...tools.filter(t => t.varHints?.length)
+  ];
+  
+  if (itemsWithHints.length === 0) return null;
+  
+  const totalMissing = itemsWithHints.reduce((acc, item) => {
+    const hints = item.varHints ?? [];
+    return acc + hints.filter((h: VarHint) => h.required && !(h.name in vars)).length;
+  }, 0);
+  
+  return (
+    <div className="mt-4 pt-4 border-t border-white/20">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/50 hover:text-white/70 w-full"
+      >
+        <span>{expanded ? "[-]" : "[+]"}</span>
+        <span>Plugin Requirements</span>
+        {totalMissing > 0 && (
+          <span className="text-[#ff0000]">[!]</span>
+        )}
+        <span className="text-white/30 ml-auto">{itemsWithHints.length} plugins/tools</span>
+      </button>
+      
+      {expanded && (
+        <div className="mt-2 space-y-2">
+          {itemsWithHints.map((item) => {
+            const hints = item.varHints ?? [];
+            const missingRequired = hints.filter(
+              (h: VarHint) => h.required && !(h.name in vars)
+            );
+            const hasMissing = missingRequired.length > 0;
+            const itemType = tools.some(t => t.name === item.name) ? 'tool' : 'plugin';
+            
+            return (
+              <div
+                key={`${itemType}-${item.name}`}
+                className={cn(
+                  "p-2 border text-sm",
+                  hasMissing
+                    ? "border-[#ffaa00]/50 bg-[#ffaa00]/5"
+                    : "border-white/20"
+                )}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-mono text-xs text-white">
+                    {item.name}
+                  </span>
+                  <span className="text-[10px] text-white/40 uppercase">{itemType}</span>
+                  {hasMissing && (
+                    <span className="text-[10px] text-[#ffaa00]">
+                      [{missingRequired.length} MISSING]
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  {hints.map((hint: VarHint) => {
+                    const isSet = hint.name in vars;
+                    const isMissing = hint.required && !isSet;
+                    return (
+                      <div
+                        key={hint.name}
+                        className={cn(
+                          "flex items-start gap-2 text-xs",
+                          isMissing ? "text-[#ffaa00]" : "text-white/50"
+                        )}
+                      >
+                        <span className={cn(
+                          "font-mono shrink-0",
+                          isSet && "text-[#00ff00]"
+                        )}>
+                          {isSet ? "[OK]" : hint.required ? "[ ]" : "[·]"} {hint.name}
+                        </span>
+                        {hint.description && (
+                          <span className="text-white/30 truncate">
+                            — {hint.description}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Vars editor component
 function VarsEditor({
   vars,
@@ -620,7 +767,6 @@ function VarsEditor({
               key={key}
               className="flex items-center gap-2 p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 overflow-hidden"
             >
-              <span className="text-neutral-400 shrink-0 text-[10px]">[K]</span>
               <span className="font-mono text-sm text-neutral-700 dark:text-neutral-300 min-w-0 sm:min-w-[100px] truncate">
                 {key}
               </span>
@@ -1020,74 +1166,11 @@ export function SettingsView({
               await onDeleteVar?.(key);
             }}
           />
+          {/* Built-in Runtime Variables Help */}
+          <BuiltInVarsHelp vars={vars} />
+          
           {/* Var hints from plugins and tools */}
-          {(plugins.some(p => p.varHints?.length) || tools.some(t => t.varHints?.length)) && (
-            <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700">
-              <div className="text-xs font-medium text-neutral-500 mb-2">Plugin Requirements</div>
-              <div className="space-y-2">
-                {[...plugins.filter(p => p.varHints?.length), ...tools.filter(t => t.varHints?.length)].map((item) => {
-                  const hints = item.varHints ?? [];
-                  const missingRequired = hints.filter(
-                    (h: VarHint) => h.required && !(h.name in vars)
-                  );
-                  const hasMissing = missingRequired.length > 0;
-                  const isPlugin = 'tags' in item && !('description' in item && plugins.every(p => p.name !== item.name));
-                  const itemType = tools.some(t => t.name === item.name) ? 'tool' : 'plugin';
-                  
-                  return (
-                    <div
-                      key={`${itemType}-${item.name}`}
-                      className={cn(
-                        "p-2 rounded-lg border text-sm",
-                        hasMissing
-                          ? "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20"
-                          : "border-neutral-200 dark:border-neutral-700"
-                      )}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-neutral-900 dark:text-neutral-100">
-                          {item.name}
-                        </span>
-                        <span className="text-xs text-neutral-400">{itemType}</span>
-                        {hasMissing && (
-                          <span className="text-xs text-amber-600 dark:text-amber-400">
-                            ({missingRequired.length} missing)
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        {hints.map((hint: VarHint) => {
-                          const isSet = hint.name in vars;
-                          const isMissing = hint.required && !isSet;
-                          return (
-                            <div
-                              key={hint.name}
-                              className={cn(
-                                "flex items-start gap-2 text-xs",
-                                isMissing ? "text-amber-700 dark:text-amber-300" : "text-neutral-500"
-                              )}
-                            >
-                              <span className={cn(
-                                "font-mono shrink-0",
-                                isSet && "text-green-600 dark:text-green-400"
-                              )}>
-                                {isSet ? "✓" : hint.required ? "○" : "·"} {hint.name}
-                              </span>
-                              {hint.description && (
-                                <span className="text-neutral-400 truncate">
-                                  — {hint.description}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <PluginRequirementsDropdown plugins={plugins} tools={tools} vars={vars} />
         </LayerCardContent>
       </LayerCard>
         )}
@@ -1200,8 +1283,8 @@ export function SettingsView({
               onCancel={() => setShowCreateForm(false)}
             />
           ) : schedules.length === 0 ? (
-            <div className="text-center py-8 text-neutral-500">
-              <div className="text-2xl mx-auto mb-2 opacity-50">⏰</div>
+            <div className="text-center py-8 text-white/50">
+              <div className="text-xl mx-auto mb-2 opacity-50 font-mono">[--:--]</div>
               <p className="text-sm">No schedules configured</p>
               <p className="text-xs mt-1">
                 Create a schedule to run agents automatically

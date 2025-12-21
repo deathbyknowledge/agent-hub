@@ -80,7 +80,6 @@ export function VarEditor({ vars, onSetVar, onDeleteVar }: VarEditorProps) {
               key={key}
               className="flex items-center gap-2 p-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 overflow-hidden"
             >
-              <span className="text-neutral-400 shrink-0 text-[10px]">[K]</span>
               <span className="font-mono text-sm text-neutral-700 dark:text-neutral-300 min-w-0 sm:min-w-[100px] truncate">
                 {key}
               </span>
