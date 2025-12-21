@@ -14,21 +14,10 @@
 
 import { z } from "zod";
 import { tool, type AgentPlugin } from "@runtime";
-import { getSandbox } from "@cloudflare/sandbox";
+import { getSandbox, Sandbox } from "@cloudflare/sandbox";
 
 const SandboxBashSchema = z.object({
   command: z.string().describe("The bash command to execute in the sandbox"),
-  cwd: z
-    .string()
-    .optional()
-    .describe(
-      "Working directory for the command. Defaults to current directory."
-    ),
-  timeout: z
-    .number()
-    .int()
-    .default(30000)
-    .describe("Timeout in milliseconds before the command is killed"),
 });
 
 const SandboxWriteFileSchema = z.object({
@@ -38,27 +27,7 @@ const SandboxWriteFileSchema = z.object({
   content: z.string().describe("The content to write to the file"),
 });
 
-interface SandboxExecOptions {
-  timeout?: number;
-  env?: Record<string, string>;
-}
-
-interface SandboxExecResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  success: boolean;
-}
-
-interface SandboxInstance {
-  exec(
-    command: string,
-    options?: SandboxExecOptions
-  ): Promise<SandboxExecResult>;
-  writeFile(path: string, content: string): Promise<void>;
-  readFile(path: string): Promise<string>;
-}
-
+type SandboxInstance = Sandbox;
 /**
  * Get a sandbox instance from the SANDBOX DO namespace.
  * Uses the standard RPC pattern - the Sandbox DO exposes exec/writeFile/readFile methods.
@@ -70,7 +39,7 @@ function getSandboxInstance(
   const sandbox = getSandbox(ns as any, id, {
     sleepAfter: 60 * 30,
   });
-  return sandbox as unknown as SandboxInstance;
+  return sandbox;
 }
 
 const SANDBOX_SYSTEM_PROMPT = `## Sandbox Container
@@ -127,24 +96,21 @@ export const sandbox: AgentPlugin = {
     const sandboxId = `agent-${ctx.agent.info.threadId}`;
     const sb = getSandboxInstance(sandboxNs, sandboxId);
 
-    // Get env vars from config (e.g., GITHUB_TOKEN for git auth)
     const sandboxEnv = ctx.agent.vars.SANDBOX_ENV as Record<string, string>;
 
     // Helper to exec with env vars injected
-    const exec = (
-      cmd: string,
-      opts?: { timeout?: number }
-    ): Promise<SandboxExecResult> => sb.exec(cmd, { ...opts, env: sandboxEnv });
+    const exec = (cmd: string, opts?: { timeout?: number }) => {
+      return sb.exec(cmd, { ...opts, env: { ...sandboxEnv } });
+    };
 
     const sandbox_bash = tool({
       name: "sandbox_bash",
       description:
         "Execute a bash command in an isolated Linux container. Supports git, npm, python, and common CLI tools. The sandbox filesystem is EPHEMERAL - use for running tests, git operations, and code analysis.",
       inputSchema: SandboxBashSchema,
-      execute: async ({ command, cwd, timeout }) => {
+      execute: async ({ command }) => {
         try {
-          const fullCommand = cwd ? `cd ${cwd} && ${command}` : command;
-          const result = await exec(fullCommand, { timeout });
+          const result = await exec(command, { timeout: 60000 });
 
           let output = "";
           if (result.stdout) output += result.stdout;
