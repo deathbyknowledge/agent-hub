@@ -12,10 +12,10 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
-  { id: "chat", label: "Chat", icon: <ChatCircle size={16} /> },
-  { id: "trace", label: "Trace", icon: <Graph size={16} /> },
-  { id: "files", label: "Files", icon: <Folder size={16} /> },
-  { id: "todos", label: "Todos", icon: <ListChecks size={16} /> }
+  { id: "chat", label: "CHAT", icon: <ChatCircle size={12} /> },
+  { id: "trace", label: "TRACE", icon: <Graph size={12} /> },
+  { id: "files", label: "FILES", icon: <Folder size={12} /> },
+  { id: "todos", label: "TASKS", icon: <ListChecks size={12} /> }
 ];
 
 interface ContentHeaderProps {
@@ -30,12 +30,12 @@ interface ContentHeaderProps {
   onMenuClick?: () => void;
 }
 
-const STATUS_LABELS: Record<string, { label: string; color: string; bgColor: string }> = {
-  running: { label: "Running", color: "text-blue-600", bgColor: "bg-blue-100 dark:bg-blue-900/30" },
-  paused: { label: "Paused", color: "text-yellow-600", bgColor: "bg-yellow-100 dark:bg-yellow-900/30" },
-  done: { label: "Done", color: "text-green-600", bgColor: "bg-green-100 dark:bg-green-900/30" },
-  error: { label: "Error", color: "text-red-600", bgColor: "bg-red-100 dark:bg-red-900/30" },
-  idle: { label: "Idle", color: "text-neutral-500", bgColor: "bg-neutral-100 dark:bg-neutral-800" }
+const STATUS_LABELS: Record<string, { label: string; color: string; borderColor: string }> = {
+  running: { label: "RUNNING", color: "text-[#00aaff]", borderColor: "border-[#00aaff]" },
+  paused: { label: "PAUSED", color: "text-[#ffaa00]", borderColor: "border-[#ffaa00]" },
+  done: { label: "COMPLETE", color: "text-[#00ff00]", borderColor: "border-[#00ff00]" },
+  error: { label: "ERROR", color: "text-[#ff0000]", borderColor: "border-[#ff0000]" },
+  idle: { label: "IDLE", color: "text-white/50", borderColor: "border-white/30" }
 };
 
 export function ContentHeader({
@@ -78,7 +78,7 @@ export function ContentHeader({
   }, [showMenu]);
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+    <div className="flex items-center justify-between px-3 py-2 border-b border-white bg-black">
       {/* Mobile menu button */}
       {onMenuClick && (
         <button
@@ -86,10 +86,10 @@ export function ContentHeader({
             e.stopPropagation();
             onMenuClick();
           }}
-          className="md:hidden p-2 -ml-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          className="md:hidden p-1.5 -ml-1 text-white/50 hover:text-white transition-colors"
           aria-label="Open menu"
         >
-          <List size={20} />
+          <List size={16} />
         </button>
       )}
 
@@ -97,18 +97,18 @@ export function ContentHeader({
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-neutral-900 dark:text-neutral-100 truncate">
+            <span className="text-[11px] uppercase tracking-wider text-white truncate">
               {threadName}
             </span>
             <span className={cn(
-              "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium",
+              "inline-flex items-center gap-1.5 px-1.5 py-0.5 text-[10px] uppercase tracking-wider border",
               statusInfo.color,
-              statusInfo.bgColor
+              statusInfo.borderColor
             )}>
               {isRunning && (
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full bg-[#00aaff] opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 bg-[#00aaff]" />
                 </span>
               )}
               {statusInfo.label}
@@ -116,31 +116,31 @@ export function ContentHeader({
           </div>
           <button
             onClick={copyId}
-            className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400 font-mono hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors group truncate"
+            className="flex items-center gap-1 text-[10px] text-white/40 font-mono hover:text-white transition-colors group truncate"
           >
-            <span className="hidden sm:inline">{threadId.slice(0, 12)}...</span>
-            <span className="sm:hidden">{threadId.slice(0, 8)}...</span>
+            <span className="hidden sm:inline">ID:{threadId.slice(0, 12)}</span>
+            <span className="sm:hidden">ID:{threadId.slice(0, 8)}</span>
             {copied ? (
-              <Check size={12} className="text-green-500" />
+              <Check size={10} className="text-[#00ff00]" />
             ) : (
-              <Copy size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+              <Copy size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
             )}
           </button>
         </div>
       </div>
 
       {/* Tabs and actions */}
-      <div className="flex items-center gap-2 shrink-0">
-        <div className="flex items-center gap-1 overflow-x-auto [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center overflow-x-auto [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {TABS.map((tab) => (
             <Link
               key={tab.id}
               href={tab.id === "chat" ? basePath : `${basePath}/${tab.id}`}
               className={cn(
-                "flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap",
+                "flex items-center gap-1 px-2 py-1 text-[10px] uppercase tracking-wider transition-colors whitespace-nowrap border-r border-white/20 last:border-r-0",
                 activeTab === tab.id
-                  ? "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
-                  : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  ? "bg-white text-black"
+                  : "text-white/50 hover:text-white hover:bg-white/10"
               )}
             >
               {tab.icon}
@@ -150,48 +150,48 @@ export function ContentHeader({
         </div>
         
         {/* Actions dropdown */}
-        <div className="relative" ref={menuRef}>
+        <div className="relative ml-1" ref={menuRef}>
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            className="p-1.5 text-white/50 hover:text-white hover:bg-white/10 transition-colors border border-white/20"
           >
-            <DotsThreeVertical size={18} />
+            <DotsThreeVertical size={14} />
           </button>
           
           {showMenu && (
-            <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 z-50">
+            <div className="absolute right-0 top-full mt-1 w-44 bg-black border border-white py-1 z-50">
               {isRunning && onStop ? (
                 <button
                   onClick={() => { onStop(); setShowMenu(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wider text-[#ff0000] hover:bg-[#ff0000]/10"
                 >
-                  <Stop size={14} className="text-red-500" />
-                  Stop Agent
+                  <Stop size={12} />
+                  TERMINATE
                 </button>
               ) : !isRunning && onRestart ? (
                 <button
                   onClick={() => { onRestart(); setShowMenu(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wider text-[#00ff00] hover:bg-[#00ff00]/10"
                 >
-                  <Play size={14} className="text-green-500" />
-                  Restart Agent
+                  <Play size={12} />
+                  RESTART
                 </button>
               ) : !onDelete ? (
-                <div className="px-3 py-2 text-sm text-neutral-400 dark:text-neutral-500">
-                  No actions available
+                <div className="px-3 py-1.5 text-[11px] uppercase tracking-wider text-white/30">
+                  // NO ACTIONS
                 </div>
               ) : null}
               {onDelete && (
                 <>
                   {(isRunning && onStop) || (!isRunning && onRestart) ? (
-                    <div className="border-t border-neutral-200 dark:border-neutral-700 my-1" />
+                    <div className="border-t border-white/20 my-1" />
                   ) : null}
                   <button
                     onClick={() => { onDelete(); setShowMenu(false); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wider text-[#ff0000] hover:bg-[#ff0000]/10"
                   >
-                    <Trash size={14} />
-                    Delete Agent
+                    <Trash size={12} />
+                    DELETE
                   </button>
                 </>
               )}

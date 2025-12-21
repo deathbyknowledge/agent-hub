@@ -59,22 +59,20 @@ function CodeBlock({ children, className }: { children: string; className?: stri
   };
   
   return (
-    <div className="relative group my-2">
-      <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+    <div className="relative group my-2 border border-white/30">
+      <div className="flex items-center justify-between px-2 py-1 border-b border-white/30 bg-white/5">
+        <span className="text-[10px] uppercase tracking-wider text-white/50">
+          {language || "CODE"}
+        </span>
         <button
           onClick={copyCode}
-          className="p-1.5 rounded bg-neutral-700 hover:bg-neutral-600 text-neutral-300 text-xs"
+          className="p-1 text-white/30 hover:text-white transition-colors"
           title="Copy code"
         >
-          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? <Check size={10} /> : <Copy size={10} />}
         </button>
       </div>
-      {language && (
-        <div className="absolute left-3 top-2 text-xs text-neutral-500 font-mono">
-          {language}
-        </div>
-      )}
-      <pre className="bg-neutral-900 dark:bg-neutral-950 text-neutral-100 p-3 pt-8 rounded-lg overflow-x-auto text-xs font-mono">
+      <pre className="bg-black text-[#00ff00] p-3 overflow-x-auto text-xs">
         <code>{children}</code>
       </pre>
     </div>
@@ -84,7 +82,7 @@ function CodeBlock({ children, className }: { children: string; className?: stri
 // Markdown renderer with custom components
 const MarkdownContent = memo(function MarkdownContent({ content }: { content: string }) {
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-0 prose-pre:p-0 prose-pre:bg-transparent">
+    <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-0 prose-pre:p-0 prose-pre:bg-transparent prose-headings:text-white prose-headings:uppercase prose-headings:tracking-wider prose-headings:text-xs prose-strong:text-white prose-p:text-white/80">
       <Markdown
         components={{
           code({ className, children, ...props }) {
@@ -94,7 +92,7 @@ const MarkdownContent = memo(function MarkdownContent({ content }: { content: st
             if (isInline) {
               return (
                 <code
-                  className="bg-neutral-100 dark:bg-neutral-700 px-1.5 py-0.5 rounded text-xs font-mono"
+                  className="bg-white/10 border border-white/20 px-1 py-0.5 text-[#00ff00] text-xs"
                   {...props}
                 >
                   {codeContent}
@@ -105,7 +103,6 @@ const MarkdownContent = memo(function MarkdownContent({ content }: { content: st
             return <CodeBlock className={className}>{codeContent}</CodeBlock>;
           },
           pre({ children }) {
-            // Pass through to let code handle it
             return <>{children}</>;
           },
           a({ href, children }) {
@@ -114,7 +111,7 @@ const MarkdownContent = memo(function MarkdownContent({ content }: { content: st
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-orange-500 hover:text-orange-600 underline"
+                className="text-[#00aaff] hover:text-white underline"
               >
                 {children}
               </a>
@@ -136,40 +133,40 @@ function MessageBubble({ message }: { message: Message }) {
 
   if (isSystem) {
     return (
-      <div className="flex justify-center my-2">
-        <span className="text-xs text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-3 py-1 rounded-full">
-          {message.content}
+      <div className="flex justify-center my-3">
+        <span className="text-[10px] uppercase tracking-widest text-white/30 border border-white/20 px-3 py-1">
+          // {message.content}
         </span>
       </div>
     );
   }
 
   return (
-    <div className={cn("flex gap-2 sm:gap-3 mb-4", isUser ? "flex-row-reverse" : "")}>
-      {/* Avatar */}
+    <div className={cn("flex gap-3 mb-4", isUser ? "flex-row-reverse" : "")}>
+      {/* Terminal prompt indicator */}
       <div
         className={cn(
-          "w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0",
+          "w-6 h-6 flex items-center justify-center shrink-0 border text-[10px] font-bold",
           isUser
-            ? "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
-            : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+            ? "border-white bg-white text-black"
+            : "border-[#00ff00] text-[#00ff00]"
         )}
       >
-        {isUser ? <User size={14} className="sm:w-4 sm:h-4" /> : <Robot size={14} className="sm:w-4 sm:h-4" />}
+        {isUser ? ">" : "<"}
       </div>
 
       {/* Content */}
       <div
-        className={cn("flex flex-col max-w-[85%] sm:max-w-[75%]", isUser ? "items-end" : "")}
+        className={cn("flex flex-col max-w-[85%] sm:max-w-[80%]", isUser ? "items-end" : "")}
       >
         {/* Only show text bubble if there's actual content */}
         {hasContent && (
           <div
             className={cn(
-              "px-4 py-2.5 rounded-2xl text-sm",
+              "px-3 py-2 text-xs border",
               isUser
-                ? "bg-orange-500 text-white rounded-br-md"
-                : "bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 border border-neutral-200 dark:border-neutral-700 rounded-bl-md"
+                ? "bg-white text-black border-white"
+                : "bg-black text-white/90 border-white/30"
             )}
           >
             {isUser ? (
@@ -182,14 +179,14 @@ function MessageBubble({ message }: { message: Message }) {
 
         {/* Tool calls */}
         {hasToolCalls && (
-          <div className={cn("space-y-2 w-full min-w-0", hasContent && "mt-2")}>
+          <div className={cn("space-y-1 w-full min-w-0", hasContent && "mt-2")}>
             {message.toolCalls!.map((tool) => (
               <ToolCallCard key={tool.id} toolCall={tool} />
             ))}
           </div>
         )}
 
-        <span className="text-xs text-neutral-400 mt-1">
+        <span className="text-[10px] text-white/30 mt-1 font-mono">
           {formatTime(message.timestamp)}
         </span>
       </div>
@@ -201,10 +198,10 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   const [expanded, setExpanded] = useState(false);
 
   const statusConfig = {
-    pending: { color: "text-neutral-400", bg: "bg-neutral-100 dark:bg-neutral-800", label: "pending" },
-    running: { color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/30", label: "running..." },
-    done: { color: "text-green-500", bg: "bg-green-50 dark:bg-green-900/30", label: "done" },
-    error: { color: "text-red-500", bg: "bg-red-50 dark:bg-red-900/30", label: "error" }
+    pending: { color: "text-white/40", borderColor: "border-white/20", label: "PENDING" },
+    running: { color: "text-[#00aaff]", borderColor: "border-[#00aaff]", label: "EXEC..." },
+    done: { color: "text-[#00ff00]", borderColor: "border-[#00ff00]/50", label: "OK" },
+    error: { color: "text-[#ff0000]", borderColor: "border-[#ff0000]", label: "FAIL" }
   };
   
   const config = statusConfig[toolCall.status];
@@ -212,43 +209,40 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
 
   return (
     <div className={cn(
-      "border rounded-lg overflow-hidden",
-      toolCall.status === "error" 
-        ? "border-red-200 dark:border-red-800" 
-        : "border-neutral-200 dark:border-neutral-700",
-      config.bg
+      "border overflow-hidden bg-black",
+      config.borderColor
     )}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+        className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-white/5 transition-colors"
       >
-        <Wrench size={14} className={cn(config.color, isRunning && "animate-spin")} />
-        <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300 truncate">
+        <Wrench size={12} className={cn(config.color, isRunning && "animate-spin")} />
+        <span className="text-[11px] uppercase tracking-wider text-white/70 truncate">
           {toolCall.name}
         </span>
-        <span className={cn("text-xs ml-auto flex items-center gap-1", config.color)}>
+        <span className={cn("text-[10px] ml-auto flex items-center gap-1 uppercase tracking-wider", config.color)}>
           {isRunning && (
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full bg-[#00aaff] opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 bg-[#00aaff]" />
             </span>
           )}
-          {config.label}
+          [{config.label}]
         </span>
       </button>
 
       {expanded && (
-        <div className="px-3 py-2 border-t border-neutral-200 dark:border-neutral-700 text-xs overflow-hidden">
+        <div className="px-2 py-2 border-t border-white/20 text-xs overflow-hidden">
           <div className="mb-2 min-w-0">
-            <span className="text-neutral-500">Args:</span>
-            <pre className="mt-1 p-2 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-700 dark:text-neutral-300 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
+            <span className="text-[10px] uppercase tracking-wider text-white/40">INPUT:</span>
+            <pre className="mt-1 p-2 bg-white/5 border border-white/10 text-[#ffaa00] overflow-x-auto whitespace-pre-wrap break-words max-w-full text-[11px]">
               {JSON.stringify(toolCall.args, null, 2)}
             </pre>
           </div>
           {toolCall.result !== undefined && (
             <div className="min-w-0">
-              <span className="text-neutral-500">Result:</span>
-              <pre className="mt-1 p-2 bg-neutral-100 dark:bg-neutral-800 rounded text-neutral-700 dark:text-neutral-300 overflow-x-auto whitespace-pre-wrap break-words max-w-full">
+              <span className="text-[10px] uppercase tracking-wider text-white/40">OUTPUT:</span>
+              <pre className="mt-1 p-2 bg-white/5 border border-white/10 text-[#00ff00] overflow-x-auto whitespace-pre-wrap break-words max-w-full text-[11px]">
                 {typeof toolCall.result === "string"
                   ? toolCall.result
                   : JSON.stringify(toolCall.result, null, 2)}
@@ -266,7 +260,7 @@ export function ChatView({
   onSendMessage,
   onStop,
   isLoading = false,
-  placeholder = "Type a message..."
+  placeholder = "ENTER COMMAND..."
 }: ChatViewProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -299,19 +293,22 @@ export function ChatView({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-black">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center">
-            <div className="text-center max-w-sm">
-              <Robot size={48} className="mx-auto mb-4 text-neutral-300 dark:text-neutral-600" />
-              <h3 className="text-lg font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                Ready to chat
+            <div className="text-center max-w-sm border border-white/20 p-6">
+              <div className="text-[#00ff00] text-2xl mb-4 font-mono">_</div>
+              <h3 className="text-xs uppercase tracking-widest text-white mb-2">
+                TERMINAL READY
               </h3>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                Send a message to start the conversation. The agent will respond and may use tools to help accomplish your task.
+              <p className="text-[10px] uppercase tracking-wider text-white/40">
+                AWAITING INPUT. AGENT WILL PROCESS COMMANDS AND EXECUTE TOOL CALLS AS REQUIRED.
               </p>
+              <div className="mt-4 text-[10px] text-white/20 font-mono">
+                SYS.STATUS: IDLE | MEM: OK | TOOLS: LOADED
+              </div>
             </div>
           </div>
         ) : (
@@ -325,8 +322,10 @@ export function ChatView({
       </div>
 
       {/* Input area */}
-      <div className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 sm:p-4">
+      <div className="border-t border-white bg-black p-3">
         <div className="flex items-end gap-2">
+          <div className="flex-1 flex items-center border border-white/50 focus-within:border-white transition-colors">
+            <span className="px-2 text-[#00ff00] text-xs">&gt;</span>
             <textarea
               ref={textareaRef}
               value={input}
@@ -336,31 +335,36 @@ export function ChatView({
               disabled={isLoading}
               rows={1}
               className={cn(
-                "w-full px-3 py-3 sm:px-4 sm:py-4 rounded-xl border border-neutral-200 dark:border-neutral-700",
-                "bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100",
-                "placeholder:text-neutral-400 resize-none text-sm sm:text-base",
-                "focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500",
-                "disabled:opacity-50"
+                "w-full px-2 py-2 bg-transparent text-white text-xs",
+                "placeholder:text-white/30 placeholder:uppercase placeholder:tracking-wider resize-none",
+                "focus:outline-none",
+                "disabled:opacity-30"
               )}
             />
+          </div>
 
           {isLoading && onStop ? (
-            <Button variant="danger" onClick={onStop} icon={<Stop size={16} className="sm:w-[18px] sm:h-[18px]" />} size="sm" className="sm:text-sm sm:px-3 sm:py-2">
-              <span className="hidden sm:inline">Stop</span>
+            <Button variant="danger" onClick={onStop} icon={<Stop size={12} />} size="sm">
+              <span className="hidden sm:inline">ABORT</span>
             </Button>
           ) : (
             <Button
               variant="primary"
               onClick={handleSubmit}
               disabled={!input.trim() || isLoading}
-              icon={<PaperPlaneTiltIcon size={16} className="sm:w-[18px] sm:h-[18px]" />}
+              icon={<PaperPlaneTiltIcon size={12} />}
               size="sm"
-              className="sm:text-sm sm:px-3 sm:py-2"
             >
-              <span className="hidden sm:inline">Send</span>
+              <span className="hidden sm:inline">EXEC</span>
             </Button>
           )}
         </div>
+        {isLoading && (
+          <div className="mt-2 flex items-center gap-2 text-[10px] text-[#00aaff] uppercase tracking-wider">
+            <span className="inline-block w-1.5 h-1.5 bg-[#00aaff] animate-pulse" />
+            PROCESSING...
+          </div>
+        )}
       </div>
     </div>
   );

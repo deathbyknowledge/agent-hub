@@ -35,11 +35,11 @@ interface SidebarProps {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  running: "bg-blue-500",
-  paused: "bg-yellow-500",
-  done: "bg-green-500",
-  error: "bg-red-500",
-  idle: "bg-neutral-400"
+  running: "bg-[#00aaff]",
+  paused: "bg-[#ffaa00]",
+  done: "bg-[#00ff00]",
+  error: "bg-[#ff0000]",
+  idle: "bg-white/30"
 };
 
 function formatAgentId(id: string): string {
@@ -106,7 +106,7 @@ export function Sidebar({
       {/* Mobile overlay */}
       {isOpen && onClose && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          className="fixed inset-0 bg-black/80 z-40 md:hidden"
           onClick={onClose}
         />
       )}
@@ -114,29 +114,30 @@ export function Sidebar({
       {/* Sidebar */}
       <div
         className={cn(
-          "w-64 h-full flex flex-col bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800",
+          "w-64 h-full flex flex-col bg-black border-r border-white",
           "fixed md:relative inset-y-0 left-0 z-50 md:z-auto",
-          "transform transition-transform duration-300 ease-in-out md:transform-none",
+          "transform transition-transform duration-200 ease-out md:transform-none",
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
       {/* Header */}
-      <div className="p-4 border-b border-neutral-200 dark:border-neutral-800">
+      <div className="p-3 border-b border-white">
         {/* Mobile close button */}
         {onClose && (
           <button
             onClick={onClose}
-            className="md:hidden absolute top-4 right-4 p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            className="md:hidden absolute top-3 right-3 p-1 text-white/50 hover:text-white transition-colors"
             aria-label="Close menu"
           >
-            <X size={20} />
+            <X size={16} />
           </button>
         )}
         <div className="flex items-center gap-2 mb-3">
-          <HeadCircuitIcon size={20} className="text-orange-500" />
-          <span className="font-semibold text-neutral-900 dark:text-neutral-100">
-            Agent Hub
+          <span className="text-[#00ff00]">&gt;</span>
+          <span className="text-xs uppercase tracking-widest text-white font-medium">
+            AGENT_HUB
           </span>
+          <span className="text-white/30 text-[10px] ml-auto">v0.1</span>
         </div>
 
         {/* Agency selector */}
@@ -148,13 +149,13 @@ export function Sidebar({
               else navigate("/");
             }}
             options={agencies.map((a) => ({ label: a.name, value: a.id }))}
-            placeholder="Select agency..."
-            className="flex-1 text-xs py-1.5"
+            placeholder="[SELECT AGENCY]"
+            className="flex-1"
           />
           <Button
             variant="secondary"
             size="sm"
-            icon={<Plus size={14} />}
+            icon={<Plus size={12} />}
             onClick={() => onCreateAgency()}
             title="New Agency"
           />
@@ -165,48 +166,48 @@ export function Sidebar({
       <div className="flex-1 overflow-y-auto">
         <button
           onClick={() => setAgentsExpanded(!agentsExpanded)}
-          className="w-full flex items-center gap-2 px-4 py-2 text-xs font-medium text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2 text-[10px] font-medium text-white/50 hover:text-white hover:bg-white/5 transition-colors border-b border-white/20"
         >
-          {agentsExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
-          AGENTS
-          <span className="ml-auto text-neutral-400">{agents.length}</span>
+          {agentsExpanded ? <CaretDown size={10} /> : <CaretRight size={10} />}
+          <span className="uppercase tracking-widest">AGENTS</span>
+          <span className="ml-auto font-mono">[{agents.length}]</span>
         </button>
 
         {agentsExpanded && (
-          <div className="px-2 pb-2">
+          <div className="p-2">
             {/* New agent button */}
             <button
               onClick={onCreateAgent}
               disabled={!selectedAgencyId}
               className={cn(
-                "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
-                "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800",
-                "disabled:opacity-50 disabled:cursor-not-allowed"
+                "w-full flex items-center gap-2 px-2 py-1.5 text-[11px] uppercase tracking-wider transition-colors border border-dashed border-white/30",
+                "text-white/50 hover:text-white hover:border-white hover:bg-white/5",
+                "disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-white/30 disabled:hover:bg-transparent"
               )}
             >
-              <Plus size={14} />
-              New Agent
+              <Plus size={12} />
+              + NEW_AGENT
             </button>
 
             {/* Loading state */}
             {isLoading ? (
-              <div className="px-3 py-4 space-y-2">
+              <div className="py-4 space-y-2">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="animate-pulse flex items-center gap-2 px-3 py-2">
-                    <div className="w-2 h-2 rounded-full bg-neutral-200 dark:bg-neutral-700" />
+                  <div key={i} className="flex items-center gap-2 px-2 py-1.5 border border-white/10">
+                    <div className="w-1.5 h-1.5 bg-white/20" />
                     <div className="flex-1 space-y-1">
-                      <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-24" />
-                      <div className="h-3 bg-neutral-100 dark:bg-neutral-800 rounded w-16" />
+                      <div className="h-3 bg-white/10 w-20" />
+                      <div className="h-2 bg-white/5 w-14" />
                     </div>
                   </div>
                 ))}
               </div>
             ) : agents.length === 0 ? (
-              <div className="px-3 py-4 text-xs text-neutral-400 text-center">
-                {selectedAgencyId ? "No agents yet" : "Select an agency first"}
+              <div className="px-2 py-6 text-[10px] text-white/30 text-center uppercase tracking-wider">
+                {selectedAgencyId ? "// NO AGENTS ACTIVE" : "// SELECT AGENCY"}
               </div>
             ) : (
-              <div className="mt-1 space-y-0.5">
+              <div className="mt-2 space-y-px">
                 {agents.map((agent) => {
                   const isSelected = agent.id === selectedAgentId && !isOnSettings;
                   const status = agentStatus[agent.id] || "idle";
@@ -217,29 +218,26 @@ export function Sidebar({
                       key={agent.id}
                       href={`/${selectedAgencyId}/agent/${agent.id}`}
                       className={cn(
-                        "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left relative overflow-hidden",
+                        "w-full flex items-center gap-2 px-2 py-1.5 text-xs transition-all text-left relative border",
                         isSelected
-                          ? "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300"
+                          ? "bg-white text-black border-white"
                           : isRunning
-                            ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300"
-                            : "text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                            ? "bg-[#00aaff]/10 text-[#00aaff] border-[#00aaff]/50 hover:border-[#00aaff]"
+                            : "text-white/70 border-white/20 hover:text-white hover:border-white hover:bg-white/5"
                       )}
                     >
-                      {isRunning && !isSelected && (
-                        <span className="absolute inset-0 bg-blue-400/10 dark:bg-blue-400/5 animate-pulse" />
-                      )}
-                      {/* Status indicator with pulse for running */}
-                      <span className="relative shrink-0">
+                      {/* Status indicator */}
+                      <span className="relative shrink-0 flex items-center justify-center w-3">
                         <span
                           className={cn(
-                            "block w-2 h-2 rounded-full",
+                            "block w-1.5 h-1.5",
                             STATUS_COLORS[status]
                           )}
                         />
                         {isRunning && (
                           <span
                             className={cn(
-                              "absolute inset-0 w-2 h-2 rounded-full animate-ping",
+                              "absolute w-1.5 h-1.5 animate-ping",
                               STATUS_COLORS[status]
                             )}
                           />
@@ -247,12 +245,11 @@ export function Sidebar({
                       </span>
 
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">
+                        <div className="font-medium truncate uppercase text-[11px] tracking-wide">
                           {agent.agentType}
                         </div>
-                        <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                          {formatAgentId(agent.id)} ·{" "}
-                          {formatRelativeTime(agent.createdAt)}
+                        <div className="text-[10px] text-current opacity-50 truncate font-mono">
+                          {formatAgentId(agent.id)} | {formatRelativeTime(agent.createdAt)}
                         </div>
                       </div>
                     </Link>
@@ -265,19 +262,19 @@ export function Sidebar({
       </div>
 
       {/* Settings button */}
-      <div className="border-t border-neutral-200 dark:border-neutral-800 p-2">
+      <div className="border-t border-white p-2">
         <Link
           href={selectedAgencyId ? `/${selectedAgencyId}/settings` : "#"}
           className={cn(
-            "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
+            "w-full flex items-center gap-2 px-2 py-1.5 text-[11px] uppercase tracking-wider transition-colors border",
             isOnSettings
-              ? "bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300"
-              : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800",
-            !selectedAgencyId && "opacity-50 pointer-events-none"
+              ? "bg-white text-black border-white"
+              : "text-white/50 border-white/30 hover:text-white hover:border-white hover:bg-white/5",
+            !selectedAgencyId && "opacity-30 pointer-events-none"
           )}
         >
-          <Gear size={16} />
-          Agency Settings
+          <Gear size={12} />
+          SETTINGS
         </Link>
       </div>
     </div>

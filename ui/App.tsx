@@ -203,37 +203,37 @@ function BlueprintPicker({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
-        <div className="px-3 sm:px-4 py-2.5 sm:py-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between">
-          <h2 className="font-semibold text-sm sm:text-base text-neutral-900 dark:text-neutral-100">
-            Select Agent Type
+    <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
+      <div className="bg-black border border-white max-w-md w-full mx-4 overflow-hidden">
+        <div className="px-3 py-2 border-b border-white flex items-center justify-between">
+          <h2 className="text-xs uppercase tracking-widest text-white">
+            SELECT_BLUEPRINT
           </h2>
           <button
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+            className="text-white/50 hover:text-white text-xs"
           >
-            ✕
+            [X]
           </button>
         </div>
-        <div className="p-3 sm:p-4 max-h-80 overflow-y-auto">
+        <div className="p-3 max-h-80 overflow-y-auto">
           {blueprints.length === 0 ? (
-            <p className="text-neutral-500 text-sm text-center py-4">
-              No blueprints available
+            <p className="text-white/30 text-[10px] uppercase tracking-wider text-center py-4">
+              // NO BLUEPRINTS AVAILABLE
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1">
               {blueprints.map((bp) => (
                 <button
                   key={bp.name}
                   onClick={() => onSelect(bp)}
-                  className="w-full text-left p-2.5 sm:p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                  className="w-full text-left p-2 border border-white/30 hover:border-white hover:bg-white/5 transition-colors"
                 >
-                  <div className="font-medium text-sm sm:text-base text-neutral-900 dark:text-neutral-100">
+                  <div className="text-[11px] uppercase tracking-wider text-white">
                     {bp.name}
                   </div>
                   {bp.description && (
-                    <div className="text-xs sm:text-sm text-neutral-500 mt-1">
+                    <div className="text-[10px] text-white/50 mt-1">
                       {bp.description}
                     </div>
                   )}
@@ -260,17 +260,17 @@ function AgencyCreateModal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-xl max-w-md w-full overflow-hidden">
-        <div className="px-3 sm:px-4 py-2.5 sm:py-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between">
-          <h2 className="font-semibold text-sm sm:text-base text-neutral-900 dark:text-neutral-100">
-            Create Agency
+    <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+      <div className="bg-black border border-white max-w-md w-full overflow-hidden">
+        <div className="px-3 py-2 border-b border-white flex items-center justify-between">
+          <h2 className="text-xs uppercase tracking-widest text-white">
+            NEW_AGENCY
           </h2>
           <button
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+            className="text-white/50 hover:text-white text-xs"
           >
-            ✕
+            [X]
           </button>
         </div>
         <form
@@ -278,33 +278,33 @@ function AgencyCreateModal({
             e.preventDefault();
             if (value.trim()) onSubmit();
           }}
-          className="p-3 sm:p-4"
+          className="p-3"
         >
-          <label className="block text-xs sm:text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-            Agency Name
+          <label className="block text-[10px] uppercase tracking-wider text-white/50 mb-2">
+            AGENCY_NAME:
           </label>
           <input
             type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder="Enter agency name..."
+            placeholder="ENTER IDENTIFIER..."
             autoFocus
-            className="w-full px-3 py-2 rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-white/50 bg-black text-white text-xs uppercase tracking-wider placeholder:text-white/30 focus:outline-none focus:border-white"
           />
           <div className="flex justify-end gap-2 mt-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+              className="px-3 py-1.5 text-[11px] uppercase tracking-wider text-white/50 border border-white/30 hover:border-white hover:text-white transition-colors"
             >
-              Cancel
+              CANCEL
             </button>
             <button
               type="submit"
               disabled={!value.trim()}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 text-[11px] uppercase tracking-wider bg-white text-black border border-white hover:bg-black hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
-              Create
+              CREATE
             </button>
           </div>
         </form>
@@ -324,15 +324,13 @@ function AuthUnlockForm({
   const [secret, setSecret] = useState("");
 
   return (
-    <div className="h-screen flex items-center justify-center bg-neutral-950 p-4">
-      <div className="max-w-md w-full">
-        <div className="text-center mb-6 sm:mb-8">
-          <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-2xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-            <Robot size={28} className="sm:w-8 sm:h-8 text-orange-500" />
-          </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-neutral-100 mb-2">Agent Hub</h1>
-          <p className="text-neutral-400 text-xs sm:text-sm">
-            Enter your secret key to continue
+    <div className="h-screen flex items-center justify-center bg-black p-4">
+      <div className="max-w-md w-full border border-white p-6">
+        <div className="text-center mb-6">
+          <div className="text-[#00ff00] text-4xl mb-4 font-mono">█</div>
+          <h1 className="text-xs uppercase tracking-widest text-white mb-2">AGENT_HUB // SECURE ACCESS</h1>
+          <p className="text-[10px] uppercase tracking-wider text-white/40">
+            AUTHENTICATION REQUIRED
           </p>
         </div>
         <form
@@ -342,27 +340,37 @@ function AuthUnlockForm({
               onUnlock(secret.trim());
             }
           }}
-          className="space-y-3 sm:space-y-4"
+          className="space-y-4"
         >
-          <input
-            type="password"
-            value={secret}
-            onChange={(e) => setSecret(e.target.value)}
-            placeholder="Enter hub secret..."
-            autoFocus
-            className="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg border border-neutral-700 bg-neutral-800 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-          />
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider text-white/50 mb-2">
+              ACCESS_KEY:
+            </label>
+            <input
+              type="password"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder="••••••••"
+              autoFocus
+              className="w-full px-3 py-2 border border-white/50 bg-black text-white text-xs tracking-wider placeholder:text-white/20 focus:outline-none focus:border-white"
+            />
+          </div>
           {error && (
-            <p className="text-red-400 text-xs sm:text-sm text-center">{error}</p>
+            <p className="text-[#ff0000] text-[10px] uppercase tracking-wider text-center border border-[#ff0000] p-2">
+              ERROR: {error}
+            </p>
           )}
           <button
             type="submit"
             disabled={!secret.trim()}
-            className="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full px-4 py-2 text-[11px] uppercase tracking-widest bg-white text-black border border-white hover:bg-black hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
-            Unlock
+            AUTHENTICATE
           </button>
         </form>
+        <div className="mt-6 text-[10px] text-white/20 text-center font-mono">
+          SYS.BUILD: v0.1 | SEC.LEVEL: HIGH
+        </div>
       </div>
     </div>
   );
@@ -383,46 +391,46 @@ function EventDetailModal({
   const eventData = event as { ts?: string; data?: Record<string, unknown> };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-xl max-w-2xl w-full mx-4 overflow-hidden max-h-[80vh] flex flex-col">
-        <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between shrink-0">
+    <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
+      <div className="bg-black border border-white max-w-2xl w-full mx-4 overflow-hidden max-h-[80vh] flex flex-col">
+        <div className="px-3 py-2 border-b border-white flex items-center justify-between shrink-0">
           <div className="min-w-0 flex-1">
-            <h2 className="font-semibold text-sm sm:text-base text-neutral-900 dark:text-neutral-100 truncate">
+            <h2 className="text-[11px] uppercase tracking-wider text-white truncate">
               {label}
             </h2>
-            <p className="text-xs text-neutral-500 font-mono truncate">{type}</p>
+            <p className="text-[10px] text-white/40 font-mono truncate">{type}</p>
           </div>
           <button
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 shrink-0"
+            className="text-white/50 hover:text-white text-xs shrink-0"
           >
-            ✕
+            [X]
           </button>
         </div>
-        <div className="p-3 sm:p-4 overflow-auto flex-1">
+        <div className="p-3 overflow-auto flex-1">
           {eventData.ts && (
             <div className="mb-4">
-              <label className="text-xs font-medium text-neutral-500 uppercase">
-                Timestamp
+              <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1">
+                TIMESTAMP:
               </label>
-              <p className="text-sm text-neutral-900 dark:text-neutral-100 font-mono">
+              <p className="text-xs text-[#00ff00] font-mono">
                 {new Date(eventData.ts).toLocaleString()}
               </p>
             </div>
           )}
           {eventData.data && Object.keys(eventData.data).length > 0 && (
             <div>
-              <label className="text-xs font-medium text-neutral-500 uppercase mb-2 block">
-                Data
+              <label className="text-[10px] uppercase tracking-wider text-white/40 block mb-1">
+                DATA:
               </label>
-              <pre className="text-xs bg-neutral-100 dark:bg-neutral-800 p-3 rounded-lg overflow-auto text-neutral-800 dark:text-neutral-200">
+              <pre className="text-[11px] bg-white/5 border border-white/20 p-3 overflow-auto text-[#ffaa00]">
                 {JSON.stringify(eventData.data, null, 2)}
               </pre>
             </div>
           )}
           {(!eventData.data || Object.keys(eventData.data).length === 0) && (
-            <p className="text-sm text-neutral-500 italic">
-              No additional data
+            <p className="text-[10px] uppercase tracking-wider text-white/30">
+              // NO DATA PAYLOAD
             </p>
           )}
         </div>
@@ -694,12 +702,12 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
 
   return (
     <>
-      <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-        <h1 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-          Agency Settings
+      <div className="px-3 py-2 border-b border-white bg-black">
+        <h1 className="text-xs uppercase tracking-widest text-white">
+          AGENCY_CONFIG
         </h1>
-        <p className="text-sm text-neutral-500">
-          {agency?.name || "Unknown agency"}
+        <p className="text-[10px] text-white/40 font-mono">
+          ID: {agency?.name || "UNKNOWN"}
         </p>
       </div>
       <div className="flex-1 overflow-hidden">
@@ -745,7 +753,7 @@ function SettingsRoute({ agencyId }: { agencyId: string }) {
 function EmptyState({ hasAgency, hasAgents, onMenuClick }: { hasAgency: boolean; hasAgents?: boolean; onMenuClick?: () => void }) {
   if (!hasAgency) {
     return (
-      <div className="flex-1 flex items-center justify-center relative">
+      <div className="flex-1 flex items-center justify-center relative bg-black">
         {/* Mobile menu button */}
         {onMenuClick && (
           <button
@@ -753,22 +761,23 @@ function EmptyState({ hasAgency, hasAgents, onMenuClick }: { hasAgency: boolean;
               e.stopPropagation();
               onMenuClick();
             }}
-            className="md:hidden fixed top-4 left-4 p-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors z-10"
+            className="md:hidden fixed top-4 left-4 p-2 text-white/50 hover:text-white transition-colors z-10"
             aria-label="Open menu"
           >
-            <List size={20} />
+            <List size={16} />
           </button>
         )}
-        <div className="text-center max-w-md px-4">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-            <Robot size={32} className="text-orange-500" />
-          </div>
-          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
-            Welcome to Agent Hub
+        <div className="text-center max-w-md px-4 border border-white/20 p-8">
+          <div className="text-[#00ff00] text-3xl mb-4 font-mono">▓</div>
+          <h2 className="text-xs uppercase tracking-widest text-white mb-3">
+            SYSTEM INITIALIZED
           </h2>
-          <p className="text-neutral-500 dark:text-neutral-400 mb-4">
-            Select an agency from the sidebar to get started, or create a new one.
+          <p className="text-[10px] uppercase tracking-wider text-white/40 mb-4">
+            SELECT AGENCY FROM CONTROL PANEL OR INITIALIZE NEW INSTANCE
           </p>
+          <div className="text-[10px] text-white/20 font-mono">
+            STATUS: AWAITING_SELECTION
+          </div>
         </div>
       </div>
     );
@@ -776,7 +785,7 @@ function EmptyState({ hasAgency, hasAgents, onMenuClick }: { hasAgency: boolean;
   
   if (!hasAgents) {
     return (
-      <div className="flex-1 flex items-center justify-center relative">
+      <div className="flex-1 flex items-center justify-center relative bg-black">
         {/* Mobile menu button */}
         {onMenuClick && (
           <button
@@ -784,48 +793,47 @@ function EmptyState({ hasAgency, hasAgents, onMenuClick }: { hasAgency: boolean;
               e.stopPropagation();
               onMenuClick();
             }}
-            className="md:hidden fixed top-4 left-4 p-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors z-10"
+            className="md:hidden fixed top-4 left-4 p-2 text-white/50 hover:text-white transition-colors z-10"
             aria-label="Open menu"
           >
-            <List size={20} />
+            <List size={16} />
           </button>
         )}
-        <div className="text-center max-w-md px-4">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
-            <Plus size={32} className="text-neutral-400" />
-          </div>
-          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
-            No agents yet
+        <div className="text-center max-w-md px-4 border border-dashed border-white/30 p-8">
+          <div className="text-white/30 text-2xl mb-4 font-mono">+</div>
+          <h2 className="text-xs uppercase tracking-widest text-white mb-3">
+            NO AGENTS DEPLOYED
           </h2>
-          <p className="text-neutral-500 dark:text-neutral-400 mb-4">
-            Create your first agent to start a conversation. Click "New Agent" in the sidebar.
+          <p className="text-[10px] uppercase tracking-wider text-white/40 mb-4">
+            SPAWN NEW AGENT VIA CONTROL PANEL. SELECT BLUEPRINT TO INITIALIZE.
           </p>
+          <div className="text-[10px] text-white/20 font-mono">
+            AGENTS: 0 | READY: TRUE
+          </div>
         </div>
       </div>
     );
   }
   
   return (
-    <div className="flex-1 flex items-center justify-center relative">
+    <div className="flex-1 flex items-center justify-center relative bg-black">
       {/* Mobile menu button */}
       {onMenuClick && (
         <button
           onClick={onMenuClick}
-          className="md:hidden fixed top-4 left-4 p-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors z-10"
+          className="md:hidden fixed top-4 left-4 p-2 text-white/50 hover:text-white transition-colors z-10"
           aria-label="Open menu"
         >
-          <List size={20} />
+          <List size={16} />
         </button>
       )}
-      <div className="text-center max-w-md px-4">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
-          <ChatCircle size={32} className="text-neutral-400" />
-        </div>
-        <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
-          Select an agent
+      <div className="text-center max-w-md px-4 border border-white/20 p-8">
+        <div className="text-white/40 text-2xl mb-4 font-mono">◈</div>
+        <h2 className="text-xs uppercase tracking-widest text-white mb-3">
+          SELECT AGENT
         </h2>
-        <p className="text-neutral-500 dark:text-neutral-400">
-          Choose an agent from the sidebar to view its conversation and details.
+        <p className="text-[10px] uppercase tracking-wider text-white/40">
+          CHOOSE ACTIVE AGENT FROM CONTROL PANEL TO ACCESS TERMINAL
         </p>
       </div>
     </div>
@@ -971,7 +979,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex bg-neutral-50 dark:bg-neutral-950">
+    <div className="h-screen flex bg-black">
       {/* Sidebar */}
       <Sidebar
         agencies={agencies}

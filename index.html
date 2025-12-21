@@ -14,14 +14,43 @@
     
     <!-- Android Chrome -->
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: light)" />
     
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <title>Agent Hub</title>
+    <title>AGENT_HUB // CONTROL TERMINAL</title>
     <style>
-      /* Full-screen mobile support for all browsers */
+      /* Berkeley Mono - Industrial Monospace */
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: url('/BerkeleyMonoTrial-Regular.ttf') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+      
+      /* ============================================
+         INDUSTRIAL RETRO-COMPUTING DESIGN SYSTEM
+         "Data > Decoration"
+         ============================================ */
+      
+      :root {
+        /* Core palette - brutal contrast */
+        --color-bg: #000000;
+        --color-fg: #ffffff;
+        --color-border: #ffffff;
+        --color-dim: #666666;
+        --color-accent: #00ff00; /* Terminal green */
+        --color-warning: #ffaa00; /* Amber */
+        --color-error: #ff0000;
+        --color-running: #00aaff;
+        
+        /* Grid unit */
+        --grid: 8px;
+      }
+      
       * {
         -webkit-tap-highlight-color: transparent;
+        box-sizing: border-box;
       }
       
       html {
@@ -36,13 +65,18 @@
         height: 100%;
         height: -webkit-fill-available;
         overflow: hidden;
-        /* Safe area insets for notched devices */
         padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-        /* Prevent pull-to-refresh */
         overscroll-behavior-y: none;
-        /* Prevent text selection on long press */
         -webkit-user-select: none;
         user-select: none;
+        
+        /* Industrial defaults */
+        font-family: 'Berkeley Mono', 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono', 'Source Code Pro', monospace;
+        background: var(--color-bg);
+        color: var(--color-fg);
+        font-size: 13px;
+        line-height: 1.5;
+        letter-spacing: 0.02em;
       }
       
       #root {
@@ -56,6 +90,35 @@
       input, textarea {
         -webkit-user-select: text;
         user-select: text;
+        font-family: inherit;
+      }
+      
+      /* Kill all rounded corners globally */
+      * {
+        border-radius: 0 !important;
+      }
+      
+      /* Industrial scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: var(--color-bg);
+        border-left: 1px solid var(--color-border);
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--color-dim);
+        border: 1px solid var(--color-border);
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--color-fg);
+      }
+      
+      /* Selection */
+      ::selection {
+        background: var(--color-fg);
+        color: var(--color-bg);
       }
     </style>
   </head>

@@ -205,40 +205,40 @@ function FileTreeNode({
           onSelect?.(node);
         }}
         className={cn(
-          "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors text-left group",
+          "w-full flex items-center gap-2 px-2 py-1 text-[11px] transition-colors text-left group border-l-2",
           isSelected
-            ? "bg-orange-50 dark:bg-orange-900/20"
-            : "hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            ? "bg-white text-black border-l-white"
+            : "text-white/70 border-l-transparent hover:text-white hover:bg-white/5 hover:border-l-white/50"
         )}
-        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        style={{ paddingLeft: `${depth * 12 + 8}px` }}
       >
         {/* Expand/collapse for directories */}
-        <span className="w-4 shrink-0">
+        <span className="w-3 shrink-0">
           {hasChildren &&
             (expanded ? (
-              <CaretDown size={12} className="text-neutral-400" />
+              <CaretDown size={10} className="text-current opacity-50" />
             ) : (
-              <CaretRight size={12} className="text-neutral-400" />
+              <CaretRight size={10} className="text-current opacity-50" />
             ))}
         </span>
 
         {/* Icon */}
         {isDir ? (
-          <Folder size={16} className="text-orange-400 shrink-0" />
+          <span className="text-[#ffaa00] text-[10px]">■</span>
         ) : (
-          <File size={16} className="text-neutral-400 shrink-0" />
+          <span className="text-white/30 text-[10px]">□</span>
         )}
 
         {/* Name with tooltip for special folders */}
         <span 
-          className="flex-1 truncate text-neutral-800 dark:text-neutral-200"
+          className="flex-1 truncate uppercase tracking-wider"
           title={FOLDER_TIPS[node.name] || undefined}>
           {node.name}
         </span>
 
         {/* Size (files only) */}
         {!isDir && node.size && (
-          <span className="text-xs text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-[10px] text-current opacity-30 group-hover:opacity-60 transition-opacity font-mono">
             {formatSize(node.size)}
           </span>
         )}
@@ -342,11 +342,11 @@ export function FilesView({
   const canPreview = selectedFile && isTextFile(selectedFile.name);
 
   return (
-    <div className="flex h-full relative">
+    <div className="flex h-full relative bg-black">
       {/* Mobile overlay */}
       {showTree && (
         <div
-          className="md:hidden fixed inset-0 bg-black/50 z-10"
+          className="md:hidden fixed inset-0 bg-black/80 z-10"
           onClick={() => setShowTree(false)}
         />
       )}
@@ -354,26 +354,26 @@ export function FilesView({
       {/* Mobile file tree toggle */}
       <button
         onClick={() => setShowTree(!showTree)}
-        className="md:hidden fixed bottom-4 left-4 z-10 p-3 rounded-full bg-orange-500 text-white shadow-lg"
+        className="md:hidden fixed bottom-4 left-4 z-10 p-3 bg-white text-black border border-white"
         aria-label="Toggle file tree"
       >
-        <Folder size={20} />
+        <Folder size={16} />
       </button>
 
       {/* File tree */}
       <div className={cn(
-        "w-64 border-r border-neutral-200 dark:border-neutral-800 overflow-y-auto p-2",
+        "w-56 border-r border-white overflow-y-auto p-2 bg-black",
         "md:relative md:translate-x-0",
-        "absolute inset-y-0 left-0 z-20 bg-white dark:bg-neutral-900",
-        "transform transition-transform duration-300",
+        "absolute inset-y-0 left-0 z-20",
+        "transform transition-transform duration-200",
         showTree ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
         {files.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-neutral-400 text-sm">
-            No files available
+          <div className="h-full flex items-center justify-center text-[10px] uppercase tracking-wider text-white/30">
+            // NO FILES
           </div>
         ) : (
-          <div className="space-y-0.5">
+          <div className="space-y-px">
             {files.map((node) => (
               <FileTreeNode
                 key={node.id}
@@ -391,20 +391,20 @@ export function FilesView({
         {selectedFile ? (
           <>
             {/* Header */}
-            <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+            <div className="px-3 py-2 border-b border-white bg-black">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {selectedFile.type === "directory" ? (
-                    <Folder size={18} className="text-orange-400" />
+                    <span className="text-[#ffaa00] text-xs">■</span>
                   ) : (
-                    <File size={18} className="text-neutral-400" />
+                    <span className="text-white/30 text-xs">□</span>
                   )}
-                  <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                  <span className="text-[11px] uppercase tracking-wider text-white">
                     {selectedFile.name}
                   </span>
                   {ext && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500">
-                      {ext.toUpperCase()}
+                    <span className="text-[10px] px-1 py-0.5 border border-white/30 text-white/50 uppercase">
+                      {ext}
                     </span>
                   )}
                 </div>
@@ -414,25 +414,25 @@ export function FilesView({
                     size="sm"
                     icon={
                       loading ? (
-                        <CircleNotch size={14} className="animate-spin" />
+                        <CircleNotch size={12} className="animate-spin" />
                       ) : (
-                        <Download size={14} />
+                        <Download size={12} />
                       )
                     }
                     onClick={handleDownload}
                     disabled={loading}
                   >
-                    Download
+                    GET
                   </Button>
                 )}
               </div>
-              <div className="flex items-center gap-4 mt-1 text-xs text-neutral-500">
+              <div className="flex items-center gap-4 mt-1 text-[10px] text-white/40 font-mono">
                 {selectedFile.size && (
-                  <span>{formatSize(selectedFile.size)}</span>
+                  <span>SIZE: {formatSize(selectedFile.size)}</span>
                 )}
                 {selectedFile.modifiedAt && (
                   <span className="flex items-center gap-1">
-                    <Clock size={12} />
+                    <Clock size={10} />
                     {formatDate(selectedFile.modifiedAt)}
                   </span>
                 )}
@@ -440,48 +440,49 @@ export function FilesView({
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-auto p-4 bg-neutral-50 dark:bg-neutral-950">
+            <div className="flex-1 overflow-auto p-3 bg-black">
               {selectedFile.type === "directory" ? (
-                <div className="text-neutral-500 text-sm">
-                  Directory with {selectedFile.children?.length || 0} items
+                <div className="text-[10px] uppercase tracking-wider text-white/40">
+                  DIRECTORY // {selectedFile.children?.length || 0} ITEMS
                 </div>
               ) : loading ? (
-                <div className="flex items-center gap-2 text-neutral-400 text-sm">
-                  <CircleNotch size={16} className="animate-spin" />
-                  Loading file...
+                <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-[#00aaff]">
+                  <CircleNotch size={12} className="animate-spin" />
+                  LOADING...
                 </div>
               ) : error ? (
-                <div className="text-red-500 text-sm">{error}</div>
+                <div className="text-[#ff0000] text-[10px] uppercase tracking-wider border border-[#ff0000] p-2">
+                  ERROR: {error}
+                </div>
               ) : fileContent !== null ? (
-                <SyntaxHighlightedCode content={fileContent} language={getLanguage(ext)} />
+                <pre className="text-xs text-[#00ff00] font-mono whitespace-pre-wrap break-words">
+                  {fileContent}
+                </pre>
               ) : canPreview ? (
-                <div className="text-neutral-400 text-sm">
-                  Click to load preview
+                <div className="text-[10px] uppercase tracking-wider text-white/30">
+                  // CLICK TO LOAD PREVIEW
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-neutral-400">
-                  <File
-                    size={48}
-                    className="text-neutral-300 dark:text-neutral-600"
-                  />
-                  <p className="text-sm">
-                    No preview available for this file type
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-white/30 border border-dashed border-white/20 p-6">
+                  <span className="text-2xl">□</span>
+                  <p className="text-[10px] uppercase tracking-wider">
+                    NO PREVIEW AVAILABLE
                   </p>
                   <Button
                     variant="secondary"
                     size="sm"
-                    icon={<Download size={14} />}
+                    icon={<Download size={12} />}
                     onClick={handleDownload}
                   >
-                    Download to view
+                    DOWNLOAD
                   </Button>
                 </div>
               )}
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-neutral-400 text-sm">
-            Select a file to preview
+          <div className="flex-1 flex items-center justify-center text-[10px] uppercase tracking-wider text-white/30">
+            // SELECT FILE TO VIEW
           </div>
         )}
       </div>

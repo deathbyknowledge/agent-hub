@@ -90,83 +90,83 @@ const EVENT_CONFIG: Record<
   }
 > = {
   "run.tick": {
-    icon: <Play size={12} />,
-    color: "text-neutral-500",
-    bg: "bg-neutral-100 dark:bg-neutral-800",
-    dotColor: "bg-neutral-400",
-    label: "Tick",
+    icon: <Play size={10} />,
+    color: "text-white/40",
+    bg: "bg-white/5",
+    dotColor: "bg-white/30",
+    label: "TICK",
   },
   "model.started": {
-    icon: <Brain size={12} />,
-    color: "text-emerald-600",
-    bg: "bg-emerald-50 dark:bg-emerald-900/30",
-    dotColor: "bg-emerald-500",
-    label: "Model",
+    icon: <Brain size={10} />,
+    color: "text-[#00ff00]",
+    bg: "bg-[#00ff00]/10",
+    dotColor: "bg-[#00ff00]",
+    label: "MODEL",
   },
   "tool.output": {
-    icon: <Wrench size={12} />,
-    color: "text-violet-600",
-    bg: "bg-violet-50 dark:bg-violet-900/30",
-    dotColor: "bg-violet-500",
-    label: "Tool",
+    icon: <Wrench size={10} />,
+    color: "text-[#ffaa00]",
+    bg: "bg-[#ffaa00]/10",
+    dotColor: "bg-[#ffaa00]",
+    label: "TOOL",
   },
   "tool.error": {
-    icon: <XCircle size={12} />,
-    color: "text-red-600",
-    bg: "bg-red-50 dark:bg-red-900/30",
-    dotColor: "bg-red-500",
-    label: "Tool Error",
+    icon: <XCircle size={10} />,
+    color: "text-[#ff0000]",
+    bg: "bg-[#ff0000]/10",
+    dotColor: "bg-[#ff0000]",
+    label: "TOOL_ERR",
   },
   "run.paused": {
-    icon: <Pause size={12} />,
-    color: "text-yellow-600",
-    bg: "bg-yellow-50 dark:bg-yellow-900/30",
-    dotColor: "bg-yellow-500",
-    label: "Paused",
+    icon: <Pause size={10} />,
+    color: "text-[#ffaa00]",
+    bg: "bg-[#ffaa00]/10",
+    dotColor: "bg-[#ffaa00]",
+    label: "PAUSED",
   },
   "run.resumed": {
-    icon: <Play size={12} />,
-    color: "text-blue-600",
-    bg: "bg-blue-50 dark:bg-blue-900/30",
-    dotColor: "bg-blue-500",
-    label: "Resumed",
+    icon: <Play size={10} />,
+    color: "text-[#00aaff]",
+    bg: "bg-[#00aaff]/10",
+    dotColor: "bg-[#00aaff]",
+    label: "RESUMED",
   },
   "agent.completed": {
-    icon: <Check size={12} />,
-    color: "text-green-600",
-    bg: "bg-green-50 dark:bg-green-900/30",
-    dotColor: "bg-green-500",
-    label: "Done",
+    icon: <Check size={10} />,
+    color: "text-[#00ff00]",
+    bg: "bg-[#00ff00]/10",
+    dotColor: "bg-[#00ff00]",
+    label: "COMPLETE",
   },
   "agent.error": {
-    icon: <XCircle size={12} />,
-    color: "text-red-600",
-    bg: "bg-red-50 dark:bg-red-900/30",
-    dotColor: "bg-red-500",
-    label: "Error",
+    icon: <XCircle size={10} />,
+    color: "text-[#ff0000]",
+    bg: "bg-[#ff0000]/10",
+    dotColor: "bg-[#ff0000]",
+    label: "ERROR",
   },
   "subagent.spawned": {
-    icon: <ArrowRight size={12} />,
-    color: "text-orange-600",
-    bg: "bg-orange-50 dark:bg-orange-900/30",
-    dotColor: "bg-orange-500",
-    label: "Spawn",
+    icon: <ArrowRight size={10} />,
+    color: "text-[#00aaff]",
+    bg: "bg-[#00aaff]/10",
+    dotColor: "bg-[#00aaff]",
+    label: "SPAWN",
   },
   "subagent.completed": {
-    icon: <ArrowLeft size={12} />,
-    color: "text-orange-600",
-    bg: "bg-orange-50 dark:bg-orange-900/30",
-    dotColor: "bg-orange-500",
-    label: "Returned",
+    icon: <ArrowLeft size={10} />,
+    color: "text-[#00aaff]",
+    bg: "bg-[#00aaff]/10",
+    dotColor: "bg-[#00aaff]",
+    label: "RETURNED",
   },
 };
 
 const DEFAULT_EVENT_CONFIG = {
-  icon: <Play size={12} />,
-  color: "text-neutral-500",
-  bg: "bg-neutral-100 dark:bg-neutral-800",
-  dotColor: "bg-neutral-400",
-  label: "Event",
+  icon: <Play size={10} />,
+  color: "text-white/40",
+  bg: "bg-white/5",
+  dotColor: "bg-white/30",
+  label: "EVENT",
 };
 
 // ============================================================================
@@ -273,18 +273,17 @@ function InlineAgentCard({
   const filters = useContext(FilterContext);
 
   const statusColors: Record<AgentStatus, string> = {
-    running: "border-l-blue-400",
-    paused: "border-l-yellow-400",
-    done: "border-l-green-400",
-    error: "border-l-red-400",
+    running: "border-l-[#00aaff]",
+    paused: "border-l-[#ffaa00]",
+    done: "border-l-[#00ff00]",
+    error: "border-l-[#ff0000]",
   };
 
   const statusBadge: Record<AgentStatus, string> = {
-    running: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
-    paused:
-      "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300",
-    done: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
-    error: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
+    running: "border-[#00aaff] text-[#00aaff]",
+    paused: "border-[#ffaa00] text-[#ffaa00]",
+    done: "border-[#00ff00] text-[#00ff00]",
+    error: "border-[#ff0000] text-[#ff0000]",
   };
 
   // Build timeline with inline children
@@ -352,42 +351,42 @@ function InlineAgentCard({
   return (
     <div
       className={cn(
-        "border-l-4 rounded-r-lg bg-neutral-50/80 dark:bg-neutral-800/50",
+        "border-l-2 bg-black",
         statusColors[status],
-        depth > 0 && "ml-1 sm:ml-2"
+        depth > 0 && "ml-2"
       )}
     >
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+        className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-white/5 transition-colors border-b border-white/10"
       >
         {expanded ? (
-          <CaretDown size={12} className="text-neutral-400 shrink-0" />
+          <CaretDown size={10} className="text-white/40 shrink-0" />
         ) : (
-          <CaretRight size={12} className="text-neutral-400 shrink-0" />
+          <CaretRight size={10} className="text-white/40 shrink-0" />
         )}
-        <Robot size={14} className="sm:w-4 sm:h-4 text-orange-500 shrink-0" />
-        <span className="font-medium text-xs sm:text-sm text-neutral-900 dark:text-neutral-100 truncate">
+        <span className="text-[10px] text-[#00ff00]">▶</span>
+        <span className="text-[11px] uppercase tracking-wider text-white truncate">
           {agentType}
         </span>
-        <span className="text-[10px] text-neutral-500 font-mono hidden sm:inline">
-          {short(threadId)}
+        <span className="text-[10px] text-white/30 font-mono hidden sm:inline">
+          [{short(threadId)}]
         </span>
         <div className="flex-1" />
-        <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-[11px] flex-wrap">
+        <div className="flex items-center gap-2 text-[10px] flex-wrap">
           {duration !== undefined && (
-            <span className="text-neutral-500 font-mono flex items-center gap-1">
+            <span className="text-white/40 font-mono flex items-center gap-1">
               <Clock size={10} />
               {formatDuration(duration)}
             </span>
           )}
           {childCount > 0 && (
-            <span className="text-orange-600">{childCount} sub</span>
+            <span className="text-[#00aaff]">{childCount}x SUB</span>
           )}
           <span
             className={cn(
-              "px-1.5 py-0.5 rounded font-medium",
+              "px-1 py-0.5 border text-[10px] uppercase tracking-wider",
               statusBadge[status]
             )}
           >
@@ -398,8 +397,8 @@ function InlineAgentCard({
 
       {/* Timeline */}
       {expanded && (
-        <div className="px-2 sm:px-3 pb-2">
-          <div className="relative pl-3 sm:pl-4 border-l-2 border-neutral-200 dark:border-neutral-700 space-y-1">
+        <div className="px-2 pb-2">
+          <div className="relative pl-4 border-l border-white/20 space-y-px">
             {timeline.map((item, idx) => {
               if (item.type === "event") {
                 const event = item.event;
@@ -414,23 +413,23 @@ function InlineAgentCard({
                     {/* Timeline dot */}
                     <div
                       className={cn(
-                        "absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-neutral-800",
+                        "absolute -left-[17px] top-1.5 w-2 h-2",
                         config.dotColor
                       )}
                     />
                     <button
                       onClick={() => onEventClick?.(event, label, event.type)}
                       className={cn(
-                        "flex items-center gap-2 px-2 py-1 rounded text-xs w-full text-left",
-                        "hover:bg-black/5 dark:hover:bg-white/5 transition-colors",
+                        "flex items-center gap-2 px-2 py-1 text-[11px] w-full text-left",
+                        "hover:bg-white/5 transition-colors border-l border-transparent hover:border-white/30",
                         config.bg
                       )}
                     >
                       <span className={config.color}>{config.icon}</span>
-                      <span className="flex-1 truncate text-neutral-800 dark:text-neutral-200">
+                      <span className="flex-1 truncate text-white/70 uppercase tracking-wider">
                         {label}
                       </span>
-                      <span className="text-[10px] text-neutral-500 font-mono">
+                      <span className="text-[10px] text-white/30 font-mono">
                         {formatTime(event.ts)}
                       </span>
                     </button>
@@ -466,7 +465,7 @@ function InlineAgentCard({
 
                 return (
                   <div key={item.childId} className="relative py-1">
-                    <div className="absolute -left-[21px] top-4 w-2.5 h-2.5 rounded-full bg-orange-500 border-2 border-white dark:border-neutral-800" />
+                    <div className="absolute -left-[17px] top-3 w-2 h-2 bg-[#00aaff]" />
                     <InlineAgentCard
                       threadId={item.childId}
                       agentType={item.agentType}
@@ -507,10 +506,10 @@ function FilterButton({
     <button
       onClick={onToggle}
       className={cn(
-        "flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-all",
+        "flex items-center gap-1.5 px-2 py-1 text-[10px] uppercase tracking-wider transition-all border",
         enabled
-          ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
-          : "bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+          ? "bg-white text-black border-white"
+          : "bg-transparent text-white/40 border-white/20 hover:text-white hover:border-white/50"
       )}
     >
       {config.icon}
@@ -651,12 +650,12 @@ export function TraceView({
 
   if (events.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-neutral-500 dark:text-neutral-400">
-        <div className="text-center">
-          <Robot size={48} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">No events yet.</p>
-          <p className="text-xs mt-1 opacity-60">
-            Start a conversation to see the agent timeline.
+      <div className="h-full flex items-center justify-center bg-black">
+        <div className="text-center border border-white/20 p-6">
+          <div className="text-white/20 text-2xl mb-3 font-mono">○</div>
+          <p className="text-[10px] uppercase tracking-widest text-white/40">NO EVENTS RECORDED</p>
+          <p className="text-[10px] uppercase tracking-wider text-white/20 mt-2">
+            INITIATE CONVERSATION TO BEGIN TRACE
           </p>
         </div>
       </div>
@@ -665,36 +664,35 @@ export function TraceView({
 
   return (
     <FilterContext.Provider value={enabledFilters}>
-      <div className="h-full flex flex-col">
+      <div className="h-full flex flex-col bg-black">
         {/* Stats bar */}
-        <div className="px-3 sm:px-4 py-2 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-          <div className="flex items-center gap-2 sm:gap-3 text-xs flex-wrap">
-            <div className="flex items-center gap-1.5 text-neutral-500">
-              <Robot size={14} />
-              <span>{stats.totalAgents} agents</span>
+        <div className="px-3 py-2 border-b border-white bg-black">
+          <div className="flex items-center gap-4 text-[10px] uppercase tracking-wider flex-wrap">
+            <div className="flex items-center gap-1.5 text-white/50">
+              <span className="text-[#00ff00]">▶</span>
+              <span>{stats.totalAgents} AGENTS</span>
             </div>
-            <div className="flex items-center gap-1.5 text-neutral-500">
-              <Play size={14} />
-              <span>{stats.totalEvents} events</span>
+            <div className="flex items-center gap-1.5 text-white/50">
+              <span>{stats.totalEvents} EVENTS</span>
             </div>
             {stats.completed > 0 && (
-              <div className="flex items-center gap-1.5 text-green-600">
-                <Check size={14} />
-                <span>{stats.completed}</span>
+              <div className="flex items-center gap-1.5 text-[#00ff00]">
+                <Check size={10} />
+                <span>{stats.completed} OK</span>
               </div>
             )}
             {stats.errors > 0 && (
-              <div className="flex items-center gap-1.5 text-red-600">
-                <XCircle size={14} />
-                <span>{stats.errors}</span>
+              <div className="flex items-center gap-1.5 text-[#ff0000]">
+                <XCircle size={10} />
+                <span>{stats.errors} ERR</span>
               </div>
             )}
           </div>
         </div>
 
         {/* Filter bar */}
-        <div className="px-3 sm:px-4 py-2 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2 flex-wrap bg-white dark:bg-neutral-900">
-          <span className="text-xs text-neutral-500 mr-1 hidden sm:inline">Show:</span>
+        <div className="px-3 py-2 border-b border-white/30 flex items-center gap-2 flex-wrap bg-black">
+          <span className="text-[10px] uppercase tracking-wider text-white/30 mr-1 hidden sm:inline">FILTER:</span>
           {(Object.keys(FILTER_CONFIG) as EventFilter[]).map((filter) => (
             <FilterButton
               key={filter}
@@ -706,8 +704,8 @@ export function TraceView({
         </div>
 
         {/* Timeline content */}
-        <div className="flex-1 overflow-auto p-3 sm:p-4 bg-neutral-50 dark:bg-neutral-950">
-          <div className="space-y-4">
+        <div className="flex-1 overflow-auto p-3 bg-black">
+          <div className="space-y-2">
             {rootAgents.map((agent) => (
               <InlineAgentCard
                 key={agent.threadId}

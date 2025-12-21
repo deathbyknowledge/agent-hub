@@ -26,41 +26,40 @@ const STATUS_CONFIG: Record<
   { icon: React.ReactNode; label: string; color: string }
 > = {
   pending: {
-    icon: <Clock size={14} />,
-    label: "Pending",
-    color: "text-neutral-400"
+    icon: <Clock size={10} />,
+    label: "PENDING",
+    color: "text-white/40"
   },
   in_progress: {
-    icon: <Clock size={14} className="animate-pulse" />,
-    label: "In Progress",
-    color: "text-blue-500"
+    icon: <Clock size={10} className="animate-pulse" />,
+    label: "EXEC",
+    color: "text-[#00aaff]"
   },
   done: {
-    icon: <Check size={14} />,
-    label: "Done",
-    color: "text-green-500"
+    icon: <Check size={10} />,
+    label: "DONE",
+    color: "text-[#00ff00]"
   },
   blocked: {
-    icon: <Warning size={14} />,
-    label: "Blocked",
-    color: "text-red-500"
+    icon: <Warning size={10} />,
+    label: "BLOCKED",
+    color: "text-[#ff0000]"
   }
 };
 
 const PRIORITY_CONFIG: Record<TodoPriority, { label: string; color: string }> =
   {
     low: {
-      label: "Low",
-      color: "bg-neutral-100 dark:bg-neutral-800 text-neutral-500"
+      label: "LOW",
+      color: "border-white/20 text-white/40"
     },
     medium: {
-      label: "Medium",
-      color:
-        "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"
+      label: "MED",
+      color: "border-[#ffaa00]/50 text-[#ffaa00]"
     },
     high: {
-      label: "High",
-      color: "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+      label: "HIGH",
+      color: "border-[#ff0000]/50 text-[#ff0000]"
     }
   };
 
@@ -78,10 +77,10 @@ function TodoCard({
   return (
     <div
       className={cn(
-        "p-4 rounded-xl border transition-all",
+        "p-3 border transition-all bg-black",
         isDone
-          ? "bg-neutral-50 dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 opacity-60"
-          : "bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700"
+          ? "border-white/10 opacity-50"
+          : "border-white/30"
       )}
     >
       <div className="flex items-start gap-3">
@@ -89,13 +88,13 @@ function TodoCard({
         <button
           onClick={() => onToggle?.(todo.id)}
           className={cn(
-            "w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors",
+            "w-4 h-4 border flex items-center justify-center shrink-0 mt-0.5 transition-colors",
             isDone
-              ? "bg-green-500 border-green-500 text-white"
-              : "border-neutral-300 dark:border-neutral-600 hover:border-green-500"
+              ? "bg-[#00ff00] border-[#00ff00] text-black"
+              : "border-white/50 hover:border-white"
           )}
         >
-          {isDone && <Check size={12} />}
+          {isDone && <Check size={10} />}
         </button>
 
         <div className="flex-1 min-w-0">
@@ -103,15 +102,15 @@ function TodoCard({
           <div className="flex items-center gap-2">
             <span
               className={cn(
-                "font-medium text-neutral-900 dark:text-neutral-100",
-                isDone && "line-through text-neutral-500"
+                "text-[11px] uppercase tracking-wider text-white",
+                isDone && "line-through text-white/40"
               )}
             >
               {todo.title}
             </span>
             <span
               className={cn(
-                "text-xs px-2 py-0.5 rounded-full",
+                "text-[10px] px-1 py-0.5 border uppercase tracking-wider",
                 priorityConfig.color
               )}
             >
@@ -121,18 +120,18 @@ function TodoCard({
 
           {/* Description */}
           {todo.description && (
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+            <p className="text-[10px] text-white/50 mt-1">
               {todo.description}
             </p>
           )}
 
           {/* Footer */}
-          <div className="flex items-center gap-4 mt-2 text-xs">
-            <span className={cn("flex items-center gap-1", statusConfig.color)}>
+          <div className="flex items-center gap-3 mt-2 text-[10px]">
+            <span className={cn("flex items-center gap-1 uppercase tracking-wider", statusConfig.color)}>
               {statusConfig.icon}
               {statusConfig.label}
             </span>
-            <span className="text-neutral-400">
+            <span className="text-white/30 font-mono">
               {new Date(todo.createdAt).toLocaleDateString()}
             </span>
           </div>
@@ -154,55 +153,51 @@ export function TodosView({ todos, onToggle }: TodosViewProps) {
     active: activeTodos.length
   };
 
+  const progressPercent = stats.total ? Math.round((stats.done / stats.total) * 100) : 0;
+
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto bg-black">
       {/* Stats bar */}
-      <div className="sticky top-0 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-3 sm:px-4 py-3">
-        <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm flex-wrap">
-          <span className="text-neutral-500">
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
-              {stats.total}
-            </span>{" "}
-            total
+      <div className="sticky top-0 bg-black border-b border-white px-3 py-2">
+        <div className="flex items-center gap-4 text-[10px] uppercase tracking-wider flex-wrap">
+          <span className="text-white/50">
+            TOTAL: <span className="text-white">{stats.total}</span>
           </span>
-          <span className="text-neutral-500">
-            <span className="font-medium text-green-500">{stats.done}</span>{" "}
-            done
+          <span className="text-white/50">
+            DONE: <span className="text-[#00ff00]">{stats.done}</span>
           </span>
-          <span className="text-neutral-500">
-            <span className="font-medium text-orange-500">{stats.active}</span>{" "}
-            active
+          <span className="text-white/50">
+            ACTIVE: <span className="text-[#ffaa00]">{stats.active}</span>
           </span>
 
           {/* Progress bar */}
-          <div className="flex-1 max-w-xs min-w-0">
-            <div className="h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+          <div className="flex-1 max-w-xs min-w-0 flex items-center gap-2">
+            <div className="flex-1 h-1 bg-white/10 overflow-hidden">
               <div
-                className="h-full bg-green-500 transition-all"
-                style={{
-                  width: `${stats.total ? (stats.done / stats.total) * 100 : 0}%`
-                }}
+                className="h-full bg-[#00ff00] transition-all"
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
+            <span className="text-white/30 font-mono">[{progressPercent}%]</span>
           </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="p-3 sm:p-4">
+      <div className="p-3">
         {todos.length === 0 ? (
-          <div className="text-center text-neutral-400 py-12">
-            <p>No todos yet</p>
+          <div className="text-center text-[10px] uppercase tracking-widest text-white/30 py-12 border border-dashed border-white/20">
+            // NO TASKS QUEUED
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {/* Active (pending + in_progress) */}
             {activeTodos.length > 0 && (
               <div>
-                <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">
-                  Active ({activeTodos.length})
+                <h3 className="text-[10px] uppercase tracking-widest text-white/50 mb-2 border-b border-white/20 pb-1">
+                  ACTIVE [{activeTodos.length}]
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {activeTodos.map((todo) => (
                     <TodoCard key={todo.id} todo={todo} onToggle={onToggle} />
                   ))}
@@ -215,13 +210,13 @@ export function TodosView({ todos, onToggle }: TodosViewProps) {
               <div>
                 <button
                   onClick={() => setShowCompleted(!showCompleted)}
-                  className="flex items-center gap-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
+                  className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/30 mb-2 hover:text-white transition-colors border-b border-white/10 pb-1 w-full"
                 >
-                  {showCompleted ? <CaretDown size={14} /> : <CaretRight size={14} />}
-                  Completed ({completedTodos.length})
+                  {showCompleted ? <CaretDown size={10} /> : <CaretRight size={10} />}
+                  COMPLETED [{completedTodos.length}]
                 </button>
                 {showCompleted && (
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     {completedTodos.map((todo) => (
                       <TodoCard key={todo.id} todo={todo} onToggle={onToggle} />
                     ))}
