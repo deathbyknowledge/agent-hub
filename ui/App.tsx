@@ -8,6 +8,7 @@ import {
   FilesView,
   TodosView,
   SettingsView,
+  ConfirmModal,
   type TabId,
   type Message,
   type Todo,
@@ -405,6 +406,8 @@ function AgentView({
     spawnAgent,
     listDirectory,
     readFile,
+    refreshAgents,
+    deleteAgent,
     loading: agencyLoading,
   } = useAgency(agencyId);
   const {
@@ -416,6 +419,7 @@ function AgentView({
     loading: agentLoading,
     error: agentError,
   } = useAgent(agencyId, agentId);
+  const [, navigate] = useLocation();
 
   // Event detail modal state
   const [selectedEvent, setSelectedEvent] = useState<{
@@ -423,6 +427,7 @@ function AgentView({
     label: string;
     type: string;
   } | null>(null);
+  const [showDeleteAgent, setShowDeleteAgent] = useState(false);
 
   const activeTab = (
     ["chat", "trace", "files", "todos"].includes(tab) ? tab : "chat"
@@ -467,6 +472,13 @@ function AgentView({
 
   const handleSendMessage = async (content: string) => {
     await sendMessage(content);
+  };
+
+  const handleConfirmDeleteAgent = async () => {
+    if (!selectedAgent) return;
+    await deleteAgent(selectedAgent.id);
+    await refreshAgents();
+    navigate(`/${agencyId}`);
   };
 
   // Render content based on active tab
@@ -531,6 +543,7 @@ function AgentView({
         activeTab={activeTab}
         status={status}
         onStop={cancel}
+        onDelete={() => setShowDeleteAgent(true)}
         onMenuClick={onMenuClick}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -544,6 +557,19 @@ function AgentView({
           label={selectedEvent.label}
           type={selectedEvent.type}
           onClose={() => setSelectedEvent(null)}
+        />
+      )}
+      {showDeleteAgent && (
+        <ConfirmModal
+          title="Delete Agent"
+          message="Are you sure you want to delete this agent? This removes all schedules and storage."
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={async () => {
+            await handleConfirmDeleteAgent();
+            setShowDeleteAgent(false);
+          }}
+          onCancel={() => setShowDeleteAgent(false)}
         />
       )}
     </>
@@ -581,11 +607,13 @@ function SettingsRoute({ agencyId, onMenuClick }: { agencyId: string; onMenuClic
     readFile,
     writeFile,
     deleteFile,
+    deleteAgency,
   } = useAgency(agencyId);
   const { agencies } = useAgencies();
   const { plugins, tools } = usePlugins();
   const agency = agencies.find((a) => a.id === agencyId);
   const [, navigate] = useLocation();
+  const [showDeleteAgency, setShowDeleteAgency] = useState(false);
 
   return (
     <>
@@ -644,8 +672,24 @@ function SettingsRoute({ agencyId, onMenuClick }: { agencyId: string; onMenuClic
           readFile={readFile}
           writeFile={writeFile}
           deleteFile={deleteFile}
+          onDeleteAgency={() => setShowDeleteAgency(true)}
         />
       </div>
+
+      {showDeleteAgency && (
+        <ConfirmModal
+          title="Delete Agency"
+          message="This will delete all agents, files, and configuration for this agency. This cannot be undone."
+          confirmLabel="Delete Agency"
+          variant="danger"
+          onConfirm={async () => {
+            await deleteAgency();
+            setShowDeleteAgency(false);
+            navigate("/");
+          }}
+          onCancel={() => setShowDeleteAgency(false)}
+        />
+      )}
     </>
   );
 }

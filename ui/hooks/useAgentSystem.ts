@@ -91,12 +91,24 @@ export function useAgencies() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (agencyId: string) => {
+      return getClient().deleteAgency(agencyId);
+    },
+    onSuccess: (_data, agencyId) => {
+      queryClient.setQueryData<AgencyMeta[]>(queryKeys.agencies, (old) =>
+        old ? old.filter((a) => a.id !== agencyId) : []
+      );
+    },
+  });
+
   return {
     agencies,
     loading,
     error: error as Error | null,
     refresh: () => queryClient.invalidateQueries({ queryKey: queryKeys.agencies }),
     create: createMutation.mutateAsync,
+    deleteAgency: deleteMutation.mutateAsync,
   };
 }
 
@@ -264,6 +276,18 @@ export function useAgency(agencyId: string | null) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
   });
 
+  const deleteAgentMutation = useMutation({
+    mutationFn: (agentId: string) => client!.deleteAgent(agentId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId!) }),
+  });
+
+  const deleteAgencyMutation = useMutation({
+    mutationFn: () => client!.deleteAgency(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.agencies });
+    },
+  });
+
   const resumeScheduleMutation = useMutation({
     mutationFn: (scheduleId: string) => client!.resumeSchedule(scheduleId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
@@ -351,6 +375,8 @@ export function useAgency(agencyId: string | null) {
       const { runs } = await client!.getScheduleRuns(scheduleId);
       return runs;
     },
+    deleteAgent: deleteAgentMutation.mutateAsync,
+    deleteAgency: deleteAgencyMutation.mutateAsync,
     setVar: (key: string, value: unknown) => setVarMutation.mutateAsync({ key, value }),
     deleteVar: deleteVarMutation.mutateAsync,
     createMemoryDisk: (name: string, description?: string, entries?: string[]) =>

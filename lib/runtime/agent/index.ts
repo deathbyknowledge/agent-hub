@@ -137,6 +137,12 @@ export abstract class HubAgent<
       case "/register":
         if (req.method === "POST") return this.registerThread(req);
         return new Response("method not allowed", { status: 405 });
+      case "/destroy":
+        if (req.method === "DELETE") {
+          await this.destroy();
+          return new Response(null, { status: 204 });
+        }
+        return new Response("method not allowed", { status: 405 });
       default:
         return new Response("not found", { status: 404 });
     }

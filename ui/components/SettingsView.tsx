@@ -55,6 +55,7 @@ interface SettingsViewProps {
   readFile?: (path: string) => Promise<{ content: string }>;
   writeFile?: (path: string, content: string) => Promise<unknown>;
   deleteFile?: (path: string) => Promise<unknown>;
+  onDeleteAgency?: () => void;
 }
 
 // Format relative time
@@ -1092,6 +1093,7 @@ export function SettingsView({
   readFile,
   writeFile,
   deleteFile,
+  onDeleteAgency,
 }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("blueprints");
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -1137,21 +1139,34 @@ export function SettingsView({
     <div className="h-full flex flex-col bg-black relative">
       {/* Tab Navigation */}
       <div className="border-b-2 border-white bg-black">
-        <div className="flex overflow-x-auto scrollbar-hide">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "px-3 py-2 text-[11px] tracking-wider transition-colors whitespace-nowrap border-r border-white/20",
-                activeTab === tab.id
-                  ? "bg-white text-black"
-                  : cn(tab.color, "hover:text-black hover:bg-white")
-              )}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex overflow-x-auto scrollbar-hide">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "px-3 py-2 text-[11px] tracking-wider transition-colors whitespace-nowrap border-r border-white/20",
+                  activeTab === tab.id
+                    ? "bg-white text-black"
+                    : cn(tab.color, "hover:text-black hover:bg-white")
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          {onDeleteAgency && (
+            <Button
+              variant="danger"
+              size="sm"
+              icon={<span className="text-xs">[X]</span>}
+              onClick={onDeleteAgency}
+              className="mr-2"
             >
-              {tab.label}
-            </button>
-          ))}
+              Delete Agency
+            </Button>
+          )}
         </div>
       </div>
 

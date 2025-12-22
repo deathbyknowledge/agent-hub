@@ -215,6 +215,13 @@ export const createHandler = (opts: HandlerOptions = {}) => {
         // Agency-level operations
         // --------------------------------------
 
+        if (req.method === "DELETE" && (subPath === "/" || subPath === "" || subPath === "/destroy")) {
+          const res = await agencyStub.fetch(
+            new Request("http://do/destroy", { method: "DELETE" })
+          );
+          return withCors(res);
+        }
+
         // GET /agency/:id/blueprints -> merge defaults + DO overrides
         if (req.method === "GET" && subPath === "/blueprints") {
           const res = await agencyStub.fetch(
@@ -276,6 +283,16 @@ export const createHandler = (opts: HandlerOptions = {}) => {
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify(body),
+            })
+          );
+          return withCors(res);
+        }
+
+        const deleteAgentMatch = subPath.match(/^\/agents\/([^/]+)$/);
+        if (deleteAgentMatch && req.method === "DELETE") {
+          const res = await agencyStub.fetch(
+            new Request(`http://do/agents/${deleteAgentMatch[1]}`, {
+              method: "DELETE",
             })
           );
           return withCors(res);

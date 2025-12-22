@@ -260,6 +260,15 @@ export class Agency extends Agent<AgentEnv> {
       return this.handleCreateAgent(req);
     }
 
+    const deleteAgentMatch = path.match(/^\/agents\/([^/]+)$/);
+    if (deleteAgentMatch && req.method === "DELETE") {
+      return this.handleDeleteAgent(deleteAgentMatch[1]);
+    }
+
+    if (req.method === "DELETE" && path === "/destroy") {
+      return this.handleDeleteAgency();
+    }
+
     // --------------------------------------------------
     // Schedule Management
     // --------------------------------------------------
@@ -457,6 +466,19 @@ export class Agency extends Agent<AgentEnv> {
     };
 
     return this.spawnAgent(body.agentType, body.requestContext, body.input);
+  }
+
+  private async handleDeleteAgent(agentId: string): Promise<Response> {
+    const existing = this.sql<{ id: string }>`
+      SELECT id FROM agents WHERE id = ${agentId}
+    `;
+    if (existing.length === 0) {
+      return new Response("Agent not found", { status: 404 });
+    }
+
+    await this.deleteAgentResources(agentId);
+
+    return Response.json({ ok: true });
   }
 
   async spawnAgent(
@@ -819,6 +841,21 @@ export class Agency extends Agent<AgentEnv> {
     }
   }
 
+  private async handleDeleteAgency(): Promise<Response> {
+    const agents = this.sql<{ id: string }>`SELECT id FROM agents`;
+    for (const { id } of agents) {
+      await this.deleteAgentResources(id);
+    }
+
+    const bucket = this.env.FS;
+    if (bucket) {
+      await this.deletePrefix(bucket, `${this.agencyName}/`);
+    }
+
+    await this.destroy();
+    return Response.json({ ok: true });
+  }
+
   // ============================================================
   // Helper Methods
   // ============================================================
@@ -835,6 +872,40 @@ export class Agency extends Agent<AgentEnv> {
       SELECT * FROM schedule_runs WHERE id = ${id}
     `;
     return rows.length > 0 ? rowToRun(rows[0]) : null;
+  }
+
+  private async deleteAgentResources(agentId: string): Promise<void> {
+    try {
+      const stub = await getAgentByName(this.exports.HubAgent, agentId);
+      await stub.fetch(
+        new Request("http://do/destroy", { method: "DELETE" })
+      );
+    } catch (err) {
+      console.warn(`Failed to destroy agent ${agentId}:`, err);
+    }
+
+    const bucket = this.env.FS;
+    if (bucket) {
+      await this.deletePrefix(bucket, `${this.agencyName}/agents/${agentId}/`);
+      await bucket.delete(`${this.agencyName}/agents/${agentId}`).catch(() => {});
+    }
+
+    this.sql`
+      UPDATE schedule_runs SET agent_id = NULL WHERE agent_id = ${agentId}
+    `;
+    this.sql`DELETE FROM agents WHERE id = ${agentId}`;
+  }
+
+  private async deletePrefix(bucket: AgentEnv["FS"], prefix: string): Promise<void> {
+    if (!bucket) return;
+    let cursor: string | undefined;
+    do {
+      const list = await bucket.list({ prefix, cursor });
+      if (list.objects.length > 0) {
+        await bucket.delete(list.objects.map((o) => o.key));
+      }
+      cursor = list.truncated ? list.cursor : undefined;
+    } while (cursor);
   }
 
   private computeNextRun(

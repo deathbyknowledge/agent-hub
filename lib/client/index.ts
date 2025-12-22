@@ -570,6 +570,13 @@ export class AgencyClient {
   }
 
   /**
+   * Delete an agent and its data from this agency.
+   */
+  async deleteAgent(agentId: string): Promise<OkResponse> {
+    return this.request<OkResponse>("DELETE", `/agents/${agentId}`);
+  }
+
+  /**
    * Get a client for interacting with a specific agent.
    */
   agent(agentId: string): AgentClient {
@@ -883,6 +890,13 @@ export class AgencyClient {
     return this.request<OkResponse>("DELETE", `/vars/${encodeURIComponent(key)}`);
   }
 
+  /**
+   * Permanently delete this agency and all of its agents/files.
+   */
+  async deleteAgency(): Promise<OkResponse> {
+    return this.request<OkResponse>("DELETE", "/destroy");
+  }
+
   /** The agency ID */
   get id(): string {
     return this.agencyId;
@@ -988,6 +1002,13 @@ export class AgentHubClient {
     request: CreateAgencyRequest = {}
   ): Promise<CreateAgencyResponse> {
     return this.request<CreateAgencyResponse>("POST", "/agencies", request);
+  }
+
+  /**
+   * Delete an agency and all of its agents/files.
+   */
+  async deleteAgency(agencyId: string): Promise<OkResponse> {
+    return this.agency(agencyId).deleteAgency();
   }
 
   /**
