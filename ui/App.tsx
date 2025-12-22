@@ -700,6 +700,10 @@ function SettingsRoute({ agencyId, onMenuClick }: { agencyId: string; onMenuClic
     updateBlueprint,
     deleteBlueprint,
     spawnAgent,
+    listDirectory,
+    readFile,
+    writeFile,
+    deleteFile,
   } = useAgency(agencyId);
   const { agencies } = useAgencies();
   const { plugins, tools } = usePlugins();
@@ -759,6 +763,10 @@ function SettingsRoute({ agencyId, onMenuClick }: { agencyId: string; onMenuClic
           }}
           plugins={plugins}
           tools={tools}
+          listDirectory={listDirectory}
+          readFile={readFile}
+          writeFile={writeFile}
+          deleteFile={deleteFile}
         />
       </div>
     </>

@@ -166,6 +166,14 @@ export function useAgency(agencyId: string | null) {
     (path: string) => client!.readFile(path),
     [client]
   );
+  const writeFile = useCallback(
+    (path: string, content: string) => client!.writeFile(path, content),
+    [client]
+  );
+  const deleteFile = useCallback(
+    (path: string) => client!.deleteFile(path),
+    [client]
+  );
 
   // Queries
   const { data: agents = [], isLoading: loading, error } = useQuery({
@@ -311,6 +319,8 @@ export function useAgency(agencyId: string | null) {
     spawnAgent: spawnMutation.mutateAsync,
     listDirectory,
     readFile,
+    writeFile,
+    deleteFile,
     createSchedule: scheduleMutation.mutateAsync,
     deleteSchedule: deleteScheduleMutation.mutateAsync,
     pauseSchedule: pauseScheduleMutation.mutateAsync,
