@@ -166,13 +166,31 @@ export function useAgency(agencyId: string | null) {
     (path: string) => client!.readFile(path),
     [client]
   );
+  const normalizeFsPath = useCallback(
+    (path: string) => `/${path.replace(/^\/+/, "")}`.replace(/\/+/g, "/"),
+    []
+  );
+  const isProtectedFile = useCallback(
+    (path: string) => normalizeFsPath(path) === "/.agency.json",
+    [normalizeFsPath]
+  );
   const writeFile = useCallback(
-    (path: string, content: string) => client!.writeFile(path, content),
-    [client]
+    (path: string, content: string) => {
+      if (isProtectedFile(path)) {
+        return Promise.reject(new Error("`.agency.json` is read-only"));
+      }
+      return client!.writeFile(path, content);
+    },
+    [client, isProtectedFile]
   );
   const deleteFile = useCallback(
-    (path: string) => client!.deleteFile(path),
-    [client]
+    (path: string) => {
+      if (isProtectedFile(path)) {
+        return Promise.reject(new Error("`.agency.json` is read-only"));
+      }
+      return client!.deleteFile(path);
+    },
+    [client, isProtectedFile]
   );
 
   // Queries

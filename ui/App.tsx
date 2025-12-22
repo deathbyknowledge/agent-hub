@@ -10,7 +10,6 @@ import {
   SettingsView,
   type TabId,
   type Message,
-  type FileNode,
   type Todo,
 } from "./components";
 import {
@@ -132,62 +131,6 @@ function convertChatMessages(apiMessages: ChatMessage[]): Message[] {
   }
 
   return messages;
-}
-
-// Build file tree from API response
-// Note: entry.path from API is already the full path (e.g., "agents/abc123/file.txt")
-async function buildFileTree(
-  entries: {
-    type: "file" | "dir";
-    path: string;
-    size?: number;
-    modified?: string;
-  }[],
-  _basePath: string, // kept for interface consistency but not used
-  listDirectory: (path: string) => Promise<{ entries: typeof entries }>,
-  readFile: (path: string) => Promise<{ content: string }>
-): Promise<FileNode[]> {
-  const nodes: FileNode[] = [];
-
-  for (const entry of entries) {
-    // Remove trailing slash and extract last path segment
-    const cleanPath = entry.path.replace(/\/+$/, "");
-    const name = cleanPath.split("/").pop() || cleanPath;
-    // entry.path is already the full path from API
-    const fullPath = cleanPath;
-
-    if (entry.type === "dir") {
-      // Recursively load directory contents
-      let children: FileNode[] = [];
-      try {
-        const { entries: subEntries } = await listDirectory(fullPath);
-        children = await buildFileTree(
-          subEntries,
-          fullPath,
-          listDirectory,
-          readFile
-        );
-      } catch {
-        // Directory might be empty or inaccessible
-      }
-      nodes.push({
-        id: `dir-${fullPath}`,
-        name,
-        type: "directory",
-        children,
-      });
-    } else {
-      nodes.push({
-        id: `file-${fullPath}`,
-        name,
-        type: "file",
-        size: entry.size,
-        modifiedAt: entry.modified,
-      });
-    }
-  }
-
-  return nodes;
 }
 
 // Blueprint picker component
@@ -474,9 +417,6 @@ function AgentView({
     error: agentError,
   } = useAgent(agencyId, agentId);
 
-  // File loading state
-  const [files, setFiles] = useState<FileNode[]>([]);
-
   // Event detail modal state
   const [selectedEvent, setSelectedEvent] = useState<{
     event: unknown;
@@ -525,76 +465,6 @@ function AgentView({
     }));
   }, [agentState]);
 
-  // Load files for the current agent
-  const loadFiles = useCallback(async () => {
-    try {
-      const fileNodes: FileNode[] = [];
-
-      // Load /shared/ directory (agency-wide)
-      try {
-        const { entries: sharedEntries } = await listDirectory("shared");
-        const sharedChildren = await buildFileTree(
-          sharedEntries,
-          "shared",
-          listDirectory,
-          readFile
-        );
-        fileNodes.push({
-          id: "dir-shared",
-          name: "shared",
-          type: "directory",
-          children: sharedChildren,
-        });
-      } catch {
-        fileNodes.push({
-          id: "dir-shared",
-          name: "shared",
-          type: "directory",
-          children: [],
-        });
-      }
-
-      // Load current agent's directory as ~/ (home)
-      try {
-        const agentPath = `agents/${agentId}`;
-        const { entries: agentEntries } = await listDirectory(agentPath);
-        const filteredEntries = agentEntries.filter((e) => {
-          const cleanPath = e.path.replace(/\/+$/, "");
-          return cleanPath !== agentPath && cleanPath !== `/${agentPath}`;
-        });
-        const agentChildren = await buildFileTree(
-          filteredEntries,
-          agentPath,
-          listDirectory,
-          readFile
-        );
-        fileNodes.push({
-          id: "dir-home",
-          name: "~",
-          type: "directory",
-          children: agentChildren,
-        });
-      } catch {
-        fileNodes.push({
-          id: "dir-home",
-          name: "~",
-          type: "directory",
-          children: [],
-        });
-      }
-
-      setFiles(fileNodes);
-    } catch (e) {
-      console.error("Failed to load files:", e);
-    }
-  }, [agentId, listDirectory, readFile]);
-
-  useEffect(() => {
-    if (activeTab === "files") {
-      loadFiles();
-    }
-  }, [activeTab, loadFiles]);
-
   const handleSendMessage = async (content: string) => {
     await sendMessage(content);
   };
@@ -622,7 +492,14 @@ function AgentView({
           />
         );
       case "files":
-        return <FilesView files={files} loadFileContent={readFile} />;
+        return (
+          <FilesView
+            listDirectory={listDirectory}
+            readFile={readFile}
+            allowUpload={false}
+            headerLabel="Files"
+          />
+        );
       case "todos":
         return <TodosView todos={todos} />;
       default:

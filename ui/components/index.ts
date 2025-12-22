@@ -10,7 +10,6 @@ export type { Message, ToolCall } from "./ChatView";
 export { TraceView } from "./TraceView";
 export type { AgentEvent, ThreadMeta, TraceViewProps } from "./TraceView";
 export { FilesView } from "./FilesView";
-export type { FileNode } from "./FilesView";
 export { TodosView } from "./TodosView";
 export type { Todo } from "./TodosView";
 export { SettingsView } from "./SettingsView";
