@@ -1,0 +1,38 @@
+{
+  "name": "personal-hub",
+  "description": "Personal AgentHub deployment",
+  "type": "module",
+  "version": "0.0.1",
+  "license": "MIT",
+  "author": "Steve James <sjames@cloudflare.com>",
+  "scripts": {
+    "dev": "SANDBOX=1 vite",
+    "build": "SANDBOX=1 vite build",
+    "deploy": "SANDBOX=1 npm run build && wrangler deploy",
+    "preview": "SANDBOX=1 vite preview",
+    "tsc": "npx tsc --noEmit",
+    "docs": "typedoc"
+  },
+  "dependencies": {
+    "@cloudflare/sandbox": "^0.6.7",
+    "@tanstack/react-query": "^5.90.12",
+    "agent-hub": "^0.0.1",
+    "agents": "^0.2.30",
+    "clsx": "^2.1.1",
+    "hnsw": "^1.0.3",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.4.0",
+    "wouter": "^3.8.1"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.0.0",
+    "@cloudflare/workers-types": "^4.20251205.0",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^19.2.1",
+    "typedoc": "^0.28.15",
+    "vite": "^6.4.1"
+  }
+}

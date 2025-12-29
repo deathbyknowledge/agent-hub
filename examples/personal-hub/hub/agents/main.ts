@@ -1,4 +1,4 @@
-import type { AgentBlueprint } from "@runtime";
+import type { AgentBlueprint } from "agent-hub";
 
 const ANOMALY_MAIN_AGENT_PROMPT = `
 You are the **Lead Anomaly Analyst** and **Orchestrator**. You run the investigation end-to-end.

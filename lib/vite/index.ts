@@ -149,7 +149,7 @@ function generateCode(
   const pluginRegistrations: string[] = [];
   const agentRegistrations: string[] = [];
 
-  imports.push('import { AgentHub } from "@runtime";');
+  imports.push('import { AgentHub } from "agent-hub";');
 
   const hasSandboxCapability = !!process.env.SANDBOX;
   if (hasSandboxCapability) {

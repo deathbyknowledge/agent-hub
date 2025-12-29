@@ -12,7 +12,7 @@ import {
   type AgentEnv,
   AgentEventType,
   type AgentPlugin,
-} from "@runtime";
+} from "agent-hub";
 import { getAgentByName } from "agents";
 
 const SubagentEventType = {

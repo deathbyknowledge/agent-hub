@@ -3,7 +3,7 @@
  * Tagged with "security" - only available to security-tagged agents.
  */
 
-import { tool } from "@runtime";
+import { tool } from "agent-hub";
 import * as z from "zod";
 
 // ============================================================

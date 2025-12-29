@@ -19,7 +19,7 @@
  *   - EMBEDDING_MODEL (default: "text-embedding-3-small")
  */
 import { HNSW } from "hnsw";
-import { tool, z, type AgentPlugin } from "@runtime";
+import { tool, z, type AgentPlugin } from "agent-hub";
 import type { AgentFileSystem } from "lib/runtime/fs";
 
 type MemoryEntry = {

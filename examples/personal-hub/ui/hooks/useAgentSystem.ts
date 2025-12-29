@@ -6,7 +6,6 @@ import {
   type AgencyMeta,
   type AgentSummary,
   type AgentBlueprint,
-  type AgentSchedule,
   type ScheduleRun,
   type CreateScheduleRequest,
   type ChatMessage,
@@ -14,9 +13,7 @@ import {
   type RunState,
   type AgentEvent,
   type WebSocketEvent,
-  type PluginInfo,
-  type ToolInfo,
-} from "@client";
+} from "agent-hub/client";
 
 // Get base URL from current location
 function getBaseUrl(): string {
@@ -90,7 +87,7 @@ export function useAgencies() {
       return getClient().createAgency({ name });
     },
     onSuccess: (newAgency) => {
-      queryClient.setQueryData<AgencyMeta[]>(queryKeys.agencies, (old) => 
+      queryClient.setQueryData<AgencyMeta[]>(queryKeys.agencies, (old) =>
         old ? [...old, newAgency] : [newAgency]
       );
     },
@@ -112,7 +109,8 @@ export function useAgencies() {
     loading,
     error: error as Error | null,
     hasFetched: isFetched,
-    refresh: () => queryClient.invalidateQueries({ queryKey: queryKeys.agencies }),
+    refresh: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.agencies }),
     create: createMutation.mutateAsync,
     deleteAgency: deleteMutation.mutateAsync,
   };
@@ -155,8 +153,15 @@ async function fetchMemoryDisks(agencyId: string): Promise<MemoryDisk[]> {
         const name = entry.path.replace(/.*\//, "").replace(/\.idz$/, "");
         try {
           const { content } = await client.readFile(entry.path);
-          const data = JSON.parse(content) as { description?: string; entries?: unknown[] };
-          disks.push({ name, description: data.description, size: data.entries?.length });
+          const data = JSON.parse(content) as {
+            description?: string;
+            entries?: unknown[];
+          };
+          disks.push({
+            name,
+            description: data.description,
+            size: data.entries?.length,
+          });
         } catch {
           disks.push({ name });
         }
@@ -212,7 +217,11 @@ export function useAgency(agencyId: string | null) {
   );
 
   // Queries
-  const { data: agents = [], isLoading: loading, error } = useQuery({
+  const {
+    data: agents = [],
+    isLoading: loading,
+    error,
+  } = useQuery({
     queryKey: queryKeys.agents(agencyId!),
     queryFn: async () => {
       const { agents } = await client!.listAgents();
@@ -258,8 +267,9 @@ export function useAgency(agencyId: string | null) {
   const spawnMutation = useMutation({
     mutationFn: async (agentType: string) => client!.spawnAgent({ agentType }),
     onSuccess: (newAgent) => {
-      queryClient.setQueryData<AgentSummary[]>(queryKeys.agents(agencyId!), (old) =>
-        old ? [...old, newAgent] : [newAgent]
+      queryClient.setQueryData<AgentSummary[]>(
+        queryKeys.agents(agencyId!),
+        (old) => (old ? [...old, newAgent] : [newAgent])
       );
     },
   });
@@ -269,22 +279,32 @@ export function useAgency(agencyId: string | null) {
       const { schedule } = await client!.createSchedule(request);
       return schedule;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.schedules(agencyId!),
+      }),
   });
 
   const deleteScheduleMutation = useMutation({
     mutationFn: (scheduleId: string) => client!.deleteSchedule(scheduleId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.schedules(agencyId!),
+      }),
   });
 
   const pauseScheduleMutation = useMutation({
     mutationFn: (scheduleId: string) => client!.pauseSchedule(scheduleId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.schedules(agencyId!),
+      }),
   });
 
   const deleteAgentMutation = useMutation({
     mutationFn: (agentId: string) => client!.deleteAgent(agentId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId!) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId!) }),
   });
 
   const deleteAgencyMutation = useMutation({
@@ -296,23 +316,36 @@ export function useAgency(agencyId: string | null) {
 
   const resumeScheduleMutation = useMutation({
     mutationFn: (scheduleId: string) => client!.resumeSchedule(scheduleId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.schedules(agencyId!),
+      }),
   });
 
   const setVarMutation = useMutation({
     mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
       await client!.setVar(key, value);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
   });
 
   const deleteVarMutation = useMutation({
     mutationFn: (key: string) => client!.deleteVar(key),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
   });
 
   const createMemoryDiskMutation = useMutation({
-    mutationFn: async ({ name, description, entries }: { name: string; description?: string; entries?: string[] }) => {
+    mutationFn: async ({
+      name,
+      description,
+      entries,
+    }: {
+      name: string;
+      description?: string;
+      entries?: string[];
+    }) => {
       const idz = {
         version: 1,
         name,
@@ -320,9 +353,15 @@ export function useAgency(agencyId: string | null) {
         hasEmbeddings: false,
         entries: entries?.map((content) => ({ content })) ?? [],
       };
-      await client!.writeFile(`/shared/memories/${name}.idz`, JSON.stringify(idz));
+      await client!.writeFile(
+        `/shared/memories/${name}.idz`,
+        JSON.stringify(idz)
+      );
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId!) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.memoryDisks(agencyId!),
+      }),
   });
 
   const importMemoryDiskMutation = useMutation({
@@ -332,23 +371,39 @@ export function useAgency(agencyId: string | null) {
       const name = data.name || file.name.replace(/\.(idz|json)$/, "");
       await client!.writeFile(`/shared/memories/${name}.idz`, content);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId!) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.memoryDisks(agencyId!),
+      }),
   });
 
   const deleteMemoryDiskMutation = useMutation({
-    mutationFn: (name: string) => client!.deleteFile(`/shared/memories/${name}.idz`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId!) }),
+    mutationFn: (name: string) =>
+      client!.deleteFile(`/shared/memories/${name}.idz`),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.memoryDisks(agencyId!),
+      }),
   });
 
   const blueprintMutation = useMutation({
-    mutationFn: (blueprint: Omit<AgentBlueprint, "createdAt" | "updatedAt"> | AgentBlueprint) =>
-      client!.createBlueprint(blueprint),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId!) }),
+    mutationFn: (
+      blueprint:
+        | Omit<AgentBlueprint, "createdAt" | "updatedAt">
+        | AgentBlueprint
+    ) => client!.createBlueprint(blueprint),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.blueprints(agencyId!),
+      }),
   });
 
   const deleteBlueprintMutation = useMutation({
     mutationFn: (name: string) => client!.deleteBlueprint(name),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId!) }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.blueprints(agencyId!),
+      }),
   });
 
   return {
@@ -359,11 +414,22 @@ export function useAgency(agencyId: string | null) {
     memoryDisks,
     loading,
     error: error as Error | null,
-    refreshAgents: () => queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId!) }),
-    refreshBlueprints: () => queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId!) }),
-    refreshSchedules: () => queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId!) }),
-    refreshVars: () => queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
-    refreshMemoryDisks: () => queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId!) }),
+    refreshAgents: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId!) }),
+    refreshBlueprints: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.blueprints(agencyId!),
+      }),
+    refreshSchedules: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.schedules(agencyId!),
+      }),
+    refreshVars: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
+    refreshMemoryDisks: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.memoryDisks(agencyId!),
+      }),
     spawnAgent: spawnMutation.mutateAsync,
     listDirectory,
     readFile,
@@ -383,10 +449,14 @@ export function useAgency(agencyId: string | null) {
     },
     deleteAgent: deleteAgentMutation.mutateAsync,
     deleteAgency: deleteAgencyMutation.mutateAsync,
-    setVar: (key: string, value: unknown) => setVarMutation.mutateAsync({ key, value }),
+    setVar: (key: string, value: unknown) =>
+      setVarMutation.mutateAsync({ key, value }),
     deleteVar: deleteVarMutation.mutateAsync,
-    createMemoryDisk: (name: string, description?: string, entries?: string[]) =>
-      createMemoryDiskMutation.mutateAsync({ name, description, entries }),
+    createMemoryDisk: (
+      name: string,
+      description?: string,
+      entries?: string[]
+    ) => createMemoryDiskMutation.mutateAsync({ name, description, entries }),
     importMemoryDisk: importMemoryDiskMutation.mutateAsync,
     deleteMemoryDisk: deleteMemoryDiskMutation.mutateAsync,
     createBlueprint: blueprintMutation.mutateAsync,

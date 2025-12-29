@@ -4,7 +4,7 @@
  * This plugin is dynamically added to child agents and reports
  * completion back to the parent via the subagent_result action.
  */
-import { type AgentPlugin, type AgentEnv } from "@runtime";
+import { type AgentPlugin, type AgentEnv } from "agent-hub";
 import { getAgentByName } from "agents";
 
 interface ParentInfo {

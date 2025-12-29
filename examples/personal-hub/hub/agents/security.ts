@@ -1,4 +1,4 @@
-import type { AgentBlueprint } from "@runtime";
+import type { AgentBlueprint } from "agent-hub";
 
 const ANOMALYTICS_SUBAGENT_PROMPT = `
 You are a **Security Analytics Agent**. You ONLY use the provided Cloudflare analytics tools to answer the user's specific question.

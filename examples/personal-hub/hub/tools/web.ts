@@ -1,4 +1,4 @@
-import { tool } from "@runtime";
+import { tool } from "agent-hub";
 import * as z from "zod";
 
 export const internetSearchTool = tool({

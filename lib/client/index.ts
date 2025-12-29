@@ -11,7 +11,7 @@ import type {
   ToolMeta,
   AgentEvent,
   AgentEventType,
-} from "@runtime";
+} from "../runtime";
 
 export interface AgencyMeta {
   id: string;

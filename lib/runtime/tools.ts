@@ -28,7 +28,7 @@ function isZodSchema(value: unknown): value is ZodType {
  *
  * @example
  * ```ts
- * import { tool, z } from 'agents/sys';
+ * import { tool, z } from 'agents/hub';
  *
  * const read_file = tool({
  *   name: 'read_file',

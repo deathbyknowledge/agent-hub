@@ -11,7 +11,7 @@
  * - Resolution happens at tool execution time
  * - Secrets never appear in message history
  */
-import type { AgentPlugin } from "@runtime";
+import type { AgentPlugin } from "agent-hub";
 
 /** Matches $VAR_NAME where VAR_NAME is uppercase letters, digits, underscores */
 const VAR_PATTERN = /\$([A-Z][A-Z0-9_]*)/g;

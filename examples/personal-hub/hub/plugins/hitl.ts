@@ -4,8 +4,8 @@
  * This plugin pauses the agent when risky tools are called,
  * allowing human approval before execution.
  */
-import { type AgentPlugin, type ToolCall } from "@runtime";
-import { AgentEventType } from "@runtime";
+import { type AgentPlugin, type ToolCall } from "agent-hub";
+import { AgentEventType } from "agent-hub";
 
 /** Custom event types for HITL plugin */
 const HitlEventType = {

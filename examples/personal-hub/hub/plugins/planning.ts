@@ -1,5 +1,5 @@
-import type { AgentPlugin, Todo } from "@runtime";
-import { tool } from "@runtime";
+import type { AgentPlugin, Todo } from "agent-hub";
+import { tool } from "agent-hub";
 import z from "zod";
 
 const WRITE_TODOS_TOOL_DESCRIPTION = `Use this tool to create and manage a structured task list for your current work session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.

@@ -1,0 +1,33 @@
+{
+  "name": "agent-hub",
+  "description": "A serverless agentic runtime",
+  "keywords": [
+    "cloudflare",
+    "agents",
+    "ai",
+    "llm",
+    "durable objects"
+  ],
+  "type": "module",
+  "version": "0.0.1",
+  "license": "MIT",
+  "author": "Steve James <sjames@cloudflare.com>",
+  "scripts": {
+    "docs": "typedoc"
+  },
+  "exports": {
+    ".": "./runtime/index.ts",
+    "./client": "./client/index.ts",
+    "./vite": "./vite/index.ts"
+  },
+  "dependencies": {
+    "agents": "^0.2.30"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.0.0",
+    "@cloudflare/workers-types": "^4.20251205.0",
+    "@types/node": "^24.10.1",
+    "typedoc": "^0.28.15",
+    "vite": "^6.4.1"
+  }
+}

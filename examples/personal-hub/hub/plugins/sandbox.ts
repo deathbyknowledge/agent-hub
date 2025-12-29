@@ -13,7 +13,7 @@
  */
 
 import { z } from "zod";
-import { tool, type AgentPlugin } from "@runtime";
+import { tool, type AgentPlugin } from "agent-hub";
 import { getSandbox, Sandbox } from "@cloudflare/sandbox";
 
 const SandboxBashSchema = z.object({

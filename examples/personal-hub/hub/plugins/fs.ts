@@ -1,4 +1,4 @@
-import {tool, type AgentPlugin} from "@runtime";
+import {tool, type AgentPlugin} from "agent-hub";
 import z from 'zod';
 
 /**
