@@ -320,6 +320,37 @@ function AuthUnlockForm({
   );
 }
 
+function AuthLoadingScreen() {
+  return (
+    <div className="h-screen flex items-center justify-center bg-black p-4">
+      <div className="max-w-md w-full border border-white p-6">
+        <div className="text-center mb-6">
+          <div className="text-[#00ff00] text-4xl mb-4 font-mono animate-pulse">
+            █
+          </div>
+          <h1 className="text-xs uppercase tracking-widest text-white mb-2">
+            AGENT_HUB // SECURE ACCESS
+          </h1>
+          <p className="text-[10px] uppercase tracking-wider text-white/40">
+            CHECKING CREDENTIALS
+          </p>
+        </div>
+        <div className="space-y-3">
+          <div className="h-2 border border-white/30">
+            <div className="h-full w-2/3 bg-white/70 animate-pulse" />
+          </div>
+          <p className="text-[10px] uppercase tracking-wider text-white/30 text-center">
+            WAITING_FOR_RESPONSE
+          </p>
+        </div>
+        <div className="mt-6 text-[10px] text-white/20 text-center font-mono">
+          SYS.BUILD: v0.1 | SEC.LEVEL: HIGH
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Event detail modal component
 function EventDetailModal({
   event,
@@ -881,9 +912,11 @@ export default function App() {
     agencies,
     create: createAgency,
     error: agenciesError,
+    hasFetched: agenciesFetched,
   } = useAgencies();
   const { agents, blueprints, spawnAgent } = useAgency(agencyId);
   const { run: runState } = useAgent(agencyId, agentId);
+  const isUnauthorized = agenciesError?.message.includes("401") ?? false;
 
   // Check if we got a 401 error (need auth)
   useEffect(() => {
@@ -950,8 +983,12 @@ export default function App() {
     }
   };
 
+  if (!agenciesFetched) {
+    return <AuthLoadingScreen />;
+  }
+
   // Show auth unlock form if locked
-  if (isLocked) {
+  if (isLocked || isUnauthorized) {
     return <AuthUnlockForm onUnlock={handleUnlock} error={authError} />;
   }
 

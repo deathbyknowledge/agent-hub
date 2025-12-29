@@ -72,7 +72,12 @@ export const queryKeys = {
 export function useAgencies() {
   const queryClient = useQueryClient();
 
-  const { data: agencies = [], isLoading: loading, error } = useQuery({
+  const {
+    data: agencies = [],
+    isLoading: loading,
+    error,
+    isFetched,
+  } = useQuery({
     queryKey: queryKeys.agencies,
     queryFn: async () => {
       const { agencies } = await getClient().listAgencies();
@@ -106,6 +111,7 @@ export function useAgencies() {
     agencies,
     loading,
     error: error as Error | null,
+    hasFetched: isFetched,
     refresh: () => queryClient.invalidateQueries({ queryKey: queryKeys.agencies }),
     create: createMutation.mutateAsync,
     deleteAgency: deleteMutation.mutateAsync,
