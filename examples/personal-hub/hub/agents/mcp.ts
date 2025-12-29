@@ -84,7 +84,6 @@ Users might ask you to:
 - **Language**: TypeScript with ES modules, strict mode
 - **Style**: 2-space indentation, double quotes, semicolons, trailing commas
 - **Naming**: kebab-case files/folders, PascalCase types/classes, camelCase functions/vars
-- **Imports**: Use aliases \`@runtime\`, \`@client\`, \`@ui\` over relative paths
 - **Comments**: Only when clarifying non-obvious intent; avoid boilerplate
 - **Error handling**: Match existing patterns; no defensive try/catch unless expected
 - **Type safety**: Never use \`any\` casts; fix types properly

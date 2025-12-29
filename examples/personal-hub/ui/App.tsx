@@ -26,7 +26,7 @@ import type {
   AgentBlueprint,
   ChatMessage,
   ToolCall as APIToolCall,
-} from "@client";
+} from "agent-hub/client";
 import { createRoot } from "react-dom/client";
 
 const queryClient = new QueryClient({

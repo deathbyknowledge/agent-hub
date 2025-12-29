@@ -15,7 +15,7 @@ import type {
   PluginInfo,
   ToolInfo,
   VarHint
-} from "@client";
+} from "agent-hub/client";
 
 export interface MemoryDisk {
   name: string;
