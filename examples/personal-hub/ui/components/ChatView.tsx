@@ -17,6 +17,7 @@ interface Message {
   content: string;
   timestamp: string;
   toolCalls?: ToolCall[];
+  reasoning?: string;
 }
 
 interface ChatViewProps {
@@ -45,11 +46,38 @@ function formatTime(timestamp: string): string {
   return date.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + time;
 }
 
+function ReasoningBlock({ reasoning }: { reasoning: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="border-l border-white/20 pl-2 py-0.5 font-mono mb-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 text-left hover:bg-white/5 transition-colors py-0.5 group"
+      >
+        <span className="text-[10px] text-white/30 w-4">
+          {expanded ? "[-]" : "[+]"}
+        </span>
+        <span className="text-[10px] text-white/40">[REASON]</span>
+        <span className="text-[10px] text-white/30 truncate flex-1 italic">
+          {expanded ? "" : reasoning.slice(0, 60) + (reasoning.length > 60 ? "..." : "")}
+        </span>
+      </button>
+      {expanded && (
+        <div className="mt-1 ml-4 text-[11px] text-white/50 whitespace-pre-wrap">
+          {reasoning}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const hasContent = message.content && message.content.trim().length > 0;
   const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
+  const hasReasoning = message.reasoning && message.reasoning.trim().length > 0;
 
   if (isSystem) {
     return (
@@ -72,6 +100,9 @@ function MessageBubble({ message }: { message: Message }) {
       <div
         className={cn("flex flex-col max-w-[85%] sm:max-w-[80%]", isUser ? "items-end" : "")}
       >
+        {/* Reasoning block - collapsible, shown before content */}
+        {hasReasoning && <ReasoningBlock reasoning={message.reasoning!} />}
+
         {/* Only show text bubble if there's actual content */}
         {hasContent && (
           <div

@@ -82,8 +82,11 @@ function convertChatMessages(apiMessages: ChatMessage[]): Message[] {
 
     if (msg.role === "assistant") {
       const assistantMsg = msg as
-        | { role: "assistant"; content: string; ts?: string }
-        | { role: "assistant"; toolCalls?: APIToolCall[]; ts?: string };
+        | { role: "assistant"; content: string; reasoning?: string; ts?: string }
+        | { role: "assistant"; toolCalls?: APIToolCall[]; reasoning?: string; ts?: string };
+
+      // Extract reasoning if present
+      const reasoning = "reasoning" in assistantMsg ? assistantMsg.reasoning : undefined;
 
       // Check if this is a tool call message
       if ("toolCalls" in assistantMsg && assistantMsg.toolCalls?.length) {
@@ -110,6 +113,7 @@ function convertChatMessages(apiMessages: ChatMessage[]): Message[] {
           content,
           timestamp,
           toolCalls,
+          reasoning,
         });
       } else if ("content" in assistantMsg && assistantMsg.content) {
         // Regular assistant message with content
@@ -118,6 +122,7 @@ function convertChatMessages(apiMessages: ChatMessage[]): Message[] {
           role: "assistant",
           content: assistantMsg.content,
           timestamp,
+          reasoning,
         });
       }
     } else {
