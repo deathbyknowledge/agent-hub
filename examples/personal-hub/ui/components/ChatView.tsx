@@ -90,9 +90,11 @@ function MessageBubble({ message }: { message: Message }) {
           </div>
         )}
 
-        <span className="text-[10px] text-white/30 mt-1 font-mono">
-          {formatTime(message.timestamp)}
-        </span>
+        {message.timestamp && (
+          <span className="text-[10px] text-white/30 mt-1 font-mono">
+            {formatTime(message.timestamp)}
+          </span>
+        )}
       </div>
     </div>
   );

@@ -97,7 +97,7 @@ export class Store {
     // Get the last N conversation turns
     const cursor = this.sql.exec(`
       SELECT * FROM (
-        SELECT seq, role, content, tool_calls, tool_call_id, reasoning_content
+        SELECT seq, role, content, tool_calls, tool_call_id, reasoning_content, created_at
         FROM messages 
         ORDER BY seq DESC 
         LIMIT ?
@@ -107,11 +107,12 @@ export class Store {
     return this._mapRows(cursor);
   }
 
-  /** * Efficiently gets the last assistant message (useful for continuation logic).
+  /**
+   * Efficiently gets the last assistant message (useful for continuation logic).
    */
   lastAssistant(): ChatMessage | null {
     const cursor = this.sql.exec(`
-      SELECT role, content, tool_calls, tool_call_id, reasoning_content, meta
+      SELECT role, content, tool_calls, tool_call_id, reasoning_content, created_at
       FROM messages 
       WHERE role = 'assistant'
       ORDER BY seq DESC
@@ -128,6 +129,7 @@ export class Store {
         ? JSON.parse(row.tool_calls as string)
         : undefined,
       reasoning: row.reasoning_content as string | undefined,
+      ts: row.created_at ? new Date(row.created_at as number).toISOString() : undefined,
     };
   }
 
@@ -176,6 +178,7 @@ export class Store {
          toolCalls: r.tool_calls ? JSON.parse(r.tool_calls as string) : undefined,
          toolCallId: r.tool_call_id || undefined,
          reasoning: r.reasoning_content || undefined,
+         ts: r.created_at ? new Date(r.created_at as number).toISOString() : undefined,
        });
     }
     return out;

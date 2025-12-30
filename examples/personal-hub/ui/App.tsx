@@ -44,9 +44,9 @@ const queryClient = new QueryClient({
 
 // Convert ChatMessage[] from API to Message[] for ChatView
 // API ChatMessage types:
-// - { role: "system" | "user" | "assistant"; content: string }
-// - { role: "assistant"; toolCalls?: ToolCall[] }
-// - { role: "tool"; content: string; toolCallId: string }
+// - { role: "system" | "user" | "assistant"; content: string; ts?: string }
+// - { role: "assistant"; toolCalls?: ToolCall[]; ts?: string }
+// - { role: "tool"; content: string; toolCallId: string; ts?: string }
 function convertChatMessages(apiMessages: ChatMessage[]): Message[] {
   const messages: Message[] = [];
   const toolResults = new Map<
@@ -72,7 +72,8 @@ function convertChatMessages(apiMessages: ChatMessage[]): Message[] {
   // Second pass: build messages with tool calls
   for (let i = 0; i < apiMessages.length; i++) {
     const msg = apiMessages[i];
-    const timestamp = new Date().toISOString();
+    // Use timestamp from message if available (populated by store)
+    const timestamp = msg.ts || "";
 
     if (msg.role === "tool") {
       // Skip tool messages - they're attached to assistant messages
@@ -81,8 +82,8 @@ function convertChatMessages(apiMessages: ChatMessage[]): Message[] {
 
     if (msg.role === "assistant") {
       const assistantMsg = msg as
-        | { role: "assistant"; content: string }
-        | { role: "assistant"; toolCalls?: APIToolCall[] };
+        | { role: "assistant"; content: string; ts?: string }
+        | { role: "assistant"; toolCalls?: APIToolCall[]; ts?: string };
 
       // Check if this is a tool call message
       if ("toolCalls" in assistantMsg && assistantMsg.toolCalls?.length) {

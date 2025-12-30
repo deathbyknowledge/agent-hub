@@ -90,7 +90,7 @@ export type AgentEventData =
     }
   | {
       type: AgentEventType.TOOL_OUTPUT;
-      data: { toolName: string; output: unknown };
+      data: { toolName: string; toolCallId: string; output: unknown };
     }
   | {
       type: AgentEventType.TOOL_ERROR;

@@ -244,6 +244,7 @@ export const subagents: AgentPlugin = {
         ctx.agent.emit(SubagentEventType.SPAWNED, {
           childThreadId: childId,
           agentType: subagentType,
+          toolCallId: toolCtx.callId,
         });
 
         // Record in our tables

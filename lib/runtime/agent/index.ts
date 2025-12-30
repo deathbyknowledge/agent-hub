@@ -403,6 +403,7 @@ export abstract class HubAgent<
           // Regular tool result
           this.emit(AgentEventType.TOOL_OUTPUT, {
             toolName: call.name,
+            toolCallId: call.id,
             output: out,
           });
           return { call, out };

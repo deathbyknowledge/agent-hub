@@ -116,6 +116,11 @@ const EVENT_CONFIG: Record<
     color: "text-[#00aaff]",
     label: "RETURN",
   },
+  "task.batch": {
+    tag: "[TASK]",
+    color: "text-[#00aaff]",
+    label: "SUBAGENTS",
+  },
 };
 
 const DEFAULT_EVENT_CONFIG = {
@@ -129,8 +134,14 @@ const DEFAULT_EVENT_CONFIG = {
 // ============================================================================
 
 type TimelineItem =
-  | { type: "event"; event: AgentEvent }
+  | { type: "event"; event: AgentEvent; children?: ChildAgent[] }
   | { type: "child"; childId: string; agentType: string; events: AgentEvent[] };
+
+type ChildAgent = {
+  childId: string;
+  agentType: string;
+  events: AgentEvent[];
+};
 
 type AgentStatus = "running" | "paused" | "done" | "error";
 
@@ -191,6 +202,9 @@ function getEventLabel(event: AgentEvent): string {
     return `Spawned ${String(data.agentType)}`;
   } else if (event.type === "subagent.completed") {
     return "Child returned";
+  } else if (event.type === "task.batch" && data && "count" in data) {
+    const count = (data as { count: number }).count;
+    return count === 1 ? "1 Subagent" : `${count} Subagents`;
   }
   return config.label;
 }
@@ -199,8 +213,12 @@ function eventPassesFilter(
   eventType: string,
   filters: Set<EventFilter>
 ): boolean {
-  // Subagent events always show
-  if (eventType === "subagent.spawned" || eventType === "subagent.completed") {
+  // Subagent/task events always show
+  if (
+    eventType === "subagent.spawned" ||
+    eventType === "subagent.completed" ||
+    eventType === "task.batch"
+  ) {
     return true;
   }
 
@@ -254,17 +272,21 @@ function InlineAgentCard({
     error: "border-[#ff0000] text-[#ff0000]",
   };
 
-  // Build timeline with inline children
+  // Build timeline with children grouped into batches
+  // A batch is all consecutive spawns before a run.paused event
   const timeline = useMemo(() => {
     const items: TimelineItem[] = [];
     const spawnedChildren = new Set<string>();
-    const pendingChildren: {
-      childId: string;
-      agentType: string;
-      events: AgentEvent[];
-    }[] = [];
 
-    for (const event of events) {
+    // Collect spawns into batches separated by run.paused events
+    // Each batch contains all spawns that occur before the next pause
+    type Batch = { startIndex: number; children: ChildAgent[]; ts: string };
+    const batches: Batch[] = [];
+    let currentBatch: Batch | null = null;
+
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i];
+
       if (event.type === "subagent.spawned") {
         const data = event.data;
         const childId = data?.childThreadId as string;
@@ -275,46 +297,82 @@ function InlineAgentCard({
             threadTypes.get(childId) ||
             (data?.agentType as string) ||
             "Subagent";
-          pendingChildren.push({
+          const child: ChildAgent = {
             childId,
             agentType: childType,
             events: childEvents,
-          });
-        }
-      } else if (event.type !== "subagent.completed") {
-        if (eventPassesFilter(event.type, filters)) {
-          items.push({ type: "event", event });
-        }
+          };
 
-        // Add pending children after paused event
-        if (pendingChildren.length > 0 && event.type === "run.paused") {
-          for (const child of pendingChildren) {
-            items.push({
-              type: "child",
-              childId: child.childId,
-              agentType: child.agentType,
-              events: child.events,
-            });
+          if (!currentBatch) {
+            currentBatch = { startIndex: i, children: [], ts: event.ts };
           }
-          pendingChildren.length = 0;
+          currentBatch.children.push(child);
         }
+      } else if (event.type === "run.paused" || event.type === "run.resumed") {
+        // End current batch when we hit a pause/resume
+        if (currentBatch && currentBatch.children.length > 0) {
+          batches.push(currentBatch);
+        }
+        currentBatch = null;
       }
     }
+    // Don't forget the last batch if it exists
+    if (currentBatch && currentBatch.children.length > 0) {
+      batches.push(currentBatch);
+    }
 
-    // Add remaining pending children
-    for (const child of pendingChildren) {
-      items.push({
-        type: "child",
-        childId: child.childId,
-        agentType: child.agentType,
-        events: child.events,
-      });
+    // Build a map of startIndex -> batch for quick lookup
+    const batchByStartIndex = new Map<number, Batch>();
+    for (const batch of batches) {
+      batchByStartIndex.set(batch.startIndex, batch);
+    }
+
+    // Track which batches we've rendered
+    const renderedBatches = new Set<number>();
+
+    // Second pass: build timeline
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i];
+
+      // Skip subagent events - we show children in batches
+      if (event.type === "subagent.completed") {
+        continue;
+      }
+
+      if (event.type === "subagent.spawned") {
+        // Check if this is the start of a batch
+        const batch = batchByStartIndex.get(i);
+        if (batch && !renderedBatches.has(i)) {
+          renderedBatches.add(i);
+          items.push({
+            type: "event",
+            event: {
+              type: "task.batch",
+              ts: batch.ts,
+              data: { count: batch.children.length },
+            } as AgentEvent,
+            children: batch.children,
+          });
+        }
+        continue;
+      }
+
+      if (!eventPassesFilter(event.type, filters)) {
+        continue;
+      }
+
+      items.push({ type: "event", event });
     }
 
     return items;
   }, [events, eventsByThread, threadTypes, filters]);
 
-  const childCount = timeline.filter((t) => t.type === "child").length;
+  // Count all children (both standalone and nested under events)
+  const childCount = timeline.reduce((count, item) => {
+    if (item.type === "child") return count + 1;
+    if (item.type === "event" && item.children) return count + item.children.length;
+    return count;
+  }, 0);
 
   return (
     <div
@@ -368,28 +426,74 @@ function InlineAgentCard({
                 const event = item.event;
                 const config = EVENT_CONFIG[event.type] || DEFAULT_EVENT_CONFIG;
                 const label = getEventLabel(event);
+                const children = item.children;
 
                 return (
-                  <button
-                    key={`${event.type}-${event.ts}-${idx}`}
-                    onClick={() => onEventClick?.(event, label, event.type)}
-                    className="flex items-center gap-2 py-0.5 text-[11px] w-full text-left hover:bg-white/5 transition-colors"
-                  >
-                    <span className="text-[10px] text-white/30 font-mono w-16 shrink-0">
-                      {formatTime(event.ts)}
-                    </span>
-                    <span
-                      className={cn("text-[10px] w-14 shrink-0", config.color)}
+                  <div key={`${event.type}-${event.ts}-${idx}`}>
+                    <button
+                      onClick={() => onEventClick?.(event, label, event.type)}
+                      className="flex items-center gap-2 py-0.5 text-[11px] w-full text-left hover:bg-white/5 transition-colors"
                     >
-                      {config.tag}
-                    </span>
-                    <span className="flex-1 truncate text-white/70 uppercase">
-                      {label}
-                    </span>
-                  </button>
+                      <span className="text-[10px] text-white/30 font-mono w-16 shrink-0">
+                        {formatTime(event.ts)}
+                      </span>
+                      <span
+                        className={cn("text-[10px] w-14 shrink-0", config.color)}
+                      >
+                        {config.tag}
+                      </span>
+                      <span className="flex-1 truncate text-white/70 uppercase">
+                        {label}
+                      </span>
+                      {children && children.length > 0 && (
+                        <span className="text-[10px] text-[#00aaff]">
+                          {children.length}x SUB
+                        </span>
+                      )}
+                    </button>
+                    {/* Nested children under this tool call */}
+                    {children && children.length > 0 && (
+                      <div className="ml-4 mt-1 space-y-1">
+                        {children.map((child) => {
+                          const childEvents = child.events;
+                          let childStatus: AgentStatus = "running";
+                          for (const ev of childEvents) {
+                            if (ev.type === "agent.completed") childStatus = "done";
+                            else if (ev.type === "agent.error") childStatus = "error";
+                            else if (ev.type === "run.paused" && childStatus === "running")
+                              childStatus = "paused";
+                            else if (ev.type === "run.resumed" && childStatus === "paused")
+                              childStatus = "running";
+                          }
+
+                          let childDuration: number | undefined;
+                          if (childEvents.length > 0) {
+                            const start = new Date(childEvents[0].ts || 0).getTime();
+                            const end = new Date(childEvents[childEvents.length - 1].ts || 0).getTime();
+                            childDuration = end - start;
+                          }
+
+                          return (
+                            <InlineAgentCard
+                              key={child.childId}
+                              threadId={child.childId}
+                              agentType={child.agentType}
+                              events={childEvents}
+                              status={childStatus}
+                              duration={childDuration}
+                              depth={depth + 1}
+                              onEventClick={onEventClick}
+                              eventsByThread={eventsByThread}
+                              threadTypes={threadTypes}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 );
               } else {
-                // Child agent - render inline recursively
+                // Standalone child agent (no toolCallId match) - render inline recursively
                 const childEvents = item.events;
                 let childStatus: AgentStatus = "running";
                 for (const ev of childEvents) {
@@ -522,6 +626,21 @@ export function TraceView({
           }
         }
       }
+    }
+
+    // Sort events within each thread by timestamp to ensure correct ordering
+    // When timestamps are equal, put subagent.spawned events first so all spawns
+    // in a batch are grouped together before the run.paused event
+    for (const [, threadEvents] of eventsByThread) {
+      threadEvents.sort((a, b) => {
+        const timeA = new Date(a.ts || 0).getTime();
+        const timeB = new Date(b.ts || 0).getTime();
+        if (timeA !== timeB) return timeA - timeB;
+        // Same timestamp: spawns come first
+        const aIsSpawn = a.type === "subagent.spawned" ? 0 : 1;
+        const bIsSpawn = b.type === "subagent.spawned" ? 0 : 1;
+        return aIsSpawn - bIsSpawn;
+      });
     }
 
     // Get thread types from threads prop

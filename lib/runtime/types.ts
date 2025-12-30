@@ -49,11 +49,18 @@ export type ToolMeta = {
   parameters?: ToolJsonSchema; // JSON Schema for the args (OpenAI/Anthropic)
 };
 
-export type ChatMessage =
-  | { role: "system" | "user"; content: string }
-  | { role: "assistant"; reasoning?: string; content: string }
-  | { role: "assistant"; reasoning?: string; toolCalls: ToolCall[] }
-  | { role: "tool"; content: string; toolCallId: string };
+export type ChatMessageBase = {
+  /** Timestamp when the message was created (ISO string), populated from store */
+  ts?: string;
+};
+
+export type ChatMessage = ChatMessageBase &
+  (
+    | { role: "system" | "user"; content: string }
+    | { role: "assistant"; reasoning?: string; content: string }
+    | { role: "assistant"; reasoning?: string; toolCalls: ToolCall[] }
+    | { role: "tool"; content: string; toolCallId: string }
+  );
 
 export interface InvokeBody {
   threadId?: string;

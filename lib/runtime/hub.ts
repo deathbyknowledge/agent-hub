@@ -220,7 +220,7 @@ export class AgentHub {
         }
 
         this.info.agencyId = agencyId;
-        if (options.defaultModel) {
+        if (options.defaultModel && !this.vars.DEFAULT_MODEL) {
           this.vars.DEFAULT_MODEL = options.defaultModel;
         }
 
