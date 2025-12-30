@@ -18,7 +18,7 @@ import type {
 import { createHandler, type HandlerOptions } from "./worker";
 
 type AgentHubOptions = {
-  defaultModel: string;
+  defaultModel?: string;
   provider?: Provider;
 };
 
@@ -170,6 +170,7 @@ export class AgentHub {
   toolRegistry = new ToolRegistry();
   pluginRegistry = new PluginRegistry();
   agentRegistry = new Map<string, AgentBlueprint>();
+  defaultVars: Record<string, unknown> = {};
 
   constructor(private options: AgentHubOptions) {}
 
@@ -178,13 +179,10 @@ export class AgentHub {
     return this;
   }
 
-  use(
-    plugin: AgentPlugin,
-    tags?: string[]
-  ): AgentHub {
+  use(plugin: AgentPlugin, tags?: string[]): AgentHub {
     const uniqueTags = Array.from(new Set([...(tags || []), ...plugin.tags]));
     this.pluginRegistry.addPlugin(plugin.name, plugin, uniqueTags);
-    return this 
+    return this;
   }
 
   addAgent(blueprint: AgentBlueprint): AgentHub {
@@ -222,12 +220,18 @@ export class AgentHub {
         }
 
         this.info.agencyId = agencyId;
+        if (options.defaultModel) {
+          this.vars.DEFAULT_MODEL = options.defaultModel;
+        }
 
         let bp: AgentBlueprint | undefined;
 
         // 1. Ask Agency DO for blueprint
         try {
-          const agencyStub = await getAgentByName(this.exports.Agency, agencyId);
+          const agencyStub = await getAgentByName(
+            this.exports.Agency,
+            agencyId
+          );
           const res = await agencyStub.fetch(
             `http://do/internal/blueprint/${type}`
           );
@@ -267,14 +271,6 @@ export class AgentHub {
       get plugins() {
         const blueprint = this.blueprint;
         return pluginRegistry.selectByCapabilities(blueprint.capabilities);
-      }
-
-      get model() {
-        return this.blueprint.model ?? options.defaultModel;
-      }
-
-      get systemPrompt(): string {
-        return this.blueprint.prompt;
       }
 
       get provider(): Provider {
@@ -325,6 +321,7 @@ export class AgentHub {
         };
       }
     }
+
     const handlerOptions: HandlerOptions = {};
     handlerOptions.agentDefinitions = Array.from(this.agentRegistry.values());
     handlerOptions.plugins = pluginRegistry.getAll();

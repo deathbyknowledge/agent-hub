@@ -433,8 +433,6 @@ function AgentView({
 }) {
   const {
     agents,
-    blueprints,
-    spawnAgent,
     listDirectory,
     readFile,
     refreshAgents,
@@ -448,7 +446,6 @@ function AgentView({
     sendMessage,
     cancel,
     loading: agentLoading,
-    error: agentError,
   } = useAgent(agencyId, agentId);
   const [, navigate] = useLocation();
 
@@ -611,7 +608,13 @@ function AgentView({
 // Settings View Wrapper (handles /:agencyId/settings)
 // ============================================================================
 
-function SettingsRoute({ agencyId, onMenuClick }: { agencyId: string; onMenuClick?: () => void }) {
+function SettingsRoute({
+  agencyId,
+  onMenuClick,
+}: {
+  agencyId: string;
+  onMenuClick?: () => void;
+}) {
   const {
     blueprints,
     schedules,

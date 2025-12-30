@@ -507,7 +507,6 @@ export class Agency extends Agent<AgentEnv> {
       createdAt: new Date(createdAt).toISOString(),
       agentType,
       request: requestContext ?? {},
-      parent: undefined,
       agencyId: this.agencyName,
       vars: { ...this.vars },
     };

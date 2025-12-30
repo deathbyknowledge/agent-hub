@@ -1,17 +1,10 @@
 import { useState, useMemo, createContext, useContext } from "react";
+import type { AgentEvent } from "agent-hub/client";
 import { cn } from "../lib/utils";
 
 // ============================================================================
 // Types
 // ============================================================================
-
-interface AgentEvent {
-  type: string;
-  threadId: string;
-  ts: string;
-  seq?: number;
-  data?: Record<string, unknown>;
-}
 
 interface ThreadMeta {
   id: string;
@@ -169,20 +162,33 @@ function getEventLabel(event: AgentEvent): string {
   const config = EVENT_CONFIG[event.type] || DEFAULT_EVENT_CONFIG;
   const data = event.data;
 
-  if (event.type === "run.tick" && data?.step) {
-    return `Step ${data.step}`;
-  } else if (event.type === "model.started" && data?.model) {
-    const model = String(data.model).split("/").pop()?.slice(0, 20);
+  if (
+    event.type === "run.tick" &&
+    "step" in data &&
+    typeof (data as any).step === "number"
+  ) {
+    return `Step ${(data as any).step}`;
+  } else if (
+    event.type === "model.started" &&
+    data &&
+    "model" in data &&
+    typeof (data as any).model === "string"
+  ) {
+    const model = String((data as any).model)
+      .split("/")
+      .pop()
+      ?.slice(0, 20);
     return model || "Model";
   } else if (
     (event.type === "tool.output" || event.type === "tool.error") &&
-    data?.toolName
+    data &&
+    "toolName" in data
   ) {
     return String(data.toolName);
-  } else if (event.type === "run.paused" && data?.reason) {
-    return `Paused: ${data.reason}`;
-  } else if (event.type === "subagent.spawned" && data?.agentType) {
-    return `Spawned ${data.agentType}`;
+  } else if (event.type === "run.paused" && data && "reason" in data) {
+    return `Paused: ${String(data.reason)}`;
+  } else if (event.type === "subagent.spawned" && data && "agentType" in data) {
+    return `Spawned ${String(data.agentType)}`;
   } else if (event.type === "subagent.completed") {
     return "Child returned";
   }
@@ -372,7 +378,9 @@ function InlineAgentCard({
                     <span className="text-[10px] text-white/30 font-mono w-16 shrink-0">
                       {formatTime(event.ts)}
                     </span>
-                    <span className={cn("text-[10px] w-14 shrink-0", config.color)}>
+                    <span
+                      className={cn("text-[10px] w-14 shrink-0", config.color)}
+                    >
                       {config.tag}
                     </span>
                     <span className="flex-1 truncate text-white/70 uppercase">
@@ -495,7 +503,7 @@ export function TraceView({
 
     // Group events by thread
     for (const event of events) {
-      const threadId = event.threadId || "unknown";
+      const threadId = (event as { threadId?: string }).threadId || "unknown";
 
       if (!eventsByThread.has(threadId)) {
         eventsByThread.set(threadId, []);
@@ -597,7 +605,9 @@ export function TraceView({
       <div className="h-full flex items-center justify-center bg-black">
         <div className="text-center border border-white/20 p-6">
           <div className="text-white/20 text-2xl mb-3 font-mono">○</div>
-          <p className="text-[10px] uppercase tracking-widest text-white/40">NO EVENTS RECORDED</p>
+          <p className="text-[10px] uppercase tracking-widest text-white/40">
+            NO EVENTS RECORDED
+          </p>
           <p className="text-[10px] uppercase tracking-wider text-white/20 mt-2">
             INITIATE CONVERSATION TO BEGIN TRACE
           </p>
@@ -620,21 +630,19 @@ export function TraceView({
               <span>{stats.totalEvents} EVENTS</span>
             </div>
             {stats.completed > 0 && (
-              <div className="text-[#00ff00]">
-                {stats.completed} OK
-              </div>
+              <div className="text-[#00ff00]">{stats.completed} OK</div>
             )}
             {stats.errors > 0 && (
-              <div className="text-[#ff0000]">
-                {stats.errors} ERR
-              </div>
+              <div className="text-[#ff0000]">{stats.errors} ERR</div>
             )}
           </div>
         </div>
 
         {/* Filter bar */}
         <div className="px-3 py-2 border-b border-white/30 flex items-center gap-2 flex-wrap bg-black">
-          <span className="text-[10px] uppercase tracking-wider text-white/30 mr-1 hidden sm:inline">FILTER:</span>
+          <span className="text-[10px] uppercase tracking-wider text-white/30 mr-1 hidden sm:inline">
+            FILTER:
+          </span>
           {(Object.keys(FILTER_CONFIG) as EventFilter[]).map((filter) => (
             <FilterButton
               key={filter}

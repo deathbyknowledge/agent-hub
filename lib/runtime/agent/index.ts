@@ -48,7 +48,7 @@ export abstract class HubAgent<
   constructor(ctx: AgentContext, env: Env) {
     super(ctx, env);
     const { kv, sql } = ctx.storage;
-    this.store = new Store(sql, kv);
+    this.store = new Store(sql);
     this.store.init();
     this.info = PersistedObject<Info>(kv, { prefix: "_info" });
     this.runState = PersistedObject<RunState>(kv, {
@@ -57,7 +57,6 @@ export abstract class HubAgent<
         status: "registered",
       },
     });
-    // Open-typed persisted metadata for plugin use
     this.vars = PersistedObject<Record<string, unknown>>(kv, {
       prefix: "_vars",
     });
@@ -67,17 +66,15 @@ export abstract class HubAgent<
   abstract get plugins(): AgentPlugin[];
   // biome-ignore lint/suspicious/noExplicitAny: tools have varying input types
   abstract get tools(): Record<string, Tool<any>>;
-  abstract get systemPrompt(): string;
-  abstract get model(): string;
   abstract get provider(): Provider;
   abstract onRegister(meta: ThreadMetadata): Promise<void>;
 
   get kv() {
     return this.ctx.storage.kv;
   }
-
   get sqlite() {
-    return this.sql;
+    const sql = this.sql;
+    return sql.bind(this);
   }
 
   get exports() {
@@ -85,7 +82,18 @@ export abstract class HubAgent<
   }
 
   get messages() {
-    return this.store.listMessages();
+    return this.store.getContext(1000);
+  }
+
+  get model(): string {
+    const model = this.blueprint.model ?? (this.vars.DEFAULT_MODEL as string);
+
+    if (!model)
+      throw new Error(
+        "Agent blueprint.model and vars.DEFAULT_MODEL are both missing!"
+      );
+
+    return model;
   }
 
   /**
@@ -207,7 +215,7 @@ export abstract class HubAgent<
       }
 
       // Merge input into state
-      if (body.messages?.length) this.store.appendMessages(body.messages);
+      if (body.messages?.length) this.store.add(body.messages);
 
       if (body.files && Array.isArray(body.files)) {
         await Promise.all(
@@ -268,7 +276,7 @@ export abstract class HubAgent<
         for (const p of this.plugins)
           await p.onModelResult?.(this.pluginContext, res);
 
-        this.store.appendMessages([res.message]);
+        this.store.add(res.message);
 
         let toolCalls: ToolCall[] = [];
         let reply = "";
@@ -327,10 +335,10 @@ export abstract class HubAgent<
 
   getState(_req: Request) {
     const { threadId, agencyId, agentType, request, createdAt } = this.info;
-    const { model } = this;
+    const { model, messages } = this;
     const tools = Object.values(this.tools).map((tool) => tool.meta);
     let state: AgentState = {
-      messages: this.store.listMessages(),
+      messages,
       threadId,
       agentType,
       model,
@@ -442,7 +450,7 @@ export abstract class HubAgent<
           toolCallId: call.id,
         };
       });
-    this.store.appendMessages(messages);
+    this.store.add(messages);
   }
 
   /**
@@ -458,7 +466,9 @@ export abstract class HubAgent<
 
     const seq = this.store.addEvent(evt);
 
+    const event = { ...evt, seq }
     // broadcast to connected clients if any
-    this.broadcast(JSON.stringify({ ...evt, seq }));
+    this.plugins.forEach((p) => p.onEvent?.(this.pluginContext, event));
+    this.broadcast(JSON.stringify(event));
   }
 }

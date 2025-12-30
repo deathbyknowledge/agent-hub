@@ -3,6 +3,7 @@ import type { ModelPlanBuilder } from "./plan";
 import type { HubAgent } from "./agent";
 import type { Provider } from "./providers";
 import type { Agency } from "./agency";
+import type { AgentEvent } from "./events";
 
 export type RunStatus =
   | "idle"
@@ -25,7 +26,6 @@ export type AgentState = {
   tools: ToolMeta[];
   thread: ThreadMetadata;
   threadId?: string;
-  parent?: ParentInfo;
   agentType?: string;
   model?: string;
 } & Record<string, unknown>;
@@ -34,11 +34,6 @@ export interface ApproveBody {
   approved: boolean;
   modifiedToolCalls?: ToolCall[];
 }
-
-export type Todo = {
-  content: string;
-  status: "pending" | "in_progress" | "completed";
-};
 
 export type ToolCall = {
   name: string;
@@ -55,8 +50,9 @@ export type ToolMeta = {
 };
 
 export type ChatMessage =
-  | { role: "system" | "user" | "assistant"; content: string }
-  | { role: "assistant"; toolCalls: ToolCall[] }
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; reasoning?: string; content: string }
+  | { role: "assistant"; reasoning?: string; toolCalls: ToolCall[] }
   | { role: "tool"; content: string; toolCallId: string };
 
 export interface InvokeBody {
@@ -84,16 +80,6 @@ export interface ModelRequest {
   stop?: string[];
 }
 
-/**
- * Parent info for subagent relationships.
- * NOTE: This is now populated by consumer plugins (subagents/subagent-reporter),
- * not by the core runtime.
- */
-export interface ParentInfo {
-  threadId: string;
-  token: string;
-}
-
 export type ThreadRequestContext = {
   userAgent?: string;
   ip?: string;
@@ -106,7 +92,6 @@ export interface ThreadMetadata {
   id: string;
   createdAt: string;
   request: ThreadRequestContext;
-  parent?: ParentInfo;
   agentType: string;
   agencyId: string;
   /** Agency-level vars to inherit (merged with lower priority than agent vars) */
@@ -239,6 +224,11 @@ export interface AgentPlugin {
    * Hook called when the agent has no more tools to call and has returned a final text.
    */
   onRunComplete?(ctx: PluginContext, result: { final: string }): Promise<void>;
+
+  /**
+   * Hook called when the agent emits an event.
+   */
+  onEvent?(ctx: PluginContext, event: AgentEvent): void;
 
   tags: string[];
 }

@@ -35,7 +35,7 @@ export class ModelPlanBuilder {
   }
 
   build(): ModelRequest {
-    const systemPrompt = [this.agent.systemPrompt, ...this.sysParts]
+    const systemPrompt = [this.agent.blueprint.prompt, ...this.sysParts]
       .filter(Boolean)
       .join("\n\n");
 

@@ -28,11 +28,11 @@ export const filesystem: AgentPlugin = {
 
     // Track read paths in KV for edit safety
     const getReadPaths = () =>
-      new Set(ctx.agent.store.kv.get<string[]>("fsReadPaths") ?? []);
+      new Set(ctx.agent.kv.get<string[]>("fsReadPaths") ?? []);
     const markRead = (path: string) => {
       const paths = getReadPaths();
       paths.add(path);
-      ctx.agent.store.kv.put("fsReadPaths", Array.from(paths));
+      ctx.agent.kv.put("fsReadPaths", Array.from(paths));
     };
 
     // ls - list directory

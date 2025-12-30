@@ -33,7 +33,6 @@ export enum AgentEventType {
  * Base event structure. All events have threadId, timestamp, and sequence.
  */
 export type AgentEvent = {
-  threadId: string;
   ts: string;
   seq?: number;
 } & (AgentEventData | CustomEventData);

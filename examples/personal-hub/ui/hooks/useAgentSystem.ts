@@ -559,7 +559,7 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
           // Tag events with threadId and add to collection
           const taggedEvents = events.map((e) => ({
             ...e,
-            threadId: e.threadId || threadId,
+            threadId,
           }));
           allEvents.push(...taggedEvents);
 

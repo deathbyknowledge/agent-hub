@@ -19,7 +19,7 @@ interface ApprovePayload {
   modifiedToolCalls?: ToolCall[];
 }
 
-const hitl: AgentPlugin = {
+export const hitl: AgentPlugin = {
   name: "hitl",
 
   actions: {
@@ -87,5 +87,3 @@ const hitl: AgentPlugin = {
 
   tags: ["hitl"],
 };
-
-export default hitl;

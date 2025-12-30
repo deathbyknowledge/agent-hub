@@ -1,6 +1,11 @@
-import type { AgentPlugin, Todo } from "agent-hub";
+import type { AgentPlugin } from "agent-hub";
 import { tool } from "agent-hub";
 import z from "zod";
+
+export type Todo = {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+};
 
 const WRITE_TODOS_TOOL_DESCRIPTION = `Use this tool to create and manage a structured task list for your current work session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
 It also helps the user understand the progress of the task and overall progress of their requests.
@@ -216,7 +221,6 @@ Being proactive with task management demonstrates attentiveness and ensures you 
 Remember: If you only need to make a few tool calls to complete a task, and it is clear what you need to do, it is better to just do the task directly and NOT call this tool at all.
 `;
 
-
 const WRITE_TODOS_SYSTEM_PROMPT = `## \`write_todos\`
 
 You have access to the \`write_todos\` tool to help you manage and plan complex objectives. 
@@ -230,7 +234,6 @@ Writing todos takes time and tokens, use it when it is helpful for managing comp
 ## Important To-Do List Usage Notes to Remember
 - The \`write_todos\` tool should never be called multiple times in parallel.
 - Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are irrelevant.`;
-
 
 // only tool
 const write_todos = tool({
@@ -249,7 +252,7 @@ const write_todos = tool({
       .describe("Full replacement list of todos"),
   }),
   execute: async (p, ctx) => {
-    const sql = ctx.agent.store.sql;
+    const sql = ctx.agent.sqlite;
     const clean = (p.todos ?? []).map((t) => ({
       content: String(t.content ?? "").slice(0, 2000),
       status:
@@ -257,16 +260,10 @@ const write_todos = tool({
           ? t.status
           : ("pending" as const),
     }));
-    sql.exec("DELETE FROM todos");
+    sql`DELETE FROM todos`;
     let pos = 0;
     for (const td of clean) {
-      sql.exec(
-        "INSERT INTO todos (content, status, pos, updated_at) VALUES (?, ?, ?, ?)",
-        td.content,
-        td.status,
-        pos++,
-        Date.now()
-      );
+      sql`INSERT INTO todos (content, status, pos, updated_at) VALUES (${td.content}, ${td.status}, ${pos++}, ${Date.now()})`;
     }
     return `Updated todo list (${clean.length} items).`;
   },
@@ -275,7 +272,7 @@ const write_todos = tool({
 export const planning: AgentPlugin = {
   name: "planning",
   async onInit(ctx) {
-    ctx.agent.store.sql.exec(`
+    ctx.agent.sqlite`
 CREATE TABLE IF NOT EXISTS todos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   content TEXT NOT NULL,
@@ -283,12 +280,12 @@ CREATE TABLE IF NOT EXISTS todos (
   pos INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL
 );
-`);
+`;
   },
   state: (ctx) => {
-    const rows = ctx.agent.store.sql.exec(
-      "SELECT content, status FROM todos ORDER BY pos ASC, id ASC"
-    );
+    const rows = ctx.agent.sqlite`
+      SELECT content, status FROM todos ORDER BY pos ASC, id ASC
+    `;
     const todos: Todo[] = [];
     for (const r of rows) {
       todos.push({

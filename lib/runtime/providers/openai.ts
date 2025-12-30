@@ -7,10 +7,12 @@ type OAChatMsg =
       content: string;
       name?: string;
       tool_call_id?: string;
+      reasoning?: string;
     }
   | {
       role: "assistant";
       content?: string;
+      reasoning?: string;
       tool_calls?: Array<{
         id: string;
         type: "function";
@@ -82,6 +84,7 @@ function fromOA(choice: { message: OAChatMsg }): ChatMessage {
   if ("tool_calls" in msg && msg?.tool_calls?.length) {
     return {
       role: "assistant",
+      reasoning: msg.reasoning,
       toolCalls: msg.tool_calls.map((tc) => ({
         id: tc.id,
         name: tc.function?.name,
@@ -96,7 +99,7 @@ function fromOA(choice: { message: OAChatMsg }): ChatMessage {
       }))
     };
   }
-  return { role: "assistant", content: msg?.content ?? "" };
+  return { role: "assistant", reasoning: msg?.reasoning, content: msg?.content ?? "" };
 }
 
 export function makeOpenAI(

@@ -45,7 +45,7 @@ export const subagents: AgentPlugin = {
 
   async onInit(ctx) {
     // Create our own tables for tracking subagents
-    ctx.agent.store.sql.exec(`
+    ctx.agent.sqlite`
       CREATE TABLE IF NOT EXISTS mw_waiting_subagents (
         token TEXT PRIMARY KEY,
         child_thread_id TEXT NOT NULL,
@@ -63,7 +63,7 @@ export const subagents: AgentPlugin = {
         report TEXT,
         tool_call_id TEXT
       );
-    `);
+    `;
   },
 
   actions: {
@@ -77,38 +77,26 @@ export const subagents: AgentPlugin = {
         report?: string;
       };
 
-      const sql = ctx.agent.store.sql;
+      const sql = ctx.agent.sqlite;
 
       // Pop waiter
-      const rows = sql
-        .exec(
-          `SELECT tool_call_id FROM mw_waiting_subagents WHERE token = ? AND child_thread_id = ?`,
-          token,
-          childThreadId
-        )
-        .toArray();
-
+      const rows = sql`SELECT tool_call_id FROM mw_waiting_subagents WHERE token = ${token} AND child_thread_id = ${childThreadId}`;
       if (!rows.length) {
         throw new Error("unknown token");
       }
 
       const toolCallId = String(rows[0].tool_call_id);
-      sql.exec(`DELETE FROM mw_waiting_subagents WHERE token = ?`, token);
+      sql`DELETE FROM mw_waiting_subagents WHERE token = ${token}`;
 
       // Update link status
-      sql.exec(
-        `UPDATE mw_subagent_links SET status='completed', completed_at=?, report=? WHERE child_thread_id = ?`,
-        Date.now(),
-        report ?? null,
-        childThreadId
-      );
+      sql`UPDATE mw_subagent_links SET status='completed', completed_at=${Date.now()}, report=${report ?? null} WHERE child_thread_id = ${childThreadId}`;
 
       // Append tool result with agentId for follow-up capability
       const result = JSON.stringify({
         agentId: childThreadId,
         result: report ?? "",
       });
-      ctx.agent.store.appendToolResult(toolCallId, result);
+      ctx.agent.store.add({ role: "tool", toolCallId, content: result });
 
       ctx.agent.emit(SubagentEventType.COMPLETED, {
         childThreadId,
@@ -116,9 +104,7 @@ export const subagents: AgentPlugin = {
       });
 
       // Check if all done
-      const remaining = sql
-        .exec(`SELECT COUNT(*) as c FROM mw_waiting_subagents`)
-        .toArray();
+      const remaining = sql`SELECT COUNT(*) as c FROM mw_waiting_subagents`;
 
       if (Number(remaining[0]?.c ?? 0) === 0) {
         ctx.agent.runState.status = "running";
@@ -134,10 +120,8 @@ export const subagents: AgentPlugin = {
      * Cancel all waiting subagents
      */
     async cancel_subagents(ctx) {
-      const sql = ctx.agent.store.sql;
-      const waiters = sql
-        .exec(`SELECT token, child_thread_id FROM mw_waiting_subagents`)
-        .toArray();
+      const sql = ctx.agent.sqlite;
+      const waiters = sql`SELECT token, child_thread_id FROM mw_waiting_subagents`;
 
       for (const w of waiters) {
         try {
@@ -158,15 +142,11 @@ export const subagents: AgentPlugin = {
         }
 
         // Mark as canceled
-        sql.exec(
-          `UPDATE mw_subagent_links SET status='canceled', completed_at=? WHERE child_thread_id = ?`,
-          Date.now(),
-          String(w.child_thread_id)
-        );
+        sql`UPDATE mw_subagent_links SET status='canceled', completed_at=${Date.now()} WHERE child_thread_id = ${w.child_thread_id}`;
       }
 
       // Clear all waiters
-      sql.exec(`DELETE FROM mw_waiting_subagents`);
+      sql`DELETE FROM mw_waiting_subagents`;
 
       return { ok: true };
     },
@@ -174,13 +154,9 @@ export const subagents: AgentPlugin = {
 
   state(ctx) {
     // Expose subagent links in agent state
-    const sql = ctx.agent.store.sql;
-    const rows = sql
-      .exec(
-        `SELECT child_thread_id, token, agent_type, status, created_at, completed_at, report, tool_call_id
-         FROM mw_subagent_links ORDER BY created_at ASC`
-      )
-      .toArray();
+    const sql = ctx.agent.sqlite;
+    const rows = sql`SELECT child_thread_id, token, agent_type, status, created_at, completed_at, report, tool_call_id
+         FROM mw_subagent_links ORDER BY created_at ASC`;
 
     const subagents = rows.map((r) => ({
       childThreadId: String(r.child_thread_id),
@@ -215,7 +191,7 @@ export const subagents: AgentPlugin = {
         const { description, subagentType } = p;
         const token = crypto.randomUUID();
         const childId = crypto.randomUUID();
-        const sql = ctx.agent.store.sql;
+        const sql = ctx.agent.sqlite;
 
         // Spawn child
         const subagent = await getAgentByName(
@@ -271,24 +247,11 @@ export const subagents: AgentPlugin = {
         });
 
         // Record in our tables
-        sql.exec(
-          `INSERT INTO mw_waiting_subagents (token, child_thread_id, tool_call_id, created_at)
-           VALUES (?, ?, ?, ?)`,
-          token,
-          childId,
-          toolCtx.callId,
-          Date.now()
-        );
+        sql`INSERT INTO mw_waiting_subagents (token, child_thread_id, tool_call_id, created_at)
+           VALUES (${token}, ${childId}, ${toolCtx.callId}, ${Date.now()})`;
 
-        sql.exec(
-          `INSERT INTO mw_subagent_links (child_thread_id, token, agent_type, status, created_at, tool_call_id)
-           VALUES (?, ?, ?, 'waiting', ?, ?)`,
-          childId,
-          token,
-          subagentType,
-          Date.now(),
-          toolCtx.callId
-        );
+        sql`INSERT INTO mw_subagent_links (child_thread_id, token, agent_type, status, created_at, tool_call_id)
+           VALUES (${childId}, ${token}, ${subagentType}, 'waiting', ${Date.now()}, ${toolCtx.callId})`;
 
         // Pause the parent
         const runState = ctx.agent.runState;
@@ -314,15 +277,10 @@ Use this when you need to continue a conversation with a specific agent that alr
 The agentId is returned in the result object of the task tool (e.g., {"agentId": "...", "result": "..."}).`,
       inputSchema: MessageAgentParams,
       execute: async ({ agentId, message }, toolCtx) => {
-        const sql = ctx.agent.store.sql;
+        const sql = ctx.agent.sqlite;
 
         // Verify this is our child
-        const link = sql
-          .exec(
-            `SELECT status, agent_type FROM mw_subagent_links WHERE child_thread_id = ?`,
-            agentId
-          )
-          .toArray();
+        const link = sql`SELECT status, agent_type FROM mw_subagent_links WHERE child_thread_id = ${agentId}`;
 
         if (!link.length) {
           return "Error: Unknown agent ID. Make sure this is an agentId from a previous task result.";
@@ -331,23 +289,16 @@ The agentId is returned in the result object of the task tool (e.g., {"agentId":
         const token = crypto.randomUUID();
 
         // Update tracking - reuse the link but new token
-        sql.exec(
-          `INSERT INTO mw_waiting_subagents (token, child_thread_id, tool_call_id, created_at)
-           VALUES (?, ?, ?, ?)`,
-          token,
-          agentId,
-          toolCtx.callId,
-          Date.now()
-        );
+        sql`INSERT INTO mw_waiting_subagents (token, child_thread_id, tool_call_id, created_at)
+           VALUES (${token}, ${agentId}, ${toolCtx.callId}, ${Date.now()})`;
 
-        sql.exec(
-          `UPDATE mw_subagent_links 
-           SET status = 'waiting', token = ?, tool_call_id = ?
-           WHERE child_thread_id = ?`,
-          token,
-          toolCtx.callId,
-          agentId
-        );
+        sql`UPDATE mw_subagent_links 
+           SET status = 'waiting', token = ${token}, tool_call_id = ${toolCtx.callId}
+           WHERE child_thread_id = ${agentId}`;
+
+        sql`UPDATE mw_subagent_links 
+           SET status = 'waiting', token = ${token}, tool_call_id = ${toolCtx.callId}
+           WHERE child_thread_id = ${agentId}`;
 
         // Re-invoke the existing agent
         const agent = await getAgentByName(

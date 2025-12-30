@@ -1,213 +1,183 @@
-import type { ChatMessage, ToolCall } from "../types";
+import type { SqlStorage } from "@cloudflare/workers-types";
+import type { ChatMessage } from "../types";
 import type { AgentEvent } from "../events";
 
-function toJson(v: unknown) {
-  return JSON.stringify(v ?? null);
-}
-
-function fromJson<T>(v: unknown): T | undefined {
-  if (v === null || v === undefined) return undefined;
-  if (typeof v === "string") {
-    try {
-      return JSON.parse(v) as T;
-    } catch {
-      // if it's already a simple string value, just cast
-      return v as unknown as T;
-    }
-  }
-  return v as T;
-}
-
 export class Store {
-  private _messages?: ChatMessage[];
-  private _events?: AgentEvent[];
+  constructor(private sql: SqlStorage) {}
 
-  constructor(
-    // Public so middlewares can access it
-    public sql: SqlStorage,
-    public kv: SyncKvStorage
-  ) {}
-
-  /** Create tables if absent */
+  /**
+   * Initialize the schema.
+   * Uses JSON columns for complex structures and FTS-ready design.
+   */
   init() {
-    this.sql.exec(
-      `
-CREATE TABLE IF NOT EXISTS messages (
-  seq INTEGER PRIMARY KEY AUTOINCREMENT,
-  role TEXT NOT NULL CHECK(role IN ('user','assistant','tool')),
-  content TEXT,
-  tool_call_id TEXT,
-  tool_calls_json TEXT,
-  created_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_messages_role ON messages(role);
-
-CREATE TABLE IF NOT EXISTS events (
-  seq INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL,
-  data_json TEXT NOT NULL,
-  ts TEXT NOT NULL
-);
-`
-    );
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS messages (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL,
+        content JSON,            -- Strictly stores JSON-serialized content ("text" or [{"type":...}])
+        tool_calls JSON,         -- JSON Array of tool calls
+        tool_call_id TEXT,       -- ID being responded to
+        reasoning_content TEXT,  -- DeepSeek thinking blocks
+        created_at INTEGER NOT NULL
+      );
+      
+      -- Index for frequent access patterns
+      CREATE INDEX IF NOT EXISTS idx_messages_role ON messages(role);
+      
+      CREATE TABLE IF NOT EXISTS events (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        data JSON NOT NULL,
+        ts TEXT NOT NULL
+      );
+    `);
   }
 
-  // --------------------------
-  // Messages
-  // --------------------------
-  appendMessages(msgs: ChatMessage[]): void {
+  /**
+   * Appends messages in batches to respect the 100-parameter limit.
+   */
+  add(input: ChatMessage | ChatMessage[]): void {
+    const msgs = Array.isArray(input) ? input : [input];
     if (!msgs.length) return;
-    const t = Date.now();
 
-    // Store in SQL first
-    for (const m of msgs) {
-      if (m.role === "assistant" && "toolCalls" in m && m.toolCalls) {
-        this.sql.exec(
-          `INSERT INTO messages (role, content, tool_call_id, tool_calls_json, created_at)
-             VALUES ('assistant', NULL, NULL, ?, ?)`,
-          toJson(m.toolCalls),
-          t
-        );
-      } else if (m.role === "tool") {
-        this.sql.exec(
-          `INSERT INTO messages (role, content, tool_call_id, tool_calls_json, created_at)
-             VALUES ('tool', ?, ?, NULL, ?)`,
-          String(m.content ?? ""),
-          String(m.toolCallId ?? ""),
-          t
-        );
-      } else {
-        // user or assistant with textual content
-        const content =
-          "content" in m ? String(m.content ?? "") : ("" as string);
-        this.sql.exec(
-          `INSERT INTO messages (role, content, tool_call_id, tool_calls_json, created_at)
-             VALUES (?, ?, NULL, NULL, ?)`,
-          m.role,
-          content,
-          t
-        );
+    const now = Date.now();
+
+    // Define columns relative to the parameters we bind
+    // 1: role, 2: content, 3: tool_calls, 4: tool_call_id, 5: reasoning_content, 6: created_at
+    const PARAMS_PER_ROW = 6;
+    const MAX_PARAMS = 100; // DO Limit
+    const CHUNK_SIZE = Math.floor(MAX_PARAMS / PARAMS_PER_ROW); // ~16 rows
+
+    // Helper to serialize cleanly
+    const toJSON = (v: unknown) =>
+      v === undefined || v === null ? null : JSON.stringify(v);
+
+    // Chunk the messages
+    for (let i = 0; i < msgs.length; i += CHUNK_SIZE) {
+      const chunk = msgs.slice(i, i + CHUNK_SIZE);
+      const placeholders: string[] = [];
+      const bindings: unknown[] = [];
+
+      for (const m of chunk) {
+        placeholders.push(`(?, ?, ?, ?, ?, ?)`);
+
+        // 1. Role
+        bindings.push(m.role);
+
+        // 2. Content (Strictly JSON serialized)
+        // If it's a string, we stringify it ("hello" -> "\"hello\"")
+        // If it's an object/array, we stringify it ([part] -> "[part]")
+        bindings.push(toJSON("content" in m ? m.content : undefined));
+
+        // 3. Tool Calls (JSON)
+        bindings.push(toJSON("toolCalls" in m ? m.toolCalls : undefined));
+
+        // 4. Tool Call ID
+        bindings.push("toolCallId" in m ? m.toolCallId : null);
+
+        // 5. Reasoning Content
+        bindings.push("reasoning" in m ? m.reasoning : null);
+
+        // 6. Created At
+        bindings.push(now);
       }
+
+      // Execute this batch
+      const query = `
+        INSERT INTO messages (
+          role, content, tool_calls, tool_call_id, reasoning_content, created_at
+        ) VALUES ${placeholders.join(", ")}
+      `;
+
+      this.sql.exec(query, ...bindings);
     }
-
-    // Invalidate cache to ensure consistency with DB
-    // This forces a reload from SQL on next listMessages() call
-    this._messages = undefined;
   }
 
-  listMessages(): ChatMessage[] {
-    if (this._messages) return [...this._messages];
-    const rows = this.sql.exec(
-      `SELECT role, content, tool_call_id, tool_calls_json
-       FROM messages ORDER BY seq ASC`
-    );
-    const out: ChatMessage[] = [];
-    for (const r of rows ?? []) {
-      const role = String(r.role);
-      if (role === "assistant" && r.tool_calls_json) {
-        out.push({
-          role: "assistant",
-          toolCalls: fromJson<ToolCall[]>(r.tool_calls_json) ?? [],
-        });
-      } else if (role === "tool") {
-        out.push({
-          role: "tool",
-          content: String(r.content ?? ""),
-          toolCallId: String(r.tool_call_id ?? ""),
-        });
-      } else {
-        out.push({
-          role: role as "user" | "assistant",
-          content: String(r.content ?? ""),
-        } as ChatMessage);
-      }
-    }
-    this._messages = [...out];
-    return out;
+  getContext(limit = 100): ChatMessage[] {
+    // Get the last N conversation turns
+    const cursor = this.sql.exec(`
+      SELECT * FROM (
+        SELECT seq, role, content, tool_calls, tool_call_id, reasoning_content
+        FROM messages 
+        ORDER BY seq DESC 
+        LIMIT ?
+      ) ORDER BY seq ASC
+    `, limit);
+
+    return this._mapRows(cursor);
   }
 
-  /** Insert one tool result message */
-  appendToolResult(toolCallId: string, content: string): void {
-    this.sql.exec(
-      `INSERT INTO messages (role, content, tool_call_id, tool_calls_json, created_at)
-       VALUES ('tool', ?, ?, NULL, ?)`,
-      content,
-      toolCallId,
-      Date.now()
-    );
-    // Invalidate cache to ensure consistency with DB
-    this._messages = undefined;
-  }
-
-  /** Get the last assistant message */
+  /** * Efficiently gets the last assistant message (useful for continuation logic).
+   */
   lastAssistant(): ChatMessage | null {
-    const rows = this.sql
-      .exec(
-        `SELECT role, content, tool_call_id, tool_calls_json
-         FROM messages 
-         WHERE role = 'assistant'
-         ORDER BY seq DESC
-         LIMIT 1`
-      )
-      .toArray();
+    const cursor = this.sql.exec(`
+      SELECT role, content, tool_calls, tool_call_id, reasoning_content, meta
+      FROM messages 
+      WHERE role = 'assistant'
+      ORDER BY seq DESC
+      LIMIT 1
+    `);
 
-    if (!rows || rows.length === 0) return null;
-
-    const r = rows[0];
-    if (r.tool_calls_json) {
-      return {
-        role: "assistant",
-        toolCalls: fromJson<ToolCall[]>(r.tool_calls_json) ?? [],
-      };
-    }
+    const row = cursor.toArray()[0];
+    if (!row) return null;
 
     return {
       role: "assistant",
-      content: String(r.content ?? ""),
+      content: row.content ? JSON.parse(row.content as string) : null,
+      toolCalls: row.tool_calls
+        ? JSON.parse(row.tool_calls as string)
+        : undefined,
+      reasoning: row.reasoning_content as string | undefined,
     };
   }
 
   // --------------------------
-  // Events
+  // Events Logic
   // --------------------------
+
   addEvent(e: AgentEvent): number {
+    // Events usually come one by one, so simple insert is fine.
+    // Check param limit: 3 params << 100.
     this.sql.exec(
-      "INSERT INTO events (type, data_json, ts) VALUES (?, ?, ?)",
+      "INSERT INTO events (type, data, ts) VALUES (?, ?, ?)",
       e.type,
-      toJson({ ...e.data }),
+      JSON.stringify(e.data),
       e.ts
     );
-    // Let's get the highest seq now
-    const rows = this.sql
-      .exec<{ seq: number }>("SELECT seq FROM events ORDER BY seq DESC LIMIT 1")
-      .toArray();
 
-    const seq = rows[0].seq;
-    if (this._events) {
-      this._events = [...this._events, { ...e, seq }];
-    }
-
-    return seq;
+    // Get the sequence number of the inserted row
+    // Note: 'last_insert_rowid()' is standard SQLite
+    const result = this.sql.exec("SELECT last_insert_rowid() as id").one();
+    return result ? (result.id as number) : 0;
   }
 
   listEvents(): AgentEvent[] {
-    if (this._events) return [...this._events];
-    const rows = this.sql.exec(
-      `SELECT seq, type, data_json, ts FROM events
-       ORDER BY seq ASC`
+    const cursor = this.sql.exec(
+      `SELECT seq, type, data, ts FROM events ORDER BY seq ASC`
     );
     const out: AgentEvent[] = [];
-    for (const r of rows) {
-      const data = fromJson(r.data_json) ?? {};
+    for (const r of cursor) {
       out.push({
-        threadId: "", // TODO: check what to do with this
-        ts: String(r.ts),
-        seq: Number(r.seq),
-        type: String(r.type),
-        data,
-      } as AgentEvent);
+        seq: r.seq as number,
+        type: r.type as string,
+        ts: r.ts as string,
+        data: r.data ? JSON.parse(r.data as string) : {},
+      });
     }
-    this._events = [...out];
+    return out;
+  }
+
+  private _mapRows(cursor: Iterable<any>): ChatMessage[] {
+    const out: ChatMessage[] = [];
+    for (const r of cursor) {
+       out.push({
+         role: r.role,
+         content: r.content ? JSON.parse(r.content as string) : null,
+         toolCalls: r.tool_calls ? JSON.parse(r.tool_calls as string) : undefined,
+         toolCallId: r.tool_call_id || undefined,
+         reasoning: r.reasoning_content || undefined,
+       });
+    }
     return out;
   }
 }
