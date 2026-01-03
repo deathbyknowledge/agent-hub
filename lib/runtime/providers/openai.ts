@@ -39,14 +39,13 @@ function toOA(req: ModelRequest) {
     ) {
       msgs.push({
         role: "assistant",
-        content: "", // TODO: check whether we can skip this when we have toolCalls
+        content: "",
         tool_calls: m.toolCalls.map(({ id, name, args }) => ({
           id,
           type: "function",
           function: {
             name,
-            arguments:
-              typeof args === "string" ? args : JSON.stringify(args ?? {})
+            arguments: typeof args === "string" ? args : JSON.stringify(args ?? {})
           }
         }))
       });
@@ -79,6 +78,14 @@ function toOA(req: ModelRequest) {
   };
 }
 
+function safeParseJSON(str: string): unknown {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return str;
+  }
+}
+
 function fromOA(choice: { message: OAChatMsg }): ChatMessage {
   const msg = choice?.message ?? {};
   if ("tool_calls" in msg && msg?.tool_calls?.length) {
@@ -88,14 +95,7 @@ function fromOA(choice: { message: OAChatMsg }): ChatMessage {
       toolCalls: msg.tool_calls.map((tc) => ({
         id: tc.id,
         name: tc.function?.name,
-        // Try to parse, but fall back to raw string to avoid hard failures
-        args: (() => {
-          try {
-            return JSON.parse(tc.function?.arguments ?? "{}");
-          } catch {
-            return tc.function?.arguments ?? "{}";
-          }
-        })()
+        args: safeParseJSON(tc.function?.arguments ?? "{}")
       }))
     };
   }
@@ -138,7 +138,6 @@ export function makeOpenAI(
       return { message, usage };
     },
 
-    // don't care about streaming for now
     async stream(_req, _onDelta) {
       throw new Error("Streaming not implemented");
     }

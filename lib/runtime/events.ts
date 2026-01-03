@@ -1,6 +1,3 @@
-/**
- * Core runtime event types.
- */
 export enum AgentEventType {
   THREAD_CREATED = "thread.created",
   REQUEST_ACCEPTED = "request.accepted",
@@ -29,24 +26,16 @@ export enum AgentEventType {
   TOOL_ERROR = "tool.error",
 }
 
-/**
- * Base event structure. All events have threadId, timestamp, and sequence.
- */
 export type AgentEvent = {
   ts: string;
   seq?: number;
 } & (AgentEventData | CustomEventData);
 
-/**
- * Custom event data for plugin-defined events.
- * Plugins can emit any string type with arbitrary data.
- */
 export type CustomEventData = {
   type: string;
   data: Record<string, unknown>;
 };
 
-// TODO: Allow extension of event data, so tools/plugins can add their own
 export type AgentEventData =
   | { type: AgentEventType.THREAD_CREATED; data: { threadId: string } }
   | { type: AgentEventType.REQUEST_ACCEPTED; data: { idempotencyKey: string } }

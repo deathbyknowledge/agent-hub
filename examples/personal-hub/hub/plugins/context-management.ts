@@ -1,20 +1,3 @@
-/**
- * Context Management Plugin
- *
- * Automatically manages conversation context to prevent overflow:
- * - Monitors message count in the conversation
- * - When threshold exceeded, summarizes older messages
- * - Optionally extracts memories from summarized content
- * - Archives old messages to filesystem as JSON logs
- * - Deletes archived messages from DB to save space
- * - Injects summary as assistant message at start of context
- *
- * Configuration via vars (agency-level with agent override):
- *   - CONTEXT_KEEP_RECENT: Messages to keep in full (default: 20)
- *   - CONTEXT_SUMMARIZE_AT: Trigger when > N messages (default: 40)
- *   - CONTEXT_MEMORY_DISK: Disk to store extracted memories (optional)
- *   - CONTEXT_SUMMARY_MODEL: Model for summarization (uses agent's model by default)
- */
 import type { AgentPlugin, PluginContext, ChatMessage, HubAgent} from "agent-hub";
 
 // IDZ file format for memory storage
@@ -49,9 +32,6 @@ If there are important facts worth remembering long-term (user preferences, name
 Keep the summary focused and actionable. The agent will continue the conversation with only this summary as history.
 Do NOT include the <memories> section if there are no new facts worth remembering.`;
 
-/**
- * Build the prompt for summarization.
- */
 function buildSummaryPrompt(
   previousSummary: string | undefined,
   messages: ChatMessage[]
@@ -92,9 +72,6 @@ function buildSummaryPrompt(
   return prompt;
 }
 
-/**
- * Parse the summarization response to extract summary and memories.
- */
 function parseSummaryResponse(content: string): {
   summary: string;
   memories: string[];
@@ -117,9 +94,6 @@ function parseSummaryResponse(content: string): {
   return { summary, memories };
 }
 
-/**
- * Archive messages to the filesystem.
- */
 async function archiveMessages(
   fs: HubAgent["fs"],
   messages: ChatMessage[],
@@ -142,9 +116,6 @@ async function archiveMessages(
   return path;
 }
 
-/**
- * Store extracted memories to an IDZ disk.
- */
 async function storeMemories(
   fs: HubAgent["fs"],
   diskName: string,
@@ -190,10 +161,6 @@ async function storeMemories(
   await fs.writeFile(path, JSON.stringify(idz));
 }
 
-// ============================================================================
-// Plugin Definition
-// ============================================================================
-
 export const contextManagement: AgentPlugin = {
   name: "context-management",
   tags: ["context-management"],
@@ -221,9 +188,6 @@ export const contextManagement: AgentPlugin = {
     },
   ],
 
-  /**
-   * Expose summarization state for UI/debugging.
-   */
   state(ctx: PluginContext) {
     const checkpoint = ctx.agent.store.getLatestCheckpoint();
     return {

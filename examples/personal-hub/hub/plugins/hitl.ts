@@ -73,7 +73,7 @@ export const hitl: AgentPlugin = {
       last?.role === "assistant" && "toolCalls" in last
         ? (last.toolCalls ?? [])
         : [];
-    const watchTools = ctx.agent.vars.HTIL_TOOLS as string[] | undefined;
+    const watchTools = ctx.agent.vars.HITL_TOOLS as string[] | undefined;
     const risky = calls.find((c: ToolCall) => watchTools?.includes(c.name));
 
     if (risky) {

@@ -5,6 +5,7 @@ import type { Provider } from "./providers";
 import type { Agency } from "./agency";
 import type { AgentEvent } from "./events";
 
+/** Lifecycle status of an agent run. */
 export type RunStatus =
   | "idle"
   | "registered"
@@ -14,13 +15,15 @@ export type RunStatus =
   | "canceled"
   | "error";
 
+/** Mutable state tracking the progress of an agent run. */
 export type RunState = {
   status: RunStatus;
-  step: number; // how many steps executed
-  reason?: string; // pause/cancel reason
-  nextAlarmAt?: number | null; // ms epoch
+  step: number;
+  reason?: string;
+  nextAlarmAt?: number | null;
 };
 
+/** Full observable state of an agent, returned via the `/state` endpoint. */
 export type AgentState = {
   messages: ChatMessage[];
   tools: ToolMeta[];
@@ -43,17 +46,19 @@ export type ToolCall = {
 
 export type ToolJsonSchema = Record<string, unknown>;
 
+/** Metadata describing a tool for the LLM (name, description, JSON Schema). */
 export type ToolMeta = {
   name: string;
-  description?: string; // this is where *_TOOL_DESCRIPTION goes
-  parameters?: ToolJsonSchema; // JSON Schema for the args (OpenAI/Anthropic)
+  description?: string;
+  parameters?: ToolJsonSchema;
 };
 
 export type ChatMessageBase = {
-  /** Timestamp when the message was created (ISO string), populated from store */
+  /** Timestamp when the message was created (ISO string). */
   ts?: string;
 };
 
+/** A single message in the conversation (user, assistant, system, or tool result). */
 export type ChatMessage = ChatMessageBase &
   (
     | { role: "system" | "user"; content: string }
@@ -62,23 +67,23 @@ export type ChatMessage = ChatMessageBase &
     | { role: "tool"; content: string; toolCallId: string }
   );
 
+/** Request body for the `/invoke` endpoint. */
 export interface InvokeBody {
   threadId?: string;
-  messages?: ChatMessage[]; // optional new user messages
-  files?: Record<string, string>; // optional files to merge into VFS
-  idempotencyKey?: string; // dedupe protection
-  agentType?: string; // optional subagent type
-  /** Dynamic plugin tags for this invocation */
+  messages?: ChatMessage[];
+  files?: Record<string, string>;
+  idempotencyKey?: string;
+  agentType?: string;
   tags?: string[];
-  /** Arbitrary vars accessible to plugins */
   vars?: Record<string, unknown>;
 }
 
+/** Request payload sent to the LLM provider. */
 export interface ModelRequest {
-  model: string; // provider:model-id (adapter resolves)
-  systemPrompt?: string; // big system prompt (may be dynamic)
-  messages: ChatMessage[]; // excludes systemPrompt
-  tools?: string[]; // exposed tool names
+  model: string;
+  systemPrompt?: string;
+  messages: ChatMessage[];
+  tools?: string[];
   toolDefs?: ToolMeta[];
   toolChoice?: "auto" | { type: "function"; function: { name: string } };
   responseFormat?: "text" | "json" | { schema: unknown };
@@ -87,6 +92,7 @@ export interface ModelRequest {
   stop?: string[];
 }
 
+/** HTTP request context captured when a thread is created. */
 export type ThreadRequestContext = {
   userAgent?: string;
   ip?: string;
@@ -95,13 +101,13 @@ export type ThreadRequestContext = {
   cf?: Record<string, unknown>;
 };
 
+/** Immutable metadata for an agent thread. */
 export interface ThreadMetadata {
   id: string;
   createdAt: string;
   request: ThreadRequestContext;
   agentType: string;
   agencyId: string;
-  /** Agency-level vars to inherit (merged with lower priority than agent vars) */
   vars?: Record<string, unknown>;
 }
 
@@ -124,6 +130,10 @@ export interface SubagentLink {
 
 type BlueprintStatus = "active" | "draft" | "disabled";
 
+/**
+ * Defines an agent's behavior: prompt, model, capabilities, and vars.
+ * Registered with an agency and used to spawn agent instances.
+ */
 export type AgentBlueprint = {
   name: string;
   description: string;
@@ -145,29 +155,34 @@ export type AgentBlueprint = {
   updatedAt?: string; // ISO
 };
 
+/** Environment bindings required by the AgentHub runtime. */
 export interface AgentEnv {
   HUB_AGENT: DurableObjectNamespace<HubAgent>;
   AGENCY: DurableObjectNamespace<Agency>;
   LLM_API_KEY?: string;
   LLM_API_BASE?: string;
-  /** R2 bucket for persistent agent filesystem */
   FS?: R2Bucket;
-  /** Sandbox Durable Object for ephemeral container execution */
   SANDBOX?: DurableObjectNamespace;
 }
 
+/** Context passed to plugin hooks, providing access to the agent and tool registration. */
 export type PluginContext = {
   agent: HubAgent;
   env: AgentEnv;
   registerTool: <T>(tool: Tool<T>) => void;
 };
 
+/** Declares a variable that a plugin or tool expects to be set. */
 export interface VarHint {
   name: string;
   required?: boolean;
   description?: string;
 }
 
+/**
+ * Extends agent behavior with lifecycle hooks, tools, state, and actions.
+ * Plugins are matched to agents via tags in the blueprint's `capabilities`.
+ */
 export interface AgentPlugin {
   actions?: Record<
     string,
@@ -240,12 +255,16 @@ export interface AgentPlugin {
   tags: string[];
 }
 
+/**
+ * A callable tool exposed to the LLM. Create via `tool()` from `agent-hub`.
+ */
 export interface Tool<TInput = unknown> {
   meta: ToolMeta;
   execute: (input: TInput, ctx: ToolContext) => Promise<string | object | null>;
   varHints?: VarHint[];
 }
 
+/** Context passed to a tool's execute function. */
 export type ToolContext = {
   agent: HubAgent;
   env: typeof env;

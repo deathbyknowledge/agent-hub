@@ -1,0 +1,7 @@
+{
+  "entryPoints": ["lib/runtime/index.ts", "lib/client/index.ts"],
+  "out": "docs",
+  "exclude": ["**/examples/ui/**", "**/_generated*", "**/node_modules/**"],
+  "name": "Agent Hub",
+  "readme": "README.md"
+}

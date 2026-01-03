@@ -25,8 +25,7 @@ export function PersistedObject<T extends Record<string, unknown>>(
     [INTERNAL]: { kv, cache, prefix, opts }
   };
 
-  // Check if two values are equal (for cache optimization)
-  function areValuesEqual(a: any, b: any): boolean {
+    function areValuesEqual(a: any, b: any): boolean {
     // Same reference or both primitive and equal
     if (a === b) return true;
 
@@ -52,7 +51,6 @@ export function PersistedObject<T extends Record<string, unknown>>(
     return false;
   }
 
-  // Wrap arrays/objects with mutation detection proxy
   function wrapWithMutationWarning(value: any, propName: string): any {
     if (!warnOnMutation) return value;
     if (value === null || value === undefined) return value;
@@ -63,14 +61,14 @@ export function PersistedObject<T extends Record<string, unknown>>(
     return new Proxy(value, {
       set(target, prop, val) {
         console.error(
-          `⚠️ Persited Object: Mutation detected on ${propName}.${String(prop)}. ` +
+          `⚠️ Persisted Object: Mutation detected on ${propName}.${String(prop)}. ` +
             `This will NOT persist. Use reassignment: obj.${propName} = { ...obj.${propName}, ${String(prop)}: value }`
         );
         return Reflect.set(target, prop, val);
       },
       deleteProperty(target, prop) {
         console.error(
-          `⚠️ Persited Object: Delete detected on ${propName}.${String(prop)}. ` +
+          `⚠️ Persisted Object: Delete detected on ${propName}.${String(prop)}. ` +
             "This will NOT persist. Use reassignment to remove properties."
         );
         return Reflect.deleteProperty(target, prop);
@@ -78,7 +76,6 @@ export function PersistedObject<T extends Record<string, unknown>>(
     });
   }
 
-  // The proxy target hosts helpers. All other props are KV-backed keys.
   const target: any = helpers;
 
   const handler: ProxyHandler<any> = {

@@ -1,29 +1,3 @@
-/**
- * Memory Plugin
- *
- * Provides semantic search and storage over agency-wide memory disks.
- * Each disk is stored as a single `.idz` file in /shared/memories/.
- *
- * File format (.idz):
- * {
- *   version: 1,
- *   name: string,
- *   description?: string,
- *   hasEmbeddings: boolean,
- *   entries: { content: string, extra?: Record<string, unknown>, embedding?: number[] }[]
- * }
- *
- * Embeddings are computed via external API configured in vars:
- *   - EMBEDDING_API_BASE (e.g., "https://api.openai.com/v1")
- *   - EMBEDDING_API_KEY
- *   - EMBEDDING_MODEL (default: "text-embedding-3-small")
- *
- * Tools:
- *   - recall: Search memory disks for relevant information
- *   - remember: Store new memories to a disk
- *
- * Available disks are injected into the system prompt automatically.
- */
 import { HNSW } from "hnsw";
 import { tool, z, type AgentPlugin } from "agent-hub";
 import type { AgentFileSystem } from "lib/runtime/fs";
@@ -205,10 +179,6 @@ async function addMemory(
     message: `Added memory to '${diskName}' (${idz.entries.length} total entries)`,
   };
 }
-
-// ============================================================
-// Plugin
-// ============================================================
 
 export const memory: AgentPlugin = {
   name: "memory",

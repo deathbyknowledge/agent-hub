@@ -14,10 +14,6 @@ export type ContextCheckpoint = {
 export class Store {
   constructor(private sql: SqlStorage) {}
 
-  /**
-   * Initialize the schema.
-   * Uses JSON columns for complex structures and FTS-ready design.
-   */
   init() {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -30,9 +26,8 @@ export class Store {
         created_at INTEGER NOT NULL
       );
       
-      -- Index for frequent access patterns
       CREATE INDEX IF NOT EXISTS idx_messages_role ON messages(role);
-      
+
       CREATE TABLE IF NOT EXISTS events (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT NOT NULL,
@@ -40,7 +35,6 @@ export class Store {
         ts TEXT NOT NULL
       );
 
-      -- Context checkpoints for conversation summarization
       CREATE TABLE IF NOT EXISTS context_checkpoints (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         summary TEXT NOT NULL,
@@ -52,26 +46,18 @@ export class Store {
     `);
   }
 
-  /**
-   * Appends messages in batches to respect the 100-parameter limit.
-   */
   add(input: ChatMessage | ChatMessage[]): void {
     const msgs = Array.isArray(input) ? input : [input];
     if (!msgs.length) return;
 
     const now = Date.now();
-
-    // Define columns relative to the parameters we bind
-    // 1: role, 2: content, 3: tool_calls, 4: tool_call_id, 5: reasoning_content, 6: created_at
     const PARAMS_PER_ROW = 6;
-    const MAX_PARAMS = 100; // DO Limit
-    const CHUNK_SIZE = Math.floor(MAX_PARAMS / PARAMS_PER_ROW); // ~16 rows
+    const MAX_PARAMS = 100;
+    const CHUNK_SIZE = Math.floor(MAX_PARAMS / PARAMS_PER_ROW);
 
-    // Helper to serialize cleanly
     const toJSON = (v: unknown) =>
       v === undefined || v === null ? null : JSON.stringify(v);
 
-    // Chunk the messages
     for (let i = 0; i < msgs.length; i += CHUNK_SIZE) {
       const chunk = msgs.slice(i, i + CHUNK_SIZE);
       const placeholders: string[] = [];
@@ -79,29 +65,14 @@ export class Store {
 
       for (const m of chunk) {
         placeholders.push(`(?, ?, ?, ?, ?, ?)`);
-
-        // 1. Role
         bindings.push(m.role);
-
-        // 2. Content (Strictly JSON serialized)
-        // If it's a string, we stringify it ("hello" -> "\"hello\"")
-        // If it's an object/array, we stringify it ([part] -> "[part]")
         bindings.push(toJSON("content" in m ? m.content : undefined));
-
-        // 3. Tool Calls (JSON)
         bindings.push(toJSON("toolCalls" in m ? m.toolCalls : undefined));
-
-        // 4. Tool Call ID
         bindings.push("toolCallId" in m ? m.toolCallId : null);
-
-        // 5. Reasoning Content
         bindings.push("reasoning" in m ? m.reasoning : null);
-
-        // 6. Created At
         bindings.push(now);
       }
 
-      // Execute this batch
       const query = `
         INSERT INTO messages (
           role, content, tool_calls, tool_call_id, reasoning_content, created_at
@@ -113,7 +84,6 @@ export class Store {
   }
 
   getContext(limit = 100): ChatMessage[] {
-    // Get the last N conversation turns
     const cursor = this.sql.exec(`
       SELECT * FROM (
         SELECT seq, role, content, tool_calls, tool_call_id, reasoning_content, created_at
@@ -126,9 +96,6 @@ export class Store {
     return this._mapRows(cursor);
   }
 
-  /**
-   * Efficiently gets the last assistant message (useful for continuation logic).
-   */
   lastAssistant(): ChatMessage | null {
     const cursor = this.sql.exec(`
       SELECT role, content, tool_calls, tool_call_id, reasoning_content, created_at
@@ -152,13 +119,7 @@ export class Store {
     };
   }
 
-  // --------------------------
-  // Events Logic
-  // --------------------------
-
   addEvent(e: AgentEvent): number {
-    // Events usually come one by one, so simple insert is fine.
-    // Check param limit: 3 params << 100.
     this.sql.exec(
       "INSERT INTO events (type, data, ts) VALUES (?, ?, ?)",
       e.type,
@@ -166,8 +127,6 @@ export class Store {
       e.ts
     );
 
-    // Get the sequence number of the inserted row
-    // Note: 'last_insert_rowid()' is standard SQLite
     const result = this.sql.exec("SELECT last_insert_rowid() as id").toArray()[0];
     return result ? (result.id as number) : 0;
   }
@@ -203,21 +162,11 @@ export class Store {
     return out;
   }
 
-  // --------------------------
-  // Context Management
-  // --------------------------
-
-  /**
-   * Get total message count in the store.
-   */
   getMessageCount(): number {
     const result = this.sql.exec("SELECT COUNT(*) as count FROM messages").toArray()[0];
     return result ? (result.count as number) : 0;
   }
 
-  /**
-   * Get messages after a specific sequence number.
-   */
   getMessagesAfter(afterSeq: number, limit = 1000): ChatMessage[] {
     const cursor = this.sql.exec(
       `SELECT seq, role, content, tool_calls, tool_call_id, reasoning_content, created_at
@@ -231,9 +180,6 @@ export class Store {
     return this._mapRows(cursor);
   }
 
-  /**
-   * Get messages in a specific sequence range (inclusive).
-   */
   getMessagesInRange(startSeq: number, endSeq: number): ChatMessage[] {
     const cursor = this.sql.exec(
       `SELECT seq, role, content, tool_calls, tool_call_id, reasoning_content, created_at
@@ -246,9 +192,6 @@ export class Store {
     return this._mapRows(cursor);
   }
 
-  /**
-   * Get the latest context checkpoint (summarization point).
-   */
   getLatestCheckpoint(): ContextCheckpoint | null {
     const result = this.sql.exec(
       `SELECT id, summary, messages_start_seq, messages_end_seq, archived_path, created_at
@@ -269,9 +212,6 @@ export class Store {
     };
   }
 
-  /**
-   * Add a new context checkpoint after summarization.
-   */
   addCheckpoint(
     summary: string,
     messagesStartSeq: number,
@@ -293,27 +233,17 @@ export class Store {
     return result ? (result.id as number) : 0;
   }
 
-  /**
-   * Delete messages before (and including) a sequence number.
-   * Used after archiving old messages.
-   */
   deleteMessagesBefore(beforeSeq: number): number {
     this.sql.exec("DELETE FROM messages WHERE seq <= ?", beforeSeq);
     const result = this.sql.exec("SELECT changes() as deleted").toArray()[0];
     return result ? (result.deleted as number) : 0;
   }
 
-  /**
-   * Get the maximum sequence number in messages.
-   */
   getMaxMessageSeq(): number {
     const result = this.sql.exec("SELECT MAX(seq) as max_seq FROM messages").toArray()[0];
     return result?.max_seq ? (result.max_seq as number) : 0;
   }
 
-  /**
-   * Get checkpoint count (for stats).
-   */
   getCheckpointCount(): number {
     const result = this.sql.exec("SELECT COUNT(*) as count FROM context_checkpoints").toArray()[0];
     return result ? (result.count as number) : 0;

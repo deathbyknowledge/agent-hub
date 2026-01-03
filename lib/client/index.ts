@@ -19,10 +19,6 @@ export interface AgencyMeta {
   createdAt: string;
 }
 
-// ============================================================================
-// Schedule Types
-// ============================================================================
-
 export type AgentScheduleType = "once" | "cron" | "interval";
 export type OverlapPolicy = "skip" | "queue" | "allow";
 export type ScheduleStatus = "active" | "paused" | "disabled";
@@ -120,10 +116,6 @@ export interface TriggerScheduleResponse {
   run: ScheduleRun;
 }
 
-// ============================================================================
-// Filesystem Types
-// ============================================================================
-
 export interface FSEntry {
   type: "file" | "dir";
   path: string;
@@ -154,11 +146,6 @@ export interface DeleteFileResponse {
   path: string;
 }
 
-// ============================================================================
-// Agency Vars Types
-// ============================================================================
-
-/** Response from GET /agency/:id/vars */
 export interface GetVarsResponse {
   vars: Record<string, unknown>;
 }
@@ -177,26 +164,22 @@ export interface SetVarResponse {
   vars?: Record<string, unknown>;
 }
 
-/** Response from GET /agencies */
 export interface ListAgenciesResponse {
   agencies: AgencyMeta[];
 }
 
-/** Var hint from a plugin */
 export interface VarHint {
   name: string;
   required?: boolean;
   description?: string;
 }
 
-/** Plugin info with metadata */
 export interface PluginInfo {
   name: string;
   tags: string[];
   varHints?: VarHint[];
 }
 
-/** Tool info with metadata */
 export interface ToolInfo {
   name: string;
   description?: string;
@@ -204,27 +187,22 @@ export interface ToolInfo {
   varHints?: VarHint[];
 }
 
-/** Response from GET /plugins */
 export interface GetPluginsResponse {
   plugins: PluginInfo[];
   tools: ToolInfo[];
 }
 
-/** Response from POST /agencies */
 export interface CreateAgencyResponse extends AgencyMeta {}
 
-/** Response from GET /agency/:id/blueprints */
 export interface ListBlueprintsResponse {
   blueprints: AgentBlueprint[];
 }
 
-/** Response from POST /agency/:id/blueprints */
 export interface CreateBlueprintResponse {
   ok: boolean;
   name: string;
 }
 
-/** Agent summary returned from listing */
 export interface AgentSummary {
   id: string;
   agentType: string;
@@ -233,20 +211,16 @@ export interface AgentSummary {
   agencyId?: string;
 }
 
-/** Response from GET /agency/:id/agents */
 export interface ListAgentsResponse {
   agents: AgentSummary[];
 }
 
-/** Response from POST /agency/:id/agents (spawn) */
 export interface SpawnAgentResponse extends ThreadMetadata {}
 
-/** Response from POST /invoke */
 export interface InvokeResponse {
   status: string;
 }
 
-/** Response from GET /state */
 export interface GetStateResponse {
   state: AgentState & {
     subagents?: SubagentLink[];
@@ -254,19 +228,13 @@ export interface GetStateResponse {
   run: RunState;
 }
 
-/** Response from GET /events */
 export interface GetEventsResponse {
   events: AgentEvent[];
 }
 
-/** Response from POST /approve or /cancel */
 export interface OkResponse {
   ok: boolean;
 }
-
-// ============================================================================
-// Request Types
-// ============================================================================
 
 export interface CreateAgencyRequest {
   name?: string;
@@ -294,10 +262,6 @@ export interface InvokeRequest {
 
 export type ApproveRequest = ApproveBody;
 
-// ============================================================================
-// WebSocket Types
-// ============================================================================
-
 export type WebSocketEvent = AgentEvent & {
   seq: number;
 };
@@ -316,31 +280,18 @@ export interface WebSocketOptions {
 }
 
 export interface AgentWebSocket {
-  /** The underlying WebSocket */
   ws: WebSocket;
-  /** Send a message to the agent */
   send: (message: unknown) => void;
-  /** Close the connection */
   close: () => void;
 }
 
-// ============================================================================
-// Client Options
-// ============================================================================
-
 export interface AgentHubClientOptions {
-  /** Base URL of the agent hub (e.g., "https://my-agent.workers.dev") */
   baseUrl: string;
-  /** Optional secret for authentication (sent as X-SECRET header) */
   secret?: string;
-  /** Custom fetch implementation (defaults to global fetch) */
   fetch?: typeof fetch;
 }
 
-// ============================================================================
-// Error Types
-// ============================================================================
-
+/** Error thrown when an API request fails. */
 export class AgentHubError extends Error {
   constructor(
     message: string,
@@ -352,13 +303,7 @@ export class AgentHubError extends Error {
   }
 }
 
-// ============================================================================
-// Agent Client
-// ============================================================================
-
-/**
- * Client for interacting with a specific agent instance.
- */
+/** Client for interacting with a single agent instance. */
 export class AgentClient {
   constructor(
     private readonly baseUrl: string,
@@ -399,59 +344,28 @@ export class AgentClient {
     return res.json();
   }
 
-  /**
-   * Get the current state of the agent including messages, tools, and run status.
-   */
   async getState(): Promise<GetStateResponse> {
     return this.request<GetStateResponse>("GET", "/state");
   }
 
-  /**
-   * Get all events emitted by this agent.
-   */
   async getEvents(): Promise<GetEventsResponse> {
     return this.request<GetEventsResponse>("GET", "/events");
   }
 
-  /**
-   * Invoke the agent with optional messages and files.
-   * This starts or continues an agent run.
-   */
   async invoke(request: InvokeRequest = {}): Promise<InvokeResponse> {
     return this.request<InvokeResponse>("POST", "/invoke", request);
   }
 
-  /**
-   * Actions are generic toolbacks registered by middleware
-   */
   async action<T = unknown>(type: string, payload: Record<string, unknown> = {}): Promise<T> {
     return this.request<T>("POST", "/action", { type, ...payload });
   }
 
-  /**
-   * Establish a WebSocket connection for real-time events.
-   *
-   * @example
-   * ```ts
-   * const { ws, close } = agentClient.connect({
-   *   onEvent: (event) => {
-   *     console.log(`[${event.type}]`, event.data);
-   *   },
-   *   onClose: () => console.log("Connection closed"),
-   * });
-   *
-   * // Later...
-   * close();
-   * ```
-   */
   connect(options: WebSocketOptions = {}): AgentWebSocket {
-    // Append the secret as a query param if it exists in the client headers
     const secret = (this.headers as Record<string, string>)["X-SECRET"];
     const secretParam = secret ? `?key=${encodeURIComponent(secret)}` : "";
     const wsUrl = this.path
       .replace(/^http/, "ws")
       .replace(/^wss:\/\/localhost/, "ws://localhost") + secretParam;
-    console.log("WebSocket URL:", wsUrl);
     const ws = new WebSocket(wsUrl, options.protocols);
 
     ws.onopen = () => options.onOpen?.();
@@ -461,7 +375,7 @@ export class AgentClient {
         const data = JSON.parse(event.data as string) as WebSocketEvent;
         options.onEvent?.(data);
       } catch {
-        // Non-JSON message, ignore or handle differently
+        // Non-JSON message
       }
     };
 
@@ -475,19 +389,12 @@ export class AgentClient {
     };
   }
 
-  /** The agent ID */
   get id(): string {
     return this.agentId;
   }
 }
 
-// ============================================================================
-// Agency Client
-// ============================================================================
-
-/**
- * Client for interacting with a specific agency.
- */
+/** Client for managing an agency and its agents, blueprints, schedules, and files. */
 export class AgencyClient {
   constructor(
     private readonly baseUrl: string,
@@ -527,17 +434,10 @@ export class AgencyClient {
     return res.json();
   }
 
-  /**
-   * List all blueprints available in this agency.
-   * This includes both static defaults and agency-specific overrides.
-   */
   async listBlueprints(): Promise<ListBlueprintsResponse> {
     return this.request<ListBlueprintsResponse>("GET", "/blueprints");
   }
 
-  /**
-   * Create or update a blueprint in this agency.
-   */
   async createBlueprint(
     blueprint: CreateBlueprintRequest
   ): Promise<CreateBlueprintResponse> {
@@ -548,37 +448,22 @@ export class AgencyClient {
     );
   }
 
-  /**
-   * Delete a blueprint from this agency.
-   */
   async deleteBlueprint(name: string): Promise<{ ok: boolean }> {
     return this.request<{ ok: boolean }>("DELETE", `/blueprints/${name}`);
   }
 
-  /**
-   * List all agents in this agency.
-   */
   async listAgents(): Promise<ListAgentsResponse> {
     return this.request<ListAgentsResponse>("GET", "/agents");
   }
 
-  /**
-   * Spawn a new agent instance of the given type.
-   */
   async spawnAgent(request: SpawnAgentRequest): Promise<SpawnAgentResponse> {
     return this.request<SpawnAgentResponse>("POST", "/agents", request);
   }
 
-  /**
-   * Delete an agent and its data from this agency.
-   */
   async deleteAgent(agentId: string): Promise<OkResponse> {
     return this.request<OkResponse>("DELETE", `/agents/${agentId}`);
   }
 
-  /**
-   * Get a client for interacting with a specific agent.
-   */
   agent(agentId: string): AgentClient {
     return new AgentClient(
       this.baseUrl,
@@ -589,36 +474,20 @@ export class AgencyClient {
     );
   }
 
-  // ==========================================================================
-  // Schedule Management
-  // ==========================================================================
-
-  /**
-   * List all schedules in this agency.
-   */
   async listSchedules(): Promise<ListSchedulesResponse> {
     return this.request<ListSchedulesResponse>("GET", "/schedules");
   }
 
-  /**
-   * Create a new schedule.
-   */
   async createSchedule(
     request: CreateScheduleRequest
   ): Promise<ScheduleResponse> {
     return this.request<ScheduleResponse>("POST", "/schedules", request);
   }
 
-  /**
-   * Get a specific schedule by ID.
-   */
   async getSchedule(scheduleId: string): Promise<ScheduleResponse> {
     return this.request<ScheduleResponse>("GET", `/schedules/${scheduleId}`);
   }
 
-  /**
-   * Update a schedule.
-   */
   async updateSchedule(
     scheduleId: string,
     request: UpdateScheduleRequest
@@ -630,16 +499,10 @@ export class AgencyClient {
     );
   }
 
-  /**
-   * Delete a schedule.
-   */
   async deleteSchedule(scheduleId: string): Promise<OkResponse> {
     return this.request<OkResponse>("DELETE", `/schedules/${scheduleId}`);
   }
 
-  /**
-   * Pause a schedule.
-   */
   async pauseSchedule(scheduleId: string): Promise<ScheduleResponse> {
     return this.request<ScheduleResponse>(
       "POST",
@@ -647,9 +510,6 @@ export class AgencyClient {
     );
   }
 
-  /**
-   * Resume a paused schedule.
-   */
   async resumeSchedule(scheduleId: string): Promise<ScheduleResponse> {
     return this.request<ScheduleResponse>(
       "POST",
@@ -657,9 +517,6 @@ export class AgencyClient {
     );
   }
 
-  /**
-   * Manually trigger a schedule run.
-   */
   async triggerSchedule(scheduleId: string): Promise<TriggerScheduleResponse> {
     return this.request<TriggerScheduleResponse>(
       "POST",
@@ -667,9 +524,6 @@ export class AgencyClient {
     );
   }
 
-  /**
-   * Get the run history for a schedule.
-   */
   async getScheduleRuns(scheduleId: string): Promise<ListScheduleRunsResponse> {
     return this.request<ListScheduleRunsResponse>(
       "GET",
@@ -677,14 +531,6 @@ export class AgencyClient {
     );
   }
 
-  // ==========================================================================
-  // Filesystem Operations
-  // ==========================================================================
-
-  /**
-   * List contents of a directory.
-   * @param path - Path relative to agency root (e.g., '/shared', '/agents/abc123')
-   */
   async listDirectory(path: string = "/"): Promise<ListDirectoryResponse> {
     const fsPath = path.startsWith("/") ? path.slice(1) : path;
     const url = `${this.path}/fs/${fsPath}`;
@@ -702,11 +548,9 @@ export class AgencyClient {
       );
     }
 
-    // Check content-type to determine if it's a file or directory
     const contentType = res.headers.get("content-type") || "";
     const fsPathHeader = res.headers.get("x-fs-path");
 
-    // If it has x-fs-path header or is plain text (not JSON), it's a file
     if (
       fsPathHeader ||
       (contentType.includes("text/plain") && !contentType.includes("json"))
@@ -714,20 +558,14 @@ export class AgencyClient {
       throw new AgentHubError("Path is a file, not a directory", 400, "");
     }
 
-    // Try to parse as JSON
     const text = await res.text();
     try {
       return JSON.parse(text);
     } catch {
-      // If JSON parse fails, it's probably a file
       throw new AgentHubError("Path is a file, not a directory", 400, "");
     }
   }
 
-  /**
-   * Read a file's contents.
-   * @param path - Path to the file
-   */
   async readFile(path: string): Promise<ReadFileResponse> {
     const fsPath = path.startsWith("/") ? path.slice(1) : path;
     const url = `${this.path}/fs/${fsPath}`;
@@ -745,14 +583,10 @@ export class AgencyClient {
       );
     }
 
-    // Check content-type and headers
     const contentType = res.headers.get("content-type") || "";
     const fsPathHeader = res.headers.get("x-fs-path");
-
-    // Read the response body
     const content = await res.text();
 
-    // If it has x-fs-path header, it's definitely a file
     if (fsPathHeader) {
       return {
         content,
@@ -765,7 +599,6 @@ export class AgencyClient {
       };
     }
 
-    // If content-type is text/plain (not json), treat as file
     if (contentType.includes("text/plain") && !contentType.includes("json")) {
       return {
         content,
@@ -775,21 +608,16 @@ export class AgencyClient {
       };
     }
 
-    // Try to detect if content is JSON (directory listing) vs file content
     const trimmed = content.trim();
     if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-      // Looks like JSON - probably a directory listing
       try {
         JSON.parse(content);
-        // Successfully parsed as JSON, it's a directory
         throw new AgentHubError("Path is a directory, not a file", 400, "");
       } catch (e) {
         if (e instanceof AgentHubError) throw e;
-        // JSON parse failed, treat as file content
       }
     }
 
-    // Default: treat as file
     return {
       content,
       path: "/" + fsPath,
@@ -798,11 +626,6 @@ export class AgencyClient {
     };
   }
 
-  /**
-   * Write content to a file.
-   * @param path - Path to the file
-   * @param content - File content
-   */
   async writeFile(path: string, content: string): Promise<WriteFileResponse> {
     const fsPath = path.startsWith("/") ? path.slice(1) : path;
     const url = `${this.path}/fs/${fsPath}`;
@@ -827,10 +650,6 @@ export class AgencyClient {
     return res.json();
   }
 
-  /**
-   * Delete a file.
-   * @param path - Path to the file
-   */
   async deleteFile(path: string): Promise<DeleteFileResponse> {
     const fsPath = path.startsWith("/") ? path.slice(1) : path;
     const url = `${this.path}/fs/${fsPath}`;
@@ -851,87 +670,45 @@ export class AgencyClient {
     return res.json();
   }
 
-  // ==========================================================================
-  // Agency Vars
-  // ==========================================================================
-
-  /**
-   * Get all agency-level vars.
-   */
   async getVars(): Promise<GetVarsResponse> {
     return this.request<GetVarsResponse>("GET", "/vars");
   }
 
-  /**
-   * Set all agency-level vars (replaces existing).
-   */
   async setVars(vars: Record<string, unknown>): Promise<SetVarResponse> {
     return this.request<SetVarResponse>("PUT", "/vars", vars);
   }
 
-  /**
-   * Get a specific var by key.
-   */
   async getVar(key: string): Promise<GetVarResponse> {
     return this.request<GetVarResponse>("GET", `/vars/${encodeURIComponent(key)}`);
   }
 
-  /**
-   * Set a specific var.
-   */
   async setVar(key: string, value: unknown): Promise<SetVarResponse> {
     return this.request<SetVarResponse>("PUT", `/vars/${encodeURIComponent(key)}`, { value });
   }
 
-  /**
-   * Delete a specific var.
-   */
   async deleteVar(key: string): Promise<OkResponse> {
     return this.request<OkResponse>("DELETE", `/vars/${encodeURIComponent(key)}`);
   }
 
-  /**
-   * Permanently delete this agency and all of its agents/files.
-   */
   async deleteAgency(): Promise<OkResponse> {
     return this.request<OkResponse>("DELETE", "/destroy");
   }
 
-  /** The agency ID */
   get id(): string {
     return this.agencyId;
   }
 }
 
-// ============================================================================
-// Main Client
-// ============================================================================
-
 /**
- * TypeScript client for the Agent Hub control plane.
+ * Top-level client for interacting with the AgentHub API.
  *
  * @example
  * ```ts
- * const client = new AgentHubClient({
- *   baseUrl: "https://my-agent.workers.dev",
- *   secret: "optional-auth-secret"
- * });
- *
- * // Create an agency and spawn an agent
- * const agency = await client.createAgency({ name: "My Agency" });
- * const agencyClient = client.agency(agency.id);
- * const agent = await agencyClient.spawnAgent({ agentType: "assistant" });
- *
- * // Interact with the agent
- * const agentClient = agencyClient.agent(agent.id);
- * await agentClient.invoke({
- *   messages: [{ role: "user", content: "Hello!" }]
- * });
- *
- * // Poll for state or use WebSocket
- * const { state, run } = await agentClient.getState();
- * console.log("Status:", run.status);
- * console.log("Messages:", state.messages);
+ * const client = new AgentHubClient({ baseUrl: "https://hub.example.com" });
+ * const { agencies } = await client.listAgencies();
+ * const agency = client.agency(agencies[0].id);
+ * const agent = agency.agent("my-agent-id");
+ * await agent.invoke({ messages: [{ role: "user", content: "Hello" }] });
  * ```
  */
 export class AgentHubClient {
@@ -940,16 +717,12 @@ export class AgentHubClient {
   private readonly fetchFn: typeof fetch;
 
   constructor(options: AgentHubClientOptions) {
-    // Normalize base URL (remove trailing slash)
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
-
-    // Build headers
     this.headers = {};
     if (options.secret) {
       (this.headers as Record<string, string>)["X-SECRET"] = options.secret;
     }
 
-    // Use provided fetch or global
     this.fetchFn = options.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
@@ -980,48 +753,28 @@ export class AgentHubClient {
     return res.json();
   }
 
-  /**
-   * List all agencies in the system.
-   */
   async listAgencies(): Promise<ListAgenciesResponse> {
     return this.request<ListAgenciesResponse>("GET", "/agencies");
   }
 
-  /**
-   * Get all plugins with their metadata.
-   * Includes varHints indicating what vars plugins need.
-   */
   async getPlugins(): Promise<GetPluginsResponse> {
     return this.request<GetPluginsResponse>("GET", "/plugins");
   }
 
-  /**
-   * Create a new agency.
-   */
   async createAgency(
     request: CreateAgencyRequest = {}
   ): Promise<CreateAgencyResponse> {
     return this.request<CreateAgencyResponse>("POST", "/agencies", request);
   }
 
-  /**
-   * Delete an agency and all of its agents/files.
-   */
   async deleteAgency(agencyId: string): Promise<OkResponse> {
     return this.agency(agencyId).deleteAgency();
   }
 
-  /**
-   * Get a client for interacting with a specific agency.
-   */
   agency(agencyId: string): AgencyClient {
     return new AgencyClient(this.baseUrl, agencyId, this.headers, this.fetchFn);
   }
 }
-
-// ============================================================================
-// Re-export relevant types for convenience
-// ============================================================================
 
 export type {
   AgentBlueprint,

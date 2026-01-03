@@ -1,17 +1,6 @@
 import {tool, type AgentPlugin} from "agent-hub";
 import z from 'zod';
 
-/**
- * Filesystem plugin.
- *
- * Registers file tools that use the agent's built-in `fs` (AgentFileSystem).
- * The filesystem provides:
- * - Per-agent home directories: `/{agencyId}/agents/{agentId}/`
- * - Shared space: `/{agencyId}/shared/`
- * - Cross-agent read access (collaborative)
- *
- * Requires `FS: R2Bucket` binding in wrangler config.
- */
 export const filesystem: AgentPlugin = {
   name: "filesystem",
 

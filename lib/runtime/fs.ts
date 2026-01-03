@@ -12,17 +12,6 @@ export type AgentFSContext = {
   agentId: string;
 };
 
-/**
- * Path layout in R2:
- *   /{agencyId}/shared/...           - Shared files across all agents in an agency
- *   /{agencyId}/agents/{agentId}/... - Per-agent home directory
- *
- * Path resolution rules:
- *   - Relative paths (no leading /) resolve to agent's home
- *   - "/shared/..." resolves to agency shared space
- *   - "/agents/{id}/..." resolves to another agent's home (if permissions allow)
- *   - "~" or "~/..." explicitly refers to own home
- */
 export class AgentFileSystem {
   constructor(
     private bucket: R2Bucket,
@@ -41,56 +30,36 @@ export class AgentFileSystem {
     return `${this.ctx.agencyId}/`;
   }
 
-  /**
-   * Resolve a user-facing path to an R2 key.
-   * - Relative paths → agent home
-   * - /shared/... → shared space
-   * - /agents/{id}/... → other agent's home
-   * - ~ or ~/... → own home (explicit)
-   */
   resolvePath(userPath: string): string {
     const p = userPath.trim();
 
-    // Handle home shorthand
     if (p === "~" || p === "~/") return this.homePrefix;
     if (p.startsWith("~/")) return this.homePrefix + p.slice(2);
 
-    // Absolute paths within agency
     if (p.startsWith("/")) {
       const withoutSlash = p.slice(1);
-      // /shared/...
       if (withoutSlash === "shared" || withoutSlash.startsWith("shared/")) {
         return this.agencyPrefix + withoutSlash;
       }
-      // /agents/{id}/...
       if (withoutSlash.startsWith("agents/")) {
         return this.agencyPrefix + withoutSlash;
       }
-      // Other absolute paths resolve to home
       return this.homePrefix + withoutSlash;
     }
 
-    // Relative path → home
     return this.homePrefix + p;
   }
 
-  /**
-   * Convert an R2 key back to user-facing path.
-   * Strips agency prefix and presents paths relative to agent's view.
-   */
   toUserPath(r2Key: string): string {
-    // Strip agency prefix
     if (!r2Key.startsWith(this.agencyPrefix)) return r2Key;
     const agencyRelative = r2Key.slice(this.agencyPrefix.length);
 
-    // If it's in our home, show as relative
     const homeRel = `agents/${this.ctx.agentId}/`;
     if (agencyRelative.startsWith(homeRel)) {
       const rel = agencyRelative.slice(homeRel.length);
       return rel || ".";
     }
 
-    // Otherwise show as absolute within agency
     return "/" + agencyRelative;
   }
 
@@ -103,37 +72,28 @@ export class AgentFileSystem {
     };
   }
 
-  /**
-   * Check if the agent has access to a given R2 key.
-   * Currently: agents can read/write their home and shared space.
-   * Reading other agents' homes is allowed (collaborative), writing is not.
-   */
   checkAccess(
     r2Key: string,
     mode: "read" | "write"
   ): { allowed: boolean; reason?: string } {
-    // Must be within our agency
     if (!r2Key.startsWith(this.agencyPrefix)) {
       return { allowed: false, reason: "Path outside agency" };
     }
 
     const rel = r2Key.slice(this.agencyPrefix.length);
 
-    // Shared space: read/write allowed
     if (rel.startsWith("shared/") || rel === "shared") {
       return { allowed: true };
     }
 
-    // Own home: read/write allowed
     const ownHome = `agents/${this.ctx.agentId}/`;
     if (rel.startsWith(ownHome) || rel === `agents/${this.ctx.agentId}`) {
       return { allowed: true };
     }
 
-    // Other agent's home
     if (rel.startsWith("agents/")) {
       if (mode === "read") {
-        return { allowed: true }; // Collaborative read
+        return { allowed: true };
       }
       return { allowed: false, reason: "Cannot write to another agent's home" };
     }
@@ -141,13 +101,8 @@ export class AgentFileSystem {
     return { allowed: false, reason: "Invalid path" };
   }
 
-  /**
-   * List directory contents.
-   * @param path User-facing path (e.g., ".", "/shared", "~/subdir")
-   */
   async readDir(path = "."): Promise<FSEntry[]> {
     let r2Prefix = this.resolvePath(path);
-    // Ensure trailing slash for directory listing
     if (!r2Prefix.endsWith("/")) r2Prefix += "/";
 
     const access = this.checkAccess(r2Prefix, "read");
@@ -225,9 +180,6 @@ export class AgentFileSystem {
     return stream ? obj.body : obj.text();
   }
 
-  /**
-   * Edit file with find-replace semantics.
-   */
   async editFile(
     path: string,
     oldStr: string,
@@ -245,7 +197,7 @@ export class AgentFileSystem {
       return { replaced: 0, content: current };
     }
     if (!replaceAll && count > 1) {
-      return { replaced: -count, content: current }; // Ambiguous
+      return { replaced: -count, content: current };
     }
 
     const content = replaceAll
@@ -256,9 +208,6 @@ export class AgentFileSystem {
     return { replaced: replaceAll ? count : 1, content };
   }
 
-  /**
-   * Check if a file exists.
-   */
   async exists(path: string): Promise<boolean> {
     const entry = await this.stat(path);
     return entry !== null;

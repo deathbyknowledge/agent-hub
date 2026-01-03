@@ -1,11 +1,3 @@
-/**
- * Subagents plugin
- *
- * This plugin allows agents to spawn child agents to handle subtasks synchronously.
- * Once the agent has called the `task` tool, it waits for the subagent(s) to complete before
- * continuing its own execution.
- * It manages its own waiting_subagents table and handles completion via actions.
- */
 import {
   tool,
   z,
@@ -67,9 +59,6 @@ export const subagents: AgentPlugin = {
   },
 
   actions: {
-    /**
-     * Handle subagent completion report
-     */
     async subagent_result(ctx, payload: unknown) {
       const { token, childThreadId, report } = payload as {
         token: string;
@@ -116,9 +105,6 @@ export const subagents: AgentPlugin = {
       return { ok: true };
     },
 
-    /**
-     * Cancel all waiting subagents
-     */
     async cancel_subagents(ctx) {
       const sql = ctx.agent.sqlite;
       const waiters = sql`SELECT token, child_thread_id FROM mw_waiting_subagents`;
@@ -296,12 +282,6 @@ The agentId is returned in the result object of the task tool (e.g., {"agentId":
         sql`UPDATE mw_subagent_links 
            SET status = 'waiting', token = ${token}, tool_call_id = ${toolCtx.callId}
            WHERE child_thread_id = ${agentId}`;
-
-        sql`UPDATE mw_subagent_links 
-           SET status = 'waiting', token = ${token}, tool_call_id = ${toolCtx.callId}
-           WHERE child_thread_id = ${agentId}`;
-
-        // Re-invoke the existing agent
         const agent = await getAgentByName(
           toolCtx.agent.exports.HubAgent,
           agentId

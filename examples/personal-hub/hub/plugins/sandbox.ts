@@ -1,17 +1,3 @@
-/**
- * Sandbox Plugin
- *
- * Provides tools for executing commands in an isolated Linux container.
- * Uses @cloudflare/sandbox for ephemeral container execution.
- *
- * IMPORTANT: These tools operate on an EPHEMERAL sandbox container filesystem,
- * NOT the agent's persistent R2-backed filesystem. Use for:
- * - Running bash commands (git, npm, python, etc.)
- * - Running tests and linters
- *
- * For persistent file storage, use the `filesystem` plugin instead.
- */
-
 import { z } from "zod";
 import { tool, type AgentPlugin } from "agent-hub";
 import { getSandbox, Sandbox } from "@cloudflare/sandbox";
@@ -28,10 +14,7 @@ const SandboxWriteFileSchema = z.object({
 });
 
 type SandboxInstance = Sandbox;
-/**
- * Get a sandbox instance from the SANDBOX DO namespace.
- * Uses the standard RPC pattern - the Sandbox DO exposes exec/writeFile/readFile methods.
- */
+
 function getSandboxInstance(
   ns: DurableObjectNamespace,
   id: string
@@ -60,16 +43,6 @@ You have access to an isolated Linux container (sandbox) for executing commands.
 5. Run tests/linters via bash
 6. Review changes: \`git diff\``;
 
-/**
- * Sandbox plugin - provides tools for ephemeral container execution.
- *
- * Requires:
- * - SANDBOX binding in wrangler.jsonc pointing to a Sandbox Durable Object
- *   (see @cloudflare/sandbox for the DO implementation)
- *
- * Tools are prefixed with "sandbox_" to distinguish them from the
- * persistent R2-backed filesystem tools.
- */
 export const sandbox: AgentPlugin = {
   name: "sandbox",
 

@@ -1,15 +1,3 @@
-/**
- * Agency Management Plugin
- *
- * Provides tools for introspecting and managing the parent agency.
- * Used by the Agency Mind to have full awareness and control over its agency.
- *
- * Tools are split into:
- * - Introspection (read-only): list_*, get_*
- * - Mutation: create_*, update_*, delete_*, spawn_*, etc.
- *
- * The plugin also injects agency context into the system prompt via beforeModel.
- */
 import {
   tool,
   z,
@@ -18,10 +6,6 @@ import {
   type PluginContext,
 } from "agent-hub";
 import { getAgentByName } from "agents";
-
-// ============================================================================
-// Helper: Fetch from Agency/Agent
-// ============================================================================
 
 async function agencyFetch(
   ctx: PluginContext,
@@ -45,10 +29,6 @@ async function agentFetch(
   const stub = await getAgentByName(ctx.agent.exports.HubAgent, agentId);
   return stub.fetch(new Request(`http://do${path}`, options));
 }
-
-// ============================================================================
-// Tool Schemas
-// ============================================================================
 
 const BlueprintInputSchema = z.object({
   name: z.string().describe("Blueprint name (alphanumeric with - or _)"),
@@ -100,16 +80,11 @@ const ScheduleUpdateSchema = z.object({
   }).describe("Fields to update"),
 });
 
-// ============================================================================
-// Plugin Definition
-// ============================================================================
-
 export const agencyManagement: AgentPlugin = {
   name: "agency-management",
   tags: ["agency-management"],
 
   async beforeModel(ctx, plan) {
-    // Inject agency context into system prompt
     try {
       const [blueprintsRes, agentsRes, schedulesRes, varsRes] = await Promise.all([
         agencyFetch(ctx, "/blueprints"),
@@ -118,7 +93,6 @@ export const agencyManagement: AgentPlugin = {
         agencyFetch(ctx, "/vars"),
       ]);
 
-      // Merge static + dynamic blueprints
       const combined = new Map<string, AgentBlueprint>();
       const agent = ctx.agent as any;
       if (typeof agent.getStaticBlueprints === "function") {
@@ -169,29 +143,18 @@ This context is automatically refreshed each turn.
       console.warn("Failed to inject agency context:", err);
     }
 
-    // Register all tools
     registerTools(ctx);
   },
 };
 
-// ============================================================================
-// Tool Registration
-// ============================================================================
-
 function registerTools(ctx: PluginContext) {
-  // -------------------------------------------------------------------------
-  // Blueprints - Read
-  // -------------------------------------------------------------------------
-
   ctx.registerTool(tool({
     name: "list_blueprints",
     description: "List all blueprints in this agency with their names, descriptions, and status",
     inputSchema: z.object({}),
     execute: async () => {
-      // Merge static blueprints (from code) with dynamic ones (from Agency DO)
       const combined = new Map<string, AgentBlueprint>();
 
-      // 1. Static blueprints from code (via agent method)
       const agent = ctx.agent as any;
       if (typeof agent.getStaticBlueprints === "function") {
         for (const bp of agent.getStaticBlueprints()) {
@@ -199,7 +162,6 @@ function registerTools(ctx: PluginContext) {
         }
       }
 
-      // 2. Dynamic blueprints from Agency DO (override static)
       const res = await agencyFetch(ctx, "/blueprints");
       if (res.ok) {
         const data = (await res.json()) as { blueprints: AgentBlueprint[] };
@@ -243,10 +205,6 @@ function registerTools(ctx: PluginContext) {
       return `Blueprint "${name}" not found`;
     },
   }));
-
-  // -------------------------------------------------------------------------
-  // Blueprints - Write
-  // -------------------------------------------------------------------------
 
   ctx.registerTool(tool({
     name: "create_blueprint",
@@ -302,10 +260,6 @@ function registerTools(ctx: PluginContext) {
     },
   }));
 
-  // -------------------------------------------------------------------------
-  // Agents - Read
-  // -------------------------------------------------------------------------
-
   ctx.registerTool(tool({
     name: "list_agents",
     description: "List all agents in this agency with their IDs, types, and creation times",
@@ -333,7 +287,6 @@ function registerTools(ctx: PluginContext) {
         const res = await agentFetch(ctx, agentId, "/state");
         if (!res.ok) return `Error: ${res.status} ${await res.text()}`;
 
-        // /state returns { state: {...}, run: {...} }
         const data = (await res.json()) as { state: any; run: any };
         const state = data.state;
         const run = data.run;
@@ -367,7 +320,6 @@ function registerTools(ctx: PluginContext) {
         const res = await agentFetch(ctx, agentId, "/state");
         if (!res.ok) return `Error: ${res.status} ${await res.text()}`;
 
-        // /state returns { state: {...}, run: {...} }
         const data = (await res.json()) as { state: { messages?: any[] } };
         const messages = data.state?.messages || [];
 
@@ -421,10 +373,6 @@ function registerTools(ctx: PluginContext) {
       }
     },
   }));
-
-  // -------------------------------------------------------------------------
-  // Agents - Write
-  // -------------------------------------------------------------------------
 
   ctx.registerTool(tool({
     name: "spawn_agent",
@@ -504,10 +452,6 @@ function registerTools(ctx: PluginContext) {
     },
   }));
 
-  // -------------------------------------------------------------------------
-  // Schedules - Read
-  // -------------------------------------------------------------------------
-
   ctx.registerTool(tool({
     name: "list_schedules",
     description: "List all schedules in this agency",
@@ -553,10 +497,6 @@ function registerTools(ctx: PluginContext) {
       };
     },
   }));
-
-  // -------------------------------------------------------------------------
-  // Schedules - Write
-  // -------------------------------------------------------------------------
 
   ctx.registerTool(tool({
     name: "create_schedule",
@@ -648,10 +588,6 @@ function registerTools(ctx: PluginContext) {
     },
   }));
 
-  // -------------------------------------------------------------------------
-  // Variables
-  // -------------------------------------------------------------------------
-
   ctx.registerTool(tool({
     name: "list_vars",
     description: "List all agency-level variables",
@@ -716,10 +652,6 @@ function registerTools(ctx: PluginContext) {
     },
   }));
 
-  // -------------------------------------------------------------------------
-  // Capabilities Discovery
-  // -------------------------------------------------------------------------
-
   ctx.registerTool(tool({
     name: "list_capabilities",
     description: `List all available plugins and tools that can be used in blueprint capabilities.
@@ -727,13 +659,11 @@ Returns plugin names, tool names, their tags, descriptions, and required vars.
 Use this to understand what capabilities exist when creating or updating blueprints.`,
     inputSchema: z.object({}),
     execute: async () => {
-      // Get capabilities from agent methods that access the registries
       const agent = ctx.agent as any;
 
       let plugins: Array<{ name: string; tags: string[]; varHints?: Array<{ name: string; required?: boolean; description?: string }> }> = [];
       let tools: Array<{ name: string; description?: string; tags: string[]; varHints?: Array<{ name: string; required?: boolean; description?: string }> }> = [];
 
-      // Use agent methods to get registered plugins/tools
       if (typeof agent.getRegisteredPlugins === "function") {
         plugins = agent.getRegisteredPlugins();
       }

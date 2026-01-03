@@ -1,8 +1,3 @@
-/**
- * Logger Plugin
- *
- * Just console.logs on every emitted event
- */
 import { type AgentPlugin } from "agent-hub";
 
 export const logger: AgentPlugin = {

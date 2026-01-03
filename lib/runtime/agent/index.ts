@@ -96,19 +96,13 @@ export abstract class HubAgent<
     return model;
   }
 
-  /**
-   * R2-backed filesystem with per-agent home directory and shared spce.
-   * Returns null if FS binding is not configured.
-   */
+  /** R2-backed filesystem with per-agent home directory and shared space. */
   get fs(): AgentFileSystem {
-    // Return cached instance
     if (this._fs) return this._fs;
 
-    // Need R2 bucket binding
     const bucket = this.env.FS;
     if (!bucket) throw new Error("R2 bucket not configured. Set FS binding in wrangler.jsonc.");
 
-    // Need agent identity
     const agencyId = this.info.agencyId;
     const agentId = this.info.threadId;
     if (!agencyId || !agentId) throw new Error("Agent identity not set. Call registerThread first.");
@@ -168,7 +162,6 @@ export abstract class HubAgent<
     if (!schedules.length) await this.scheduleStep();
   }
 
-  // TODO: revisit registration/init
   async registerThread(req: Request) {
     try {
       const metadata = await req.json<ThreadMetadata>().catch(() => null);
@@ -176,26 +169,21 @@ export abstract class HubAgent<
         return new Response("invalid metadata", { status: 400 });
       }
 
-      // persist ID
       if (!this.info.threadId) {
         this.info.threadId = metadata.id;
       }
 
-      // persist agent configuration
       this.info.createdAt = metadata.createdAt;
       this.info.request = metadata.request;
 
-      // This initializes the agent by defining what tools, plugins, etc. to use
       if (metadata.agentType) {
         this.info.agentType = metadata.agentType;
       }
 
-      // Inherit vars from agency
       if (metadata.vars) {
         Object.assign(this.vars, metadata.vars);
       }
 
-      // Call onRegister hook to fetch blueprint and initialize
       await this.onRegister(metadata);
 
       return Response.json({ ok: true });
@@ -209,12 +197,10 @@ export abstract class HubAgent<
     try {
       const body = (await req.json().catch(() => ({}))) as InvokeBody;
 
-      // Inherit vars from invoke
       if (body.vars) {
         Object.assign(this.vars, body.vars);
       }
 
-      // Merge input into state
       if (body.messages?.length) this.store.add(body.messages);
 
       if (body.files && Array.isArray(body.files)) {
@@ -226,8 +212,6 @@ export abstract class HubAgent<
       }
 
       const runState = this.runState;
-      // Start or continue run
-      runState.status;
       if (
         ["completed", "canceled", "error", "registered"].includes(
           runState.status
@@ -284,7 +268,6 @@ export abstract class HubAgent<
         if ("toolCalls" in res.message) toolCalls = res.message.toolCalls;
         if ("content" in res.message) reply = res.message.content;
 
-        // If the agent didn't call any more tools, we consider the run complete.
         if (!toolCalls.length) {
           this.runState.status = "completed";
           for (const plugin of this.plugins)
@@ -297,7 +280,6 @@ export abstract class HubAgent<
         this.info.pendingToolCalls = toolCalls;
       }
 
-      // Execute pending tools
       await this.executePendingTools(MAX_TOOLS_PER_TICK);
 
       if (this.isPaused) return;
@@ -315,9 +297,6 @@ export abstract class HubAgent<
     }
   }
 
-  /**
-   * Universal message handler for plugins.
-   */
   async action(req: Request) {
     const { type, ...payload } = await req.json<{
       type: string;
@@ -365,7 +344,6 @@ export abstract class HubAgent<
 
   async executePendingTools(maxTools: number) {
     let toolBatch: ToolCall[] = [];
-    // pop tool calls up to maxTools
     const calls = this.info.pendingToolCalls ?? [];
     if (calls.length <= maxTools) {
       toolBatch = calls;
@@ -400,7 +378,7 @@ export abstract class HubAgent<
           });
 
           if (out === null) return { call, out };
-          // Regular tool result
+
           this.emit(AgentEventType.TOOL_OUTPUT, {
             toolName: call.name,
             toolCallId: call.id,
@@ -436,7 +414,6 @@ export abstract class HubAgent<
       })
     );
 
-    // Append tool messages for regular results
     const messages = toolResults
       .filter((r) => r.out !== null || !!r.error)
       .map(({ call, out, error }) => {
@@ -454,9 +431,6 @@ export abstract class HubAgent<
     this.store.add(messages);
   }
 
-  /**
-   * Emit an event. Accepts core AgentEventType or custom string types for plugin events.
-   */
   emit(type: AgentEventType | string, data: Record<string, unknown>) {
     const evt = {
       type,
@@ -466,9 +440,7 @@ export abstract class HubAgent<
     } as AgentEvent;
 
     const seq = this.store.addEvent(evt);
-
-    const event = { ...evt, seq }
-    // broadcast to connected clients if any
+    const event = { ...evt, seq };
     this.plugins.forEach((p) => p.onEvent?.(this.pluginContext, event));
     this.broadcast(JSON.stringify(event));
   }

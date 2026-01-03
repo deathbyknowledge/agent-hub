@@ -1,18 +1,3 @@
-/**
- * Hub Management Plugin
- *
- * Provides tools for introspecting and managing the entire hub.
- * Used by the Hub Mind to have awareness and control over all agencies.
- *
- * Tools:
- * - list_agencies: List all agencies in the hub
- * - get_agency_summary: Get summary of a specific agency
- * - create_agency: Create a new agency
- * - delete_agency: Delete an agency
- * - get_hub_stats: Get overall hub statistics
- *
- * The plugin also injects hub context into the system prompt via beforeModel.
- */
 import {
   tool,
   z,
@@ -20,14 +5,6 @@ import {
   type PluginContext,
 } from "agent-hub";
 
-// ============================================================================
-// Helper: Fetch from Hub
-// ============================================================================
-
-/**
- * Fetch from the hub's HTTP API.
- * The hub worker exposes /agencies and related endpoints.
- */
 async function hubFetch(
   ctx: PluginContext,
   path: string,
@@ -50,9 +27,6 @@ async function hubFetch(
   return fetch(url.toString(), options);
 }
 
-/**
- * Fetch agency details via the hub API.
- */
 async function agencyFetch(
   ctx: PluginContext,
   agencyId: string,
@@ -61,10 +35,6 @@ async function agencyFetch(
 ): Promise<Response> {
   return hubFetch(ctx, `/agency/${agencyId}${path}`, options);
 }
-
-// ============================================================================
-// Plugin Definition
-// ============================================================================
 
 export const hubManagement: AgentPlugin = {
   name: "hub-management",
@@ -114,15 +84,7 @@ This context is automatically refreshed each turn.
   },
 };
 
-// ============================================================================
-// Tool Registration
-// ============================================================================
-
 function registerTools(ctx: PluginContext) {
-  // -------------------------------------------------------------------------
-  // Agencies - Read
-  // -------------------------------------------------------------------------
-
   ctx.registerTool(tool({
     name: "list_agencies",
     description: "List all agencies in the hub with their names and IDs",
@@ -231,10 +193,6 @@ function registerTools(ctx: PluginContext) {
     },
   }));
 
-  // -------------------------------------------------------------------------
-  // Agencies - Write
-  // -------------------------------------------------------------------------
-
   ctx.registerTool(tool({
     name: "create_agency",
     description: "Create a new agency in the hub",
@@ -270,10 +228,6 @@ function registerTools(ctx: PluginContext) {
       return { ok: true, message: `Agency "${agencyId}" deleted` };
     },
   }));
-
-  // -------------------------------------------------------------------------
-  // Cross-Agency Operations
-  // -------------------------------------------------------------------------
 
   ctx.registerTool(tool({
     name: "spawn_agent_in_agency",

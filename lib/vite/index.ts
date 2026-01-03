@@ -1,14 +1,6 @@
-/**
- * Vite plugin for auto-discovering and wiring agents, tools, and plugins.
- * Generates index.ts on dev server start and watches for changes.
- */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Plugin, ViteDevServer } from "vite";
-
-// ============================================================================
-// Types
-// ============================================================================
 
 interface DiscoveredModule {
   relativePath: string;
@@ -126,10 +118,6 @@ function discoverModules(srcDir: string): DiscoveryResult {
   return result;
 }
 
-// ============================================================================
-// Code Generation
-// ============================================================================
-
 function toPascalCase(str: string): string {
   return str
     .split(/[-_]/)
@@ -237,10 +225,6 @@ function generateCode(
 
   return lines.join("\n");
 }
-
-// ============================================================================
-// Vite Plugin
-// ============================================================================
 
 export default function agentsPlugin(
   options: AgentsPluginOptions = {}

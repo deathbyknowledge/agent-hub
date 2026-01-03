@@ -1,8 +1,3 @@
-/**
- * This creates a Durable Object class that needs to be exported, so wrangler can read it.
- * Make sure you add the binding `DEEP_AGENT` in your `wrangler.jsonc` file.
- */
-
 import { getAgentByName } from "agents";
 import { HubAgent } from "./agent";
 import { Agency } from "./agency";
@@ -39,7 +34,6 @@ class ToolRegistry {
     }
   }
 
-  /** Get all tools with their metadata */
   getAll(): Array<{
     name: string;
     description?: string;
@@ -63,18 +57,12 @@ class ToolRegistry {
     return result;
   }
 
-  /**
-   * Select tools by capabilities.
-   * - `@tag` selects all tools with that tag
-   * - `name` selects a specific tool by name
-   */
   selectByCapabilities(capabilities: string[]): Tool<any>[] {
     const seen = new Set<string>();
     const selected: Tool<any>[] = [];
 
     for (const cap of capabilities) {
       if (cap.startsWith("@")) {
-        // Tag: select all tools with this tag
         const tag = cap.slice(1);
         const toolNames = this.tags.get(tag) || [];
         for (const name of toolNames) {
@@ -85,7 +73,6 @@ class ToolRegistry {
           }
         }
       } else {
-        // Direct tool name
         if (!seen.has(cap)) {
           seen.add(cap);
           const handler = this.tools.get(cap);
@@ -115,7 +102,6 @@ class PluginRegistry {
     }
   }
 
-  /** Get all plugins with their metadata */
   getAll(): Array<{
     name: string;
     tags: string[];
@@ -166,6 +152,22 @@ class PluginRegistry {
   }
 }
 
+/**
+ * Main entry point for configuring an AgentHub instance.
+ * Register tools, plugins, and agent blueprints, then call `export()` to
+ * get the Durable Object classes and HTTP handler for your Worker.
+ *
+ * @example
+ * ```ts
+ * const hub = new AgentHub({ defaultModel: "gpt-4o" })
+ *   .addTool(myTool, ["@default"])
+ *   .use(myPlugin)
+ *   .addAgent({ name: "assistant", ... });
+ *
+ * export const { HubAgent, Agency, handler } = hub.export();
+ * export default { fetch: handler };
+ * ```
+ */
 export class AgentHub {
   toolRegistry = new ToolRegistry();
   pluginRegistry = new PluginRegistry();
@@ -174,22 +176,26 @@ export class AgentHub {
 
   constructor(private options: AgentHubOptions) {}
 
+  /** Register a tool with optional tags for capability-based selection. */
   addTool<T>(tool: Tool<T>, tags?: string[]): AgentHub {
     this.toolRegistry.addTool(tool.meta.name, tool, tags);
     return this;
   }
 
+  /** Register a plugin with optional additional tags. */
   use(plugin: AgentPlugin, tags?: string[]): AgentHub {
     const uniqueTags = Array.from(new Set([...(tags || []), ...plugin.tags]));
     this.pluginRegistry.addPlugin(plugin.name, plugin, uniqueTags);
     return this;
   }
 
+  /** Register a static agent blueprint. */
   addAgent(blueprint: AgentBlueprint): AgentHub {
     this.agentRegistry.set(blueprint.name, blueprint);
     return this;
   }
 
+  /** Export the configured Durable Object classes and HTTP handler. */
   export(): {
     HubAgent: typeof HubAgent<AgentEnv>;
     Agency: typeof Agency;
@@ -198,9 +204,6 @@ export class AgentHub {
     const options = this.options;
     const { toolRegistry, pluginRegistry, agentRegistry } = this;
     class ConfiguredHubAgent extends HubAgent<AgentEnv> {
-
-      // Gets local agent blueprint or reads it from static defaults.
-      // Local blueprint is set by Agency on registration.
       get blueprint(): AgentBlueprint {
         if (this.info.blueprint) return this.info.blueprint;
         if (!this.info.agentType) throw new Error("Agent type not set");
@@ -211,18 +214,10 @@ export class AgentHub {
         throw new Error(`Agent type ${this.info.agentType} not found`);
       }
 
-      /**
-       * Returns all static blueprints defined in code (not from Agency DO).
-       * Used by plugins like agency-management to list available agent types.
-       */
       getStaticBlueprints(): AgentBlueprint[] {
         return Array.from(agentRegistry.values());
       }
 
-      /**
-       * Returns metadata for all registered plugins.
-       * Used by plugins like agency-management to show available capabilities.
-       */
       getRegisteredPlugins(): Array<{
         name: string;
         tags: string[];
@@ -231,10 +226,6 @@ export class AgentHub {
         return pluginRegistry.getAll();
       }
 
-      /**
-       * Returns metadata for all registered tools.
-       * Used by plugins like agency-management to show available capabilities.
-       */
       getRegisteredTools(): Array<{
         name: string;
         description?: string;
@@ -246,7 +237,7 @@ export class AgentHub {
 
       async onRegister(meta: ThreadMetadata): Promise<void> {
         const type = meta.agentType;
-        const agencyId = meta.agencyId; // <-- passed from Agency
+        const agencyId = meta.agencyId;
 
         if (!agencyId) {
           throw new Error("Cannot register agent without Agency ID");
@@ -259,7 +250,6 @@ export class AgentHub {
 
         let bp: AgentBlueprint | undefined;
 
-        // 1. Ask Agency DO for blueprint
         try {
           const agencyStub = await getAgentByName(
             this.exports.Agency,
@@ -275,14 +265,11 @@ export class AgentHub {
           console.warn("Failed to fetch blueprint from Agency DO", e);
         }
 
-        // 2. Fallback to static defaults from agentRegistry
         if (!bp) bp = agentRegistry.get(type);
         if (!bp) throw new Error(`Unknown agent type: ${type}`);
 
-        // 3. Persist blueprint locally
         this.info.blueprint = bp;
 
-        // 4. Merge blueprint vars into agent vars
         if (bp.vars) {
           Object.assign(this.vars, bp.vars);
         }
@@ -308,11 +295,7 @@ export class AgentHub {
 
       get provider(): Provider {
         let baseProvider = options?.provider;
-        // Set OpenAI (chat completions really) provider if not set
         if (!baseProvider) {
-          // we read from the agency/agent vars for provider keys. this allows
-          // each agency (or agent) to use a different provider while being able to have
-          // a global default through environment variables
           const apiKey =
             (this.vars.LLM_API_KEY as string) ?? this.env.LLM_API_KEY;
           const apiBase =
@@ -323,7 +306,6 @@ export class AgentHub {
           baseProvider = makeOpenAI(apiKey, apiBase);
         }
 
-        // this is just a wrapper on the provider interface to emit events
         return {
           invoke: async (req, opts) => {
             this.emit(AgentEventType.MODEL_STARTED, {

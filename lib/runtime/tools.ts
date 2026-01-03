@@ -1,12 +1,7 @@
-/**
- * Tool definition utilities.
- * Adds `ToolContext` (agent, env, callId) to execute functions.
- */
 import { type ZodType } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { ToolContext, ToolJsonSchema, Tool } from "./types";
 
-/** Tool result - string, object, or null (for async tools like subagents) */
 export type ToolResult = string | object | null;
 
 function isZodSchema(value: unknown): value is ZodType {
@@ -18,27 +13,18 @@ function isZodSchema(value: unknown): value is ZodType {
   );
 }
 
-// ============================================================
-// Tool Factory
-// ============================================================
-
 /**
- * Define a tool with Zod or JSON Schema input and typed execute function.
- * Matches AI SDK's `tool()` interface but with required `execute` and `ToolContext`.
+ * Define a tool with Zod or JSON Schema input.
  *
  * @example
  * ```ts
- * import { tool, z } from 'agents/hub';
- *
  * const read_file = tool({
  *   name: 'read_file',
  *   description: 'Read a file from the filesystem',
  *   inputSchema: z.object({
  *     path: z.string().describe('File path to read'),
- *     offset: z.number().int().min(0).optional(),
- *     limit: z.number().int().min(1).optional(),
  *   }),
- *   execute: async ({ path, offset, limit }, ctx) => {
+ *   execute: async ({ path }, ctx) => {
  *     const content = await ctx.agent.fs.readFile(path);
  *     return content ?? `Error: File '${path}' not found`;
  *   },
