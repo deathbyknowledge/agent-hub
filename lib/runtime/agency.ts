@@ -174,8 +174,8 @@ export class Agency extends Agent<AgentEnv> {
     router.delete("/vars/:key", (req: IRequest) => this.handleDeleteVar(req.params.key));
 
     // Filesystem
-    router.all("/fs/*", (req: IRequest) => this.handleFilesystem(req, new URL(req.url).pathname));
-    router.all("/fs", (req: IRequest) => this.handleFilesystem(req, "/fs"));
+    router.all("/fs/:path+", (req: IRequest) => this.handleFilesystem(req, req.params.path || ""));
+    router.all("/fs", (req: IRequest) => this.handleFilesystem(req, ""));
 
     // Internal
     router.get("/internal/blueprint/:name", (req: IRequest) => this.handleGetInternalBlueprint(req.params.name));
@@ -1048,7 +1048,7 @@ export class Agency extends Agent<AgentEnv> {
    */
   private async handleFilesystem(
     req: Request,
-    path: string
+    fsPath: string
   ): Promise<Response> {
     const bucket = this.env.FS;
     if (!bucket) {
@@ -1056,11 +1056,6 @@ export class Agency extends Agent<AgentEnv> {
         status: 503,
       });
     }
-
-    // Extract the path after /fs
-    // /fs → "", /fs/ → "", /fs/shared/foo → "shared/foo"
-    let fsPath = path.slice(3); // remove "/fs"
-    if (fsPath.startsWith("/")) fsPath = fsPath.slice(1);
 
     // Build R2 key: /{agencyId}/{fsPath}
     const r2Prefix = this.agencyName + "/";

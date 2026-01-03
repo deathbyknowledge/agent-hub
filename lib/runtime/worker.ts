@@ -104,8 +104,13 @@ const listAgencies = async (req: IRequest, { env }: RequestContext) => {
     const agencyName = prefix.replace(/\/$/, "");
     const metaObj = await env.FS.get(`${agencyName}/.agency.json`);
     if (metaObj) {
-      const meta = await metaObj.json();
-      agencies.push(meta);
+      try {
+        const meta = await metaObj.json();
+        agencies.push(meta);
+      } catch {
+        // Corrupted or empty .agency.json - use defaults
+        agencies.push({ id: agencyName, name: agencyName });
+      }
     } else {
       agencies.push({ id: agencyName, name: agencyName });
     }
@@ -323,7 +328,7 @@ const deleteVar = async (req: IRequest, { ctx }: RequestContext) => {
 
 const handleFilesystem = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  const fsPath = req.params["*"] || "";
+  const fsPath = req.params.path || "";
   return agencyStub.fetch(
     new Request(`http://do/fs/${fsPath}`, {
       method: req.method,
@@ -336,7 +341,7 @@ const handleFilesystem = async (req: IRequest, { ctx }: RequestContext) => {
 
 const handleAgentRequest = async (req: IRequest, { ctx }: RequestContext) => {
   const hubAgentStub = await getAgentByName(ctx.exports.HubAgent, req.params.agentId);
-  const agentPath = req.params["*"] || "";
+  const agentPath = req.params.path || "";
 
   // WebSocket upgrade
   if (req.headers.get("Upgrade")?.toLowerCase() === "websocket") {
@@ -408,12 +413,12 @@ export const createHandler = (opts: HandlerOptions = {}) => {
   router.put("/agency/:agencyId/vars/:varKey", setVar);
   router.delete("/agency/:agencyId/vars/:varKey", deleteVar);
 
-  // Filesystem (wildcard for path)
-  router.all("/agency/:agencyId/fs/*", handleFilesystem);
+  // Filesystem (greedy param for path)
+  router.all("/agency/:agencyId/fs/:path+", handleFilesystem);
   router.all("/agency/:agencyId/fs", handleFilesystem);
 
-  // Agent (wildcard for agent routes)
-  router.all("/agency/:agencyId/agent/:agentId/*", handleAgentRequest);
+  // Agent (greedy param for agent routes)
+  router.all("/agency/:agencyId/agent/:agentId/:path+", handleAgentRequest);
   router.all("/agency/:agencyId/agent/:agentId", handleAgentRequest);
 
   // 404
