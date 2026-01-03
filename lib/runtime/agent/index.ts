@@ -100,18 +100,18 @@ export abstract class HubAgent<
    * R2-backed filesystem with per-agent home directory and shared spce.
    * Returns null if FS binding is not configured.
    */
-  get fs(): AgentFileSystem | null {
+  get fs(): AgentFileSystem {
     // Return cached instance
     if (this._fs) return this._fs;
 
     // Need R2 bucket binding
     const bucket = this.env.FS;
-    if (!bucket) return null;
+    if (!bucket) throw new Error("R2 bucket not configured. Set FS binding in wrangler.jsonc.");
 
-    // Need agent identity (set after registration)
+    // Need agent identity
     const agencyId = this.info.agencyId;
     const agentId = this.info.threadId;
-    if (!agencyId || !agentId) return null;
+    if (!agencyId || !agentId) throw new Error("Agent identity not set. Call registerThread first.");
 
     this._fs = new AgentFileSystem(bucket, { agencyId, agentId });
     return this._fs;

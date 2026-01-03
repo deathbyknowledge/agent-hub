@@ -211,6 +211,39 @@ export class AgentHub {
         throw new Error(`Agent type ${this.info.agentType} not found`);
       }
 
+      /**
+       * Returns all static blueprints defined in code (not from Agency DO).
+       * Used by plugins like agency-management to list available agent types.
+       */
+      getStaticBlueprints(): AgentBlueprint[] {
+        return Array.from(agentRegistry.values());
+      }
+
+      /**
+       * Returns metadata for all registered plugins.
+       * Used by plugins like agency-management to show available capabilities.
+       */
+      getRegisteredPlugins(): Array<{
+        name: string;
+        tags: string[];
+        varHints?: Array<{ name: string; required?: boolean; description?: string }>;
+      }> {
+        return pluginRegistry.getAll();
+      }
+
+      /**
+       * Returns metadata for all registered tools.
+       * Used by plugins like agency-management to show available capabilities.
+       */
+      getRegisteredTools(): Array<{
+        name: string;
+        description?: string;
+        tags: string[];
+        varHints?: Array<{ name: string; required?: boolean; description?: string }>;
+      }> {
+        return toolRegistry.getAll();
+      }
+
       async onRegister(meta: ThreadMetadata): Promise<void> {
         const type = meta.agentType;
         const agencyId = meta.agencyId; // <-- passed from Agency

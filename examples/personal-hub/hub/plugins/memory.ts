@@ -1,7 +1,7 @@
 /**
  * Memory Plugin
  *
- * Provides semantic search over agency-wide memory disks.
+ * Provides semantic search and storage over agency-wide memory disks.
  * Each disk is stored as a single `.idz` file in /shared/memories/.
  *
  * File format (.idz):
@@ -17,6 +17,12 @@
  *   - EMBEDDING_API_BASE (e.g., "https://api.openai.com/v1")
  *   - EMBEDDING_API_KEY
  *   - EMBEDDING_MODEL (default: "text-embedding-3-small")
+ *
+ * Tools:
+ *   - recall: Search memory disks for relevant information
+ *   - remember: Store new memories to a disk
+ *
+ * Available disks are injected into the system prompt automatically.
  */
 import { HNSW } from "hnsw";
 import { tool, z, type AgentPlugin } from "agent-hub";
@@ -76,11 +82,42 @@ async function fetchEmbeddings(
   return json.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
 }
 
-async function listDisks(fs: AgentFileSystem): Promise<{ name: string }[]> {
+async function listDisks(
+  fs: AgentFileSystem
+): Promise<Array<{ name: string; description?: string; entryCount: number }>> {
   const entries = await fs.readDir("/shared/memories").catch(() => []);
-  return entries
-    .filter((e) => e.type === "file" && e.path.endsWith(".idz"))
-    .map((e) => ({ name: e.path.replace(/.*\//, "").replace(/\.idz$/, "") }));
+  const disks: Array<{ name: string; description?: string; entryCount: number }> = [];
+
+  for (const entry of entries) {
+    if (entry.type === "file" && entry.path.endsWith(".idz")) {
+      const name = entry.path.replace(/.*\//, "").replace(/\.idz$/, "");
+      try {
+        const content = await fs.readFile(entry.path);
+        if (content) {
+          const idz = JSON.parse(content) as IDZFile;
+          disks.push({
+            name,
+            description: idz.description,
+            entryCount: idz.entries?.length || 0,
+          });
+        }
+      } catch {
+        disks.push({ name, entryCount: 0 });
+      }
+    }
+  }
+
+  return disks;
+}
+
+async function loadDisk(fs: AgentFileSystem, name: string): Promise<IDZFile | null> {
+  const content = await fs.readFile(diskPath(name));
+  if (!content) return null;
+  return JSON.parse(content) as IDZFile;
+}
+
+async function saveDisk(fs: AgentFileSystem, idz: IDZFile): Promise<void> {
+  await fs.writeFile(diskPath(idz.name), JSON.stringify(idz));
 }
 
 async function searchDisk(
@@ -90,10 +127,9 @@ async function searchDisk(
   query: string,
   k: number
 ): Promise<MemoryEntry[]> {
-  const content = await fs.readFile(diskPath(name));
-  if (!content) throw new Error(`Disk '${name}' not found`);
+  const idz = await loadDisk(fs, name);
+  if (!idz) throw new Error(`Disk '${name}' not found`);
 
-  const idz = JSON.parse(content) as IDZFile;
   let entries = idz.entries;
 
   // Compute embeddings if missing
@@ -105,7 +141,7 @@ async function searchDisk(
     entries = entries.map((e, i) => ({ ...e, embedding: embeddings[i] }));
     // Save back with embeddings
     const updated: IDZFile = { ...idz, hasEmbeddings: true, entries };
-    await fs.writeFile(diskPath(name), JSON.stringify(updated));
+    await saveDisk(fs, updated);
   }
 
   if (entries.length === 0) return [];
@@ -128,75 +164,54 @@ async function searchDisk(
     .map((e) => ({ content: e.content, extra: e.extra }));
 }
 
+async function addMemory(
+  fs: AgentFileSystem,
+  vars: Record<string, unknown>,
+  diskName: string,
+  content: string,
+  extra?: Record<string, unknown>
+): Promise<{ success: boolean; message: string }> {
+  let idz = await loadDisk(fs, diskName);
+
+  // Create disk if it doesn't exist
+  if (!idz) {
+    idz = {
+      version: 1,
+      name: diskName,
+      hasEmbeddings: false,
+      entries: [],
+    };
+  }
+
+  // Add the new entry (without embedding - will be computed on search)
+  const newEntry: StoredEntry = { content, extra };
+  
+  // If disk already has embeddings, compute embedding for new entry
+  if (idz.hasEmbeddings) {
+    try {
+      const [embedding] = await fetchEmbeddings([content], vars);
+      newEntry.embedding = embedding;
+    } catch (e) {
+      // If embedding fails, mark disk as needing re-embedding
+      idz.hasEmbeddings = false;
+    }
+  }
+
+  idz.entries.push(newEntry);
+  await saveDisk(fs, idz);
+
+  return {
+    success: true,
+    message: `Added memory to '${diskName}' (${idz.entries.length} total entries)`,
+  };
+}
+
 // ============================================================
 // Plugin
 // ============================================================
 
 export const memory: AgentPlugin = {
   name: "memory",
-
-  async beforeModel(ctx) {
-    const fs = ctx.agent.fs;
-    if (!fs) return;
-
-    const vars = ctx.agent.vars as Record<string, unknown>;
-
-    const recallTool = tool({
-      name: "recall",
-      description: `Search agency memory for relevant information.
-Use this to retrieve past knowledge, context, or facts stored in memory disks.
-Available disks can be listed first, then searched by name.`,
-      inputSchema: z.object({
-        action: z
-          .enum(["list", "search"])
-          .describe("Action: 'list' disks or 'search' a disk"),
-        disk: z.string().optional().describe("Disk name (required for search)"),
-        query: z
-          .string()
-          .optional()
-          .describe("Search query (required for search)"),
-        k: z
-          .number()
-          .int()
-          .min(1)
-          .max(20)
-          .optional()
-          .describe("Results to return (default: 5)"),
-      }),
-      execute: async ({ action, disk, query, k }) => {
-        if (action === "list") {
-          const disks = await listDisks(fs);
-          if (disks.length === 0) return "No memory disks available.";
-          return disks.map((d) => `- ${d.name}`).join("\n");
-        }
-
-        if (action === "search") {
-          if (!disk) return "Error: disk name required for search";
-          if (!query) return "Error: query required for search";
-
-          try {
-            const results = await searchDisk(fs, vars, disk, query, k ?? 5);
-            if (results.length === 0) {
-              return `No results found in '${disk}' for: ${query}`;
-            }
-            return results
-              .map((r, i) => {
-                const extra = r.extra ? ` [${JSON.stringify(r.extra)}]` : "";
-                return `${i + 1}. ${r.content}${extra}`;
-              })
-              .join("\n\n");
-          } catch (e) {
-            return `Error: ${e instanceof Error ? e.message : String(e)}`;
-          }
-        }
-
-        return "Error: invalid action";
-      },
-    });
-
-    ctx.registerTool(recallTool);
-  },
-
   tags: ["memory"],
 
   varHints: [
@@ -217,4 +232,94 @@ Available disks can be listed first, then searched by name.`,
       description: "Model to use (default: text-embedding-3-small)",
     },
   ],
+
+  async beforeModel(ctx, plan) {
+    const fs = ctx.agent.fs;
+    if (!fs) return;
+
+    const vars = ctx.agent.vars as Record<string, unknown>;
+
+    // Inject available memory disks into system prompt
+    try {
+      const disks = await listDisks(fs);
+      if (disks.length > 0) {
+        const diskList = disks
+          .map((d) => {
+            const desc = d.description ? ` - ${d.description}` : "";
+            return `  - **${d.name}** (${d.entryCount} entries)${desc}`;
+          })
+          .join("\n");
+
+        plan.addSystemPrompt(`
+## Memory Disks Available
+
+You have access to the following memory disks for recall and storage:
+${diskList}
+
+Use the \`recall\` tool to search memories and \`remember\` tool to store new ones.
+`);
+      }
+    } catch (e) {
+      // Silent fail - disks might not exist yet
+    }
+
+    // Register recall tool (search)
+    ctx.registerTool(tool({
+      name: "recall",
+      description: `Search a memory disk for relevant information using semantic search.
+Use this to retrieve past knowledge, context, or facts stored in memory.
+Memory disks available are listed in your system prompt.`,
+      inputSchema: z.object({
+        disk: z.string().describe("Name of the memory disk to search"),
+        query: z.string().describe("Search query - describe what you're looking for"),
+        k: z
+          .number()
+          .int()
+          .min(1)
+          .max(20)
+          .optional()
+          .describe("Number of results to return (default: 5)"),
+      }),
+      execute: async ({ disk, query, k }) => {
+        try {
+          const results = await searchDisk(fs, vars, disk, query, k ?? 5);
+          if (results.length === 0) {
+            return `No relevant memories found in '${disk}' for: ${query}`;
+          }
+          return results
+            .map((r, i) => {
+              const extra = r.extra ? ` [${JSON.stringify(r.extra)}]` : "";
+              return `${i + 1}. ${r.content}${extra}`;
+            })
+            .join("\n\n");
+        } catch (e) {
+          return `Error: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      },
+    }));
+
+    // Register remember tool (store)
+    ctx.registerTool(tool({
+      name: "remember",
+      description: `Store a new memory to a memory disk.
+Use this to save important information, facts, or context for future reference.
+If the disk doesn't exist, it will be created automatically.`,
+      inputSchema: z.object({
+        disk: z.string().describe("Name of the memory disk to store to"),
+        content: z.string().describe("The memory content to store (be descriptive and self-contained)"),
+        tags: z
+          .record(z.unknown())
+          .optional()
+          .describe("Optional metadata tags (e.g., { source: 'user', topic: 'preferences' })"),
+      }),
+      execute: async ({ disk, content, tags }) => {
+        try {
+          const result = await addMemory(fs, vars, disk, content, tags);
+          return result.message;
+        } catch (e) {
+          return `Error: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      },
+    }));
+  },
 };

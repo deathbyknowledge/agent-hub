@@ -173,6 +173,13 @@ async function fetchMemoryDisks(agencyId: string): Promise<MemoryDisk[]> {
   }
 }
 
+// Special agent type for Agency Mind
+const AGENCY_MIND_TYPE = "_agency-mind";
+
+// Special agency and agent type for Hub Mind
+const SYSTEM_AGENCY_ID = "_system";
+const HUB_MIND_TYPE = "_hub-mind";
+
 export function useAgency(agencyId: string | null) {
   const queryClient = useQueryClient();
   const client = useMemo(
@@ -462,6 +469,36 @@ export function useAgency(agencyId: string | null) {
     createBlueprint: blueprintMutation.mutateAsync,
     updateBlueprint: blueprintMutation.mutateAsync,
     deleteBlueprint: deleteBlueprintMutation.mutateAsync,
+    /**
+     * Get or create the Agency Mind agent for this agency.
+     * Returns the agent ID of the existing or newly spawned mind.
+     */
+    getOrCreateMind: async (): Promise<string> => {
+      if (!client) throw new Error("No agency selected");
+
+      // Ensure HUB_BASE_URL and HUB_SECRET are set for list_capabilities tool
+      const baseUrl = window.location.origin;
+      const secret = getStoredSecret();
+      await client.setVar("HUB_BASE_URL", baseUrl);
+      if (secret) {
+        await client.setVar("HUB_SECRET", secret);
+      }
+
+      // Check if mind agent already exists
+      const { agents: currentAgents } = await client.listAgents();
+      const existingMind = currentAgents.find(
+        (a) => a.agentType === AGENCY_MIND_TYPE
+      );
+      if (existingMind) return existingMind.id;
+
+      // Spawn new mind agent
+      const newMind = await client.spawnAgent({ agentType: AGENCY_MIND_TYPE });
+      queryClient.setQueryData<AgentSummary[]>(
+        queryKeys.agents(agencyId!),
+        (old) => (old ? [...old, newMind] : [newMind])
+      );
+      return newMind.id;
+    },
   };
 }
 
@@ -706,5 +743,539 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     refresh: fetchState,
     refreshEvents: fetchEvents,
     reconnect: connect,
+  };
+}
+
+// ============================================================================
+// useActivityFeed - Aggregate activity across all agents in an agency
+// ============================================================================
+
+export interface ActivityItem {
+  id: string;
+  timestamp: string;
+  type: "message" | "agent_event" | "system";
+  from?: string;
+  to?: string;
+  content?: string;
+  agentId?: string;
+  agentType?: string;
+  event?: string;
+  details?: string;
+  status?: "running" | "done" | "error";
+}
+
+export function useActivityFeed(agencyId: string | null) {
+  const [items, setItems] = useState<ActivityItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const wsRefs = useRef<Map<string, { close: () => void }>>(new Map());
+  const agentStatesRef = useRef<Map<string, { messages: ChatMessage[]; status: string }>>(new Map());
+
+  // Fetch all agents and their states
+  const fetchActivity = useCallback(async () => {
+    if (!agencyId) {
+      setItems([]);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const client = getClient().agency(agencyId);
+      const { agents } = await client.listAgents();
+
+      const allItems: ActivityItem[] = [];
+
+      // Fetch state for each agent
+      for (const agent of agents) {
+        try {
+          const agentClient = client.agent(agent.id);
+          const { state, run } = await agentClient.getState();
+
+          // Store state for WebSocket updates
+          agentStatesRef.current.set(agent.id, {
+            messages: state?.messages || [],
+            status: run?.status || "idle",
+          });
+
+          // Convert messages to activity items
+          if (state?.messages) {
+            for (let i = 0; i < state.messages.length; i++) {
+              const msg = state.messages[i];
+              const ts = msg.ts || new Date().toISOString();
+
+              if (msg.role === "user") {
+                allItems.push({
+                  id: `${agent.id}-msg-${i}`,
+                  timestamp: ts,
+                  type: "message",
+                  from: "you",
+                  to: agent.agentType,
+                  content: (msg as { content?: string }).content || "",
+                  agentId: agent.id,
+                  agentType: agent.agentType,
+                });
+              } else if (msg.role === "assistant") {
+                const content = (msg as { content?: string }).content;
+                if (content) {
+                  allItems.push({
+                    id: `${agent.id}-msg-${i}`,
+                    timestamp: ts,
+                    type: "message",
+                    from: agent.agentType,
+                    content,
+                    agentId: agent.id,
+                    agentType: agent.agentType,
+                    status: run?.status === "running" ? "running" : "done",
+                  });
+                }
+              }
+            }
+          }
+
+          // Add current run status if running
+          if (run?.status === "running") {
+            allItems.push({
+              id: `${agent.id}-run`,
+              timestamp: new Date().toISOString(),
+              type: "agent_event",
+              agentId: agent.id,
+              agentType: agent.agentType,
+              event: "Running",
+              status: "running",
+            });
+          }
+        } catch (e) {
+          // Agent might be initializing
+          console.warn(`Failed to fetch state for agent ${agent.id}:`, e);
+        }
+      }
+
+      // Sort by timestamp
+      allItems.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      setItems(allItems);
+    } catch (e) {
+      console.error("Failed to fetch activity:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [agencyId]);
+
+  // Subscribe to WebSocket updates for all agents
+  const subscribeToAgents = useCallback(async () => {
+    if (!agencyId) return;
+
+    // Clean up existing connections
+    wsRefs.current.forEach((ws) => ws.close());
+    wsRefs.current.clear();
+
+    try {
+      const client = getClient().agency(agencyId);
+      const { agents } = await client.listAgents();
+
+      for (const agent of agents) {
+        const agentClient = client.agent(agent.id);
+        const connection = agentClient.connect({
+          onEvent: () => {
+            // Refetch activity when any agent has an update
+            fetchActivity();
+          },
+          onOpen: () => {},
+          onClose: () => {},
+          onError: () => {},
+        });
+        wsRefs.current.set(agent.id, connection);
+      }
+    } catch (e) {
+      console.error("Failed to subscribe to agents:", e);
+    }
+  }, [agencyId, fetchActivity]);
+
+  // Initial fetch and subscription
+  useEffect(() => {
+    fetchActivity();
+    subscribeToAgents();
+
+    return () => {
+      wsRefs.current.forEach((ws) => ws.close());
+      wsRefs.current.clear();
+    };
+  }, [fetchActivity, subscribeToAgents]);
+
+  // Add a user message to the feed (optimistic update)
+  const addUserMessage = useCallback((target: string, content: string, agentId: string) => {
+    const newItem: ActivityItem = {
+      id: `user-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      from: "you",
+      to: target,
+      content,
+      agentId,
+      agentType: target,
+    };
+    setItems((prev) => [...prev, newItem]);
+  }, []);
+
+  return {
+    items,
+    isLoading,
+    refresh: fetchActivity,
+    addUserMessage,
+  };
+}
+
+// ============================================================================
+// useHubMind - Work with the Hub Mind (lives in _system agency)
+// ============================================================================
+
+interface HubMindHookState {
+  hubMindId: string | null;
+  isLoading: boolean;
+  error: Error | null;
+}
+
+export function useHubMind() {
+  const [hookState, setHookState] = useState<HubMindHookState>({
+    hubMindId: null,
+    isLoading: false,
+    error: null,
+  });
+
+  /**
+   * Get or create the Hub Mind agent.
+   * This will:
+   * 1. Create the _system agency if it doesn't exist
+   * 2. Find or spawn a _hub-mind agent in it
+   * 3. Set up the required vars (HUB_BASE_URL, HUB_SECRET)
+   */
+  const getOrCreateHubMind = useCallback(async (): Promise<string> => {
+    setHookState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const client = getClient();
+
+      // 1. Check if _system agency exists, create if not
+      const { agencies } = await client.listAgencies();
+      let systemAgency = agencies.find((a) => a.id === SYSTEM_AGENCY_ID);
+
+      if (!systemAgency) {
+        // Create the _system agency
+        systemAgency = await client.createAgency({ name: SYSTEM_AGENCY_ID });
+      }
+
+      // 2. Get the _system agency client
+      const systemClient = client.agency(SYSTEM_AGENCY_ID);
+
+      // 3. Set up required vars for hub-management and memory plugins
+      const baseUrl = window.location.origin;
+      const secret = getStoredSecret();
+
+      await systemClient.setVar("HUB_BASE_URL", baseUrl);
+      if (secret) {
+        await systemClient.setVar("HUB_SECRET", secret);
+      }
+
+      // Also set embedding vars if available in current agency
+      // (Hub Mind needs these for memory plugin)
+      // For now we'll use the same as LLM API (OpenAI compatible)
+      const currentVars = await systemClient.getVars().catch(() => ({ vars: {} as Record<string, unknown> }));
+      if (!(currentVars.vars as Record<string, unknown>).EMBEDDING_API_BASE) {
+        // Default to OpenAI-compatible endpoint
+        await systemClient.setVar("EMBEDDING_API_BASE", "https://api.openai.com/v1");
+      }
+
+      // 4. Check if hub-manual memory disk exists, create if not
+      try {
+        await systemClient.readFile("/shared/memories/hub-manual.idz");
+      } catch {
+        // Manual doesn't exist - create it with initial content
+        const hubManual = {
+          version: 1,
+          name: "hub-manual",
+          description: "Agent Hub system documentation and best practices",
+          hasEmbeddings: false,
+          entries: [
+            { content: "Agent Hub is a framework for building multi-agent AI systems. It consists of agencies (containers for agents), blueprints (agent templates), and plugins (capability extensions). Each agency can have multiple agents running concurrently.", extra: { topic: "overview" } },
+            { content: "A blueprint defines an agent type with: name (identifier), description (what it does), prompt (system instructions), capabilities (list of plugins/tools), and optional model override. Blueprints starting with _ are system blueprints and hidden from users.", extra: { topic: "blueprints" } },
+            { content: "Capabilities in a blueprint can be: plugin names (e.g., 'planning', 'memory'), tool names (e.g., 'internet_search'), or tags with @ prefix (e.g., '@default' includes all default tools). Multiple capabilities can be combined.", extra: { topic: "capabilities" } },
+            { content: "The planning plugin adds todo list management. Agents can create, update, and complete tasks. Best used for complex multi-step operations. Add 'planning' to capabilities to enable.", extra: { topic: "plugin", name: "planning" } },
+            { content: "The memory plugin provides semantic search over .idz memory files. It requires EMBEDDING_API_BASE and EMBEDDING_API_KEY vars. Agents can recall (search) and remember (store) information. Add 'memory' to capabilities.", extra: { topic: "plugin", name: "memory" } },
+            { content: "The filesystem plugin provides read/write access to the agency's R2-backed storage. Agents have a home directory (~/) and shared space (/shared/). Add 'filesystem' to capabilities.", extra: { topic: "plugin", name: "filesystem" } },
+            { content: "The subagents plugin allows agents to spawn child agents for subtasks. Children report back to parents when done. Useful for parallel work or specialized tasks. Add 'subagents' to capabilities.", extra: { topic: "plugin", name: "subagents" } },
+            { content: "Agency variables (vars) are key-value configuration accessible to all agents. Common vars: LLM_API_KEY, LLM_API_BASE, EMBEDDING_API_KEY, EMBEDDING_API_BASE, DEFAULT_MODEL. Set via Agency settings or API.", extra: { topic: "configuration" } },
+            { content: "Schedules allow automatic agent spawning. Types: 'once' (single run at time), 'cron' (recurring pattern), 'interval' (every N milliseconds). Schedules can be paused, resumed, or manually triggered.", extra: { topic: "schedules" } },
+            { content: "The Agency Mind (_agency-mind) is a special agent that manages its parent agency. It can list/create/update blueprints, manage agents, view schedules, and configure variables. Each agency has one.", extra: { topic: "system-agents" } },
+            { content: "The Hub Mind (_hub-mind) is the top-level intelligence managing all agencies. It lives in the _system agency and can create/delete agencies, get hub-wide statistics, and provide guidance.", extra: { topic: "system-agents" } },
+            { content: "Best practice for blueprint prompts: Be specific about the agent's role, list what it should and shouldn't do, mention available tools, and set expectations for output format.", extra: { topic: "best-practices" } },
+            { content: "Best practice for capabilities: Start minimal and add as needed. '@default' gives common tools. Add 'planning' for complex tasks. Add 'memory' if the agent needs to remember across sessions.", extra: { topic: "best-practices" } },
+            { content: "Memory disks are .idz files in /shared/memories/. They store entries with semantic embeddings for search. Create topic-specific disks like 'user-preferences', 'project-notes', 'learned-facts'.", extra: { topic: "memory-system" } },
+          ],
+        };
+        await systemClient.writeFile("/shared/memories/hub-manual.idz", JSON.stringify(hubManual));
+      }
+
+      // 5. Check if hub mind agent already exists
+      const { agents } = await systemClient.listAgents();
+      const existingMind = agents.find((a) => a.agentType === HUB_MIND_TYPE);
+
+      if (existingMind) {
+        setHookState({ hubMindId: existingMind.id, isLoading: false, error: null });
+        return existingMind.id;
+      }
+
+      // 5. Spawn new hub mind agent
+      const newMind = await systemClient.spawnAgent({ agentType: HUB_MIND_TYPE });
+      setHookState({ hubMindId: newMind.id, isLoading: false, error: null });
+      return newMind.id;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      setHookState((prev) => ({ ...prev, isLoading: false, error }));
+      throw error;
+    }
+  }, []);
+
+  return {
+    ...hookState,
+    systemAgencyId: SYSTEM_AGENCY_ID,
+    getOrCreateHubMind,
+  };
+}
+
+// ============================================================================
+// useAgencyMetrics - Aggregated metrics with WebSocket updates
+// ============================================================================
+
+export interface AgencyMetrics {
+  totalTokens: number;
+  tokensByDay: Map<string, number>; // YYYY-MM-DD -> tokens
+  runsCompleted: number;
+  runsErrored: number;
+  responseTimes: number[]; // ms for each model call
+}
+
+const EMPTY_METRICS: AgencyMetrics = {
+  totalTokens: 0,
+  tokensByDay: new Map(),
+  runsCompleted: 0,
+  runsErrored: 0,
+  responseTimes: [],
+};
+
+/**
+ * Hook to fetch and maintain agency-wide metrics.
+ * 
+ * Strategy:
+ * 1. Initial load: Fetch all events from all agents once
+ * 2. WebSocket: Subscribe to each agent, update metrics incrementally on new events
+ * 3. No polling: Metrics update in real-time via WebSocket
+ */
+export function useAgencyMetrics(agencyId: string | null) {
+  const [metrics, setMetrics] = useState<AgencyMetrics>(EMPTY_METRICS);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
+  
+  // Track WebSocket connections
+  const wsRefs = useRef<Map<string, { close: () => void }>>(new Map());
+  // Track which agents we've already subscribed to
+  const subscribedAgents = useRef<Set<string>>(new Set());
+  // Track model.started timestamps for response time calculation
+  const modelStartTimes = useRef<Map<string, number>>(new Map());
+
+  // Process a single event and update metrics incrementally
+  const processEvent = useCallback((event: AgentEvent, agentId: string) => {
+    const eventDate = new Date(event.ts).toISOString().split("T")[0];
+
+    setMetrics((prev) => {
+      const next = { ...prev, tokensByDay: new Map(prev.tokensByDay) };
+
+      if (event.type === "model.completed") {
+        const data = event.data as { usage?: { inputTokens: number; outputTokens: number } };
+        if (data.usage) {
+          const tokens = data.usage.inputTokens + data.usage.outputTokens;
+          next.totalTokens += tokens;
+          next.tokensByDay.set(eventDate, (next.tokensByDay.get(eventDate) || 0) + tokens);
+        }
+
+        // Calculate response time if we have a start time
+        const startTime = modelStartTimes.current.get(agentId);
+        if (startTime !== undefined) {
+          const endTime = new Date(event.ts).getTime();
+          next.responseTimes = [...prev.responseTimes, endTime - startTime];
+          modelStartTimes.current.delete(agentId);
+        }
+      } else if (event.type === "model.started") {
+        modelStartTimes.current.set(agentId, new Date(event.ts).getTime());
+        return prev; // No state change needed
+      } else if (event.type === "agent.completed") {
+        next.runsCompleted = prev.runsCompleted + 1;
+      } else if (event.type === "agent.error") {
+        next.runsErrored = prev.runsErrored + 1;
+      } else {
+        return prev; // No relevant change
+      }
+
+      return next;
+    });
+  }, []);
+
+  // Subscribe to a single agent's WebSocket for real-time updates
+  const subscribeToAgent = useCallback((agencyId: string, agentId: string) => {
+    if (subscribedAgents.current.has(agentId)) return;
+    subscribedAgents.current.add(agentId);
+
+    const client = getClient().agency(agencyId).agent(agentId);
+    const connection = client.connect({
+      onEvent: (event) => {
+        processEvent(event, agentId);
+      },
+      onOpen: () => {},
+      onClose: () => {
+        // Remove from subscribed so we can resubscribe if needed
+        subscribedAgents.current.delete(agentId);
+        wsRefs.current.delete(agentId);
+      },
+      onError: () => {},
+    });
+
+    wsRefs.current.set(agentId, connection);
+  }, [processEvent]);
+
+  // Initial fetch of all events + subscribe to WebSockets
+  const fetchAndSubscribe = useCallback(async () => {
+    if (!agencyId) {
+      setMetrics(EMPTY_METRICS);
+      setHasFetched(false);
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const client = getClient().agency(agencyId);
+      const { agents } = await client.listAgents();
+
+      // Reset metrics for fresh calculation
+      let totalTokens = 0;
+      const tokensByDay = new Map<string, number>();
+      let runsCompleted = 0;
+      let runsErrored = 0;
+      const responseTimes: number[] = [];
+
+      // Fetch events for each agent
+      for (const agent of agents) {
+        try {
+          const agentClient = client.agent(agent.id);
+          const { events } = await agentClient.getEvents();
+
+          // Track model.started times for this agent's event history
+          let agentModelStartTime: number | null = null;
+
+          for (const event of events) {
+            const eventDate = new Date(event.ts).toISOString().split("T")[0];
+
+            if (event.type === "model.completed") {
+              const data = event.data as { usage?: { inputTokens: number; outputTokens: number } };
+              if (data.usage) {
+                const tokens = data.usage.inputTokens + data.usage.outputTokens;
+                totalTokens += tokens;
+                tokensByDay.set(eventDate, (tokensByDay.get(eventDate) || 0) + tokens);
+              }
+
+              if (agentModelStartTime !== null) {
+                const endTime = new Date(event.ts).getTime();
+                responseTimes.push(endTime - agentModelStartTime);
+                agentModelStartTime = null;
+              }
+            } else if (event.type === "model.started") {
+              agentModelStartTime = new Date(event.ts).getTime();
+            } else if (event.type === "agent.completed") {
+              runsCompleted++;
+            } else if (event.type === "agent.error") {
+              runsErrored++;
+            }
+          }
+
+          // Subscribe to WebSocket for real-time updates
+          subscribeToAgent(agencyId, agent.id);
+        } catch {
+          // Agent might be initializing, skip
+        }
+      }
+
+      setMetrics({
+        totalTokens,
+        tokensByDay,
+        runsCompleted,
+        runsErrored,
+        responseTimes,
+      });
+      setHasFetched(true);
+    } catch (err) {
+      console.error("Failed to fetch metrics:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [agencyId, subscribeToAgent]);
+
+  // Cleanup WebSocket connections
+  const cleanup = useCallback(() => {
+    wsRefs.current.forEach((ws) => ws.close());
+    wsRefs.current.clear();
+    subscribedAgents.current.clear();
+    modelStartTimes.current.clear();
+  }, []);
+
+  // Fetch on agency change
+  useEffect(() => {
+    // Cleanup previous subscriptions
+    cleanup();
+    
+    if (agencyId) {
+      fetchAndSubscribe();
+    } else {
+      setMetrics(EMPTY_METRICS);
+      setHasFetched(false);
+    }
+
+    return cleanup;
+  }, [agencyId, fetchAndSubscribe, cleanup]);
+
+  // Subscribe to newly created agents (called when agent list changes)
+  const subscribeToNewAgents = useCallback(async () => {
+    if (!agencyId || !hasFetched) return;
+
+    try {
+      const client = getClient().agency(agencyId);
+      const { agents } = await client.listAgents();
+
+      for (const agent of agents) {
+        if (!subscribedAgents.current.has(agent.id)) {
+          // New agent - fetch its events and subscribe
+          try {
+            const agentClient = client.agent(agent.id);
+            const { events } = await agentClient.getEvents();
+
+            // Process historical events
+            for (const event of events) {
+              processEvent(event, agent.id);
+            }
+
+            // Subscribe for future events
+            subscribeToAgent(agencyId, agent.id);
+          } catch {
+            // Agent might be initializing
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to subscribe to new agents:", err);
+    }
+  }, [agencyId, hasFetched, processEvent, subscribeToAgent]);
+
+  return {
+    metrics,
+    isLoading,
+    hasFetched,
+    refresh: fetchAndSubscribe,
+    subscribeToNewAgents,
   };
 }

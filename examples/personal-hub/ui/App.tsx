@@ -9,6 +9,8 @@ import {
   TodosView,
   SettingsView,
   ConfirmModal,
+  MindPanel,
+  CommandCenterApp,
   type TabId,
   type Message,
   type Todo,
@@ -140,6 +142,11 @@ function convertChatMessages(apiMessages: ChatMessage[]): Message[] {
   return messages;
 }
 
+// System blueprints start with _ and are hidden from the picker
+function isSystemBlueprint(bp: AgentBlueprint): boolean {
+  return bp.name.startsWith("_");
+}
+
 // Blueprint picker component
 function BlueprintPicker({
   blueprints,
@@ -150,6 +157,9 @@ function BlueprintPicker({
   onSelect: (bp: AgentBlueprint) => void;
   onClose: () => void;
 }) {
+  // Filter out system blueprints
+  const visibleBlueprints = blueprints.filter((bp) => !isSystemBlueprint(bp));
+
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
       <div className="bg-black border border-white max-w-md w-full mx-4 overflow-hidden">
@@ -165,13 +175,13 @@ function BlueprintPicker({
           </button>
         </div>
         <div className="p-3 max-h-80 overflow-y-auto">
-          {blueprints.length === 0 ? (
+          {visibleBlueprints.length === 0 ? (
             <p className="text-white/30 text-[10px] uppercase tracking-wider text-center py-4">
               // NO BLUEPRINTS AVAILABLE
             </p>
           ) : (
             <div className="space-y-1">
-              {blueprints.map((bp) => (
+              {visibleBlueprints.map((bp) => (
                 <button
                   key={bp.name}
                   onClick={() => onSelect(bp)}
@@ -896,8 +906,26 @@ function MainContent({
 // App Component
 // ============================================================================
 
+// Layout mode types
+type LayoutMode = "classic" | "command-center";
+
+function getStoredLayout(): LayoutMode {
+  if (typeof window !== "undefined") {
+    const stored = localStorage.getItem("hub_layout");
+    if (stored === "command-center") return "command-center";
+  }
+  return "classic";
+}
+
+function setStoredLayout(mode: LayoutMode): void {
+  localStorage.setItem("hub_layout", mode);
+}
+
 export default function App() {
   const [location, navigate] = useLocation();
+
+  // Layout mode - persisted in localStorage
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>(getStoredLayout);
 
   // Auth state - check if we need to show unlock form
   const [isLocked, setIsLocked] = useState(false);
@@ -911,6 +939,27 @@ export default function App() {
     return true;
   });
 
+  // Handle layout toggle
+  const toggleLayout = useCallback(() => {
+    setLayoutMode((prev) => {
+      const next = prev === "classic" ? "command-center" : "classic";
+      setStoredLayout(next);
+      return next;
+    });
+  }, []);
+
+  // Modal state
+  const [showBlueprintPicker, setShowBlueprintPicker] = useState(false);
+  const [showAgencyModal, setShowAgencyModal] = useState(false);
+  const [newAgencyName, setNewAgencyName] = useState("");
+
+  // Agency Mind panel state
+  const [isMindOpen, setIsMindOpen] = useState(false);
+  const [mindAgentId, setMindAgentId] = useState<string | null>(null);
+  const [isMindLoading, setIsMindLoading] = useState(false);
+
+
+
   // Parse agencyId and agentId from URL
   const pathParts = location.split("/").filter(Boolean);
   const agencyId = pathParts[0] || null;
@@ -923,8 +972,20 @@ export default function App() {
     error: agenciesError,
     hasFetched: agenciesFetched,
   } = useAgencies();
-  const { agents, blueprints, spawnAgent } = useAgency(agencyId);
+  const { agents, blueprints, spawnAgent, getOrCreateMind } = useAgency(agencyId);
   const { run: runState } = useAgent(agencyId, agentId);
+  
+  // Agency Mind agent state (separate from selected agent)
+  const {
+    state: mindState,
+    run: mindRunState,
+    connected: mindConnected,
+    loading: mindAgentLoading,
+    sendMessage: sendMindMessage,
+    cancel: cancelMind,
+  } = useAgent(agencyId, mindAgentId);
+
+  
   const isUnauthorized = agenciesError?.message.includes("401") ?? false;
 
   // Check if we got a 401 error (need auth)
@@ -942,10 +1003,34 @@ export default function App() {
     window.location.reload();
   }, []);
 
-  // Modal state
-  const [showBlueprintPicker, setShowBlueprintPicker] = useState(false);
-  const [showAgencyModal, setShowAgencyModal] = useState(false);
-  const [newAgencyName, setNewAgencyName] = useState("");
+  // Reset mind agent when agency changes
+  useEffect(() => {
+    setMindAgentId(null);
+    setIsMindOpen(false);
+  }, [agencyId]);
+
+  // Handle opening the Agency Mind panel
+  const handleOpenMind = useCallback(async () => {
+    if (!agencyId) return;
+    
+    // If we already have a mind agent ID, just open the panel
+    if (mindAgentId) {
+      setIsMindOpen(true);
+      return;
+    }
+
+    // Otherwise, find or create the mind agent
+    setIsMindLoading(true);
+    try {
+      const id = await getOrCreateMind();
+      setMindAgentId(id);
+      setIsMindOpen(true);
+    } catch (err) {
+      console.error("Failed to get or create mind:", err);
+    } finally {
+      setIsMindLoading(false);
+    }
+  }, [agencyId, mindAgentId, getOrCreateMind]);
 
   // Derive agent status
   const agentStatus = useMemo(() => {
@@ -1001,6 +1086,12 @@ export default function App() {
     return <AuthUnlockForm onUnlock={handleUnlock} error={authError} />;
   }
 
+  // Command Center layout
+  if (layoutMode === "command-center") {
+    return <CommandCenterApp onToggleLayout={toggleLayout} />;
+  }
+
+  // Classic layout
   return (
     <div className="h-screen flex bg-black">
       {/* Sidebar */}
@@ -1014,6 +1105,10 @@ export default function App() {
         agentStatus={agentStatus}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
+        onOpenMind={handleOpenMind}
+        isMindActive={isMindOpen}
+        onToggleLayout={toggleLayout}
+        layoutMode={layoutMode}
       />
 
       {/* Blueprint picker modal */}
@@ -1046,6 +1141,23 @@ export default function App() {
           onMenuClick={() => setIsMobileMenuOpen(true)}
         />
       </div>
+
+      {/* Agency Mind Panel */}
+      {agencyId && (
+        <MindPanel
+          isOpen={isMindOpen}
+          onClose={() => setIsMindOpen(false)}
+          agencyId={agencyId}
+          agencyName={agencies.find((a) => a.id === agencyId)?.name}
+          mindState={mindState}
+          runState={mindRunState}
+          connected={mindConnected}
+          loading={isMindLoading || mindAgentLoading}
+          onSendMessage={sendMindMessage}
+          onStop={cancelMind}
+        />
+      )}
+
     </div>
   );
 }

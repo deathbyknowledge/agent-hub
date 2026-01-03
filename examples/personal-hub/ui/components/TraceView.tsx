@@ -22,10 +22,10 @@ interface TraceViewProps {
 // Filter System
 // ============================================================================
 
-type EventFilter = "model" | "tool" | "status" | "tick";
+type EventFilter = "model" | "tool" | "status" | "tick" | "context";
 
 const FilterContext = createContext<Set<EventFilter>>(
-  new Set(["model", "tool", "status"])
+  new Set(["model", "tool", "status", "context"])
 );
 
 const FILTER_CONFIG: Record<
@@ -46,6 +46,11 @@ const FILTER_CONFIG: Record<
     label: "STATUS",
     tag: "[SYS]",
     events: ["run.paused", "run.resumed", "agent.completed", "agent.error"],
+  },
+  context: {
+    label: "CONTEXT",
+    tag: "[CTX]",
+    events: ["context.summarized"],
   },
   tick: {
     label: "TICKS",
@@ -120,6 +125,11 @@ const EVENT_CONFIG: Record<
     tag: "[TASK]",
     color: "text-[#00aaff]",
     label: "SUBAGENTS",
+  },
+  "context.summarized": {
+    tag: "[CTX]",
+    color: "text-amber-400/70",
+    label: "SUMMARIZED",
   },
 };
 
@@ -205,6 +215,11 @@ function getEventLabel(event: AgentEvent): string {
   } else if (event.type === "task.batch" && data && "count" in data) {
     const count = (data as { count: number }).count;
     return count === 1 ? "1 Subagent" : `${count} Subagents`;
+  } else if (event.type === "context.summarized" && data) {
+    const d = data as { messagesSummarized?: number; memoriesExtracted?: number };
+    const msgs = d.messagesSummarized || 0;
+    const mems = d.memoriesExtracted || 0;
+    return `Summarized ${msgs} msgs${mems > 0 ? `, ${mems} memories` : ""}`;
   }
   return config.label;
 }

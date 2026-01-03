@@ -31,6 +31,10 @@ interface SidebarProps {
   isLoading?: boolean;
   isOpen?: boolean;
   onClose?: () => void;
+  onOpenMind?: () => void;
+  isMindActive?: boolean;
+  onToggleLayout?: () => void;
+  layoutMode?: "classic" | "command-center";
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -40,6 +44,11 @@ const STATUS_COLORS: Record<string, string> = {
   error: "bg-[#ff0000]",
   idle: "bg-white/30"
 };
+
+// System agents start with _ and are hidden from the main list
+function isSystemAgent(agent: AgentSummary): boolean {
+  return agent.agentType.startsWith("_");
+}
 
 function formatAgentId(id: string): string {
   return id.slice(0, 8);
@@ -69,7 +78,11 @@ export function Sidebar({
   agentStatus = {},
   isLoading = false,
   isOpen = true,
-  onClose
+  onClose,
+  onOpenMind,
+  isMindActive = false,
+  onToggleLayout,
+  layoutMode = "classic",
 }: SidebarProps) {
   const [agentsExpanded, setAgentsExpanded] = useState(true);
   const [location, navigate] = useLocation();
@@ -132,7 +145,7 @@ export function Sidebar({
           </button>
         )}
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-[#00ff00]">&gt;</span>
+          <span className="text-white">&gt;</span>
           <span className="text-xs uppercase tracking-widest text-white font-medium">
             AGENT_HUB
           </span>
@@ -159,6 +172,22 @@ export function Sidebar({
             title="New Agency"
           />
         </div>
+
+        {/* Agency Mind button */}
+        {selectedAgencyId && onOpenMind && (
+          <button
+            onClick={onOpenMind}
+            className={cn(
+              "w-full flex items-center gap-2 px-2 py-1.5 mt-2 text-[11px] uppercase tracking-wider transition-colors border",
+              isMindActive
+                ? "bg-white text-black border-white"
+                : "text-white/70 border-white/30 hover:text-white hover:border-white hover:bg-white/10"
+            )}
+          >
+            <span className="text-sm">&#9670;</span>
+            <span>AGENCY_MIND</span>
+          </button>
+        )}
       </div>
 
       {/* Agents section */}
@@ -169,7 +198,7 @@ export function Sidebar({
         >
           <span className="text-[10px]">{agentsExpanded ? "[-]" : "[+]"}</span>
           <span className="uppercase tracking-widest">AGENTS</span>
-          <span className="ml-auto font-mono">[{agents.length}]</span>
+          <span className="ml-auto font-mono">[{agents.filter((a) => !isSystemAgent(a)).length}]</span>
         </button>
 
         {agentsExpanded && (
@@ -200,13 +229,13 @@ export function Sidebar({
                   </div>
                 ))}
               </div>
-            ) : agents.length === 0 ? (
+            ) : agents.filter((a) => !isSystemAgent(a)).length === 0 ? (
               <div className="px-2 py-6 text-[10px] text-white/30 text-center uppercase tracking-wider">
                 {selectedAgencyId ? "// NO AGENTS ACTIVE" : "// SELECT AGENCY"}
               </div>
             ) : (
               <div className="mt-2 space-y-px">
-                {agents.map((agent) => {
+                {agents.filter((a) => !isSystemAgent(a)).map((agent) => {
                   const isSelected = agent.id === selectedAgentId && !isOnSettings;
                   const status = agentStatus[agent.id] || "idle";
                   const isRunning = status === "running";
@@ -255,8 +284,8 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Settings button */}
-      <div className="border-t border-white p-2">
+      {/* Footer: Settings + Layout toggle */}
+      <div className="border-t border-white p-2 space-y-2">
         <Link
           href={selectedAgencyId ? `/${selectedAgencyId}/settings` : "#"}
           className={cn(
@@ -269,6 +298,16 @@ export function Sidebar({
         >
           [CFG] SETTINGS
         </Link>
+        
+        {/* Layout toggle */}
+        {onToggleLayout && (
+          <button
+            onClick={onToggleLayout}
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-[11px] uppercase tracking-wider transition-colors border text-white/50 border-white/30 hover:text-black hover:border-white hover:bg-white"
+          >
+            {layoutMode === "classic" ? "[CMD_CTR]" : "[CLASSIC]"}
+          </button>
+        )}
       </div>
     </div>
     </>

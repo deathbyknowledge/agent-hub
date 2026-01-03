@@ -1,4 +1,4 @@
-import type { ModelRequest } from "./types";
+import type { ModelRequest, ChatMessage } from "./types";
 import type { HubAgent } from "./agent";
 
 export class ModelPlanBuilder {
@@ -9,6 +9,7 @@ export class ModelPlanBuilder {
   private _maxTokens?: number;
   private _stop?: string[];
   private _model?: string;
+  private _messages?: ChatMessage[];
 
   constructor(private readonly agent: HubAgent) {}
 
@@ -33,6 +34,9 @@ export class ModelPlanBuilder {
   setStop(stop?: string[]) {
     this._stop = stop;
   }
+  setMessages(messages: ChatMessage[]) {
+    this._messages = messages;
+  }
 
   build(): ModelRequest {
     const systemPrompt = [this.agent.blueprint.prompt, ...this.sysParts]
@@ -41,7 +45,8 @@ export class ModelPlanBuilder {
 
     const toolDefs = Object.values(this.agent.tools).map((tool) => tool.meta);
 
-    const messages = this.agent.messages.filter((m) => m.role !== "system");
+    // Use overridden messages if set, otherwise default from store
+    const messages = this._messages ?? this.agent.messages.filter((m) => m.role !== "system");
     return {
       model: this._model ?? this.agent.model ?? "openai:gpt-4.1",
       systemPrompt,

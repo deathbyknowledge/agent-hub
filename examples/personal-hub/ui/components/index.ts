@@ -16,3 +16,5 @@ export { SettingsView } from "./SettingsView";
 export { ConfirmModal } from "./ConfirmModal";
 export { BlueprintEditor } from "./BlueprintEditor";
 export { VarEditor } from "./VarEditor";
+export { MindPanel } from "./MindPanel";
+export { CommandCenter, CommandCenterApp } from "./command-center";

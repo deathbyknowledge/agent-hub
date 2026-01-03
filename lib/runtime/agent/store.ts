@@ -2,6 +2,15 @@ import type { SqlStorage } from "@cloudflare/workers-types";
 import type { ChatMessage } from "../types";
 import type { AgentEvent } from "../events";
 
+export type ContextCheckpoint = {
+  id: number;
+  summary: string;
+  messagesStartSeq: number;
+  messagesEndSeq: number;
+  archivedPath?: string;
+  createdAt: number;
+};
+
 export class Store {
   constructor(private sql: SqlStorage) {}
 
@@ -29,6 +38,16 @@ export class Store {
         type TEXT NOT NULL,
         data JSON NOT NULL,
         ts TEXT NOT NULL
+      );
+
+      -- Context checkpoints for conversation summarization
+      CREATE TABLE IF NOT EXISTS context_checkpoints (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        summary TEXT NOT NULL,
+        messages_start_seq INTEGER NOT NULL,
+        messages_end_seq INTEGER NOT NULL,
+        archived_path TEXT,
+        created_at INTEGER NOT NULL
       );
     `);
   }
@@ -149,7 +168,7 @@ export class Store {
 
     // Get the sequence number of the inserted row
     // Note: 'last_insert_rowid()' is standard SQLite
-    const result = this.sql.exec("SELECT last_insert_rowid() as id").one();
+    const result = this.sql.exec("SELECT last_insert_rowid() as id").toArray()[0];
     return result ? (result.id as number) : 0;
   }
 
@@ -182,5 +201,121 @@ export class Store {
        });
     }
     return out;
+  }
+
+  // --------------------------
+  // Context Management
+  // --------------------------
+
+  /**
+   * Get total message count in the store.
+   */
+  getMessageCount(): number {
+    const result = this.sql.exec("SELECT COUNT(*) as count FROM messages").toArray()[0];
+    return result ? (result.count as number) : 0;
+  }
+
+  /**
+   * Get messages after a specific sequence number.
+   */
+  getMessagesAfter(afterSeq: number, limit = 1000): ChatMessage[] {
+    const cursor = this.sql.exec(
+      `SELECT seq, role, content, tool_calls, tool_call_id, reasoning_content, created_at
+       FROM messages 
+       WHERE seq > ?
+       ORDER BY seq ASC
+       LIMIT ?`,
+      afterSeq,
+      limit
+    );
+    return this._mapRows(cursor);
+  }
+
+  /**
+   * Get messages in a specific sequence range (inclusive).
+   */
+  getMessagesInRange(startSeq: number, endSeq: number): ChatMessage[] {
+    const cursor = this.sql.exec(
+      `SELECT seq, role, content, tool_calls, tool_call_id, reasoning_content, created_at
+       FROM messages 
+       WHERE seq >= ? AND seq <= ?
+       ORDER BY seq ASC`,
+      startSeq,
+      endSeq
+    );
+    return this._mapRows(cursor);
+  }
+
+  /**
+   * Get the latest context checkpoint (summarization point).
+   */
+  getLatestCheckpoint(): ContextCheckpoint | null {
+    const result = this.sql.exec(
+      `SELECT id, summary, messages_start_seq, messages_end_seq, archived_path, created_at
+       FROM context_checkpoints
+       ORDER BY id DESC
+       LIMIT 1`
+    ).toArray()[0];
+
+    if (!result) return null;
+
+    return {
+      id: result.id as number,
+      summary: result.summary as string,
+      messagesStartSeq: result.messages_start_seq as number,
+      messagesEndSeq: result.messages_end_seq as number,
+      archivedPath: result.archived_path as string | undefined,
+      createdAt: result.created_at as number,
+    };
+  }
+
+  /**
+   * Add a new context checkpoint after summarization.
+   */
+  addCheckpoint(
+    summary: string,
+    messagesStartSeq: number,
+    messagesEndSeq: number,
+    archivedPath?: string
+  ): number {
+    this.sql.exec(
+      `INSERT INTO context_checkpoints 
+       (summary, messages_start_seq, messages_end_seq, archived_path, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      summary,
+      messagesStartSeq,
+      messagesEndSeq,
+      archivedPath ?? null,
+      Date.now()
+    );
+
+    const result = this.sql.exec("SELECT last_insert_rowid() as id").toArray()[0];
+    return result ? (result.id as number) : 0;
+  }
+
+  /**
+   * Delete messages before (and including) a sequence number.
+   * Used after archiving old messages.
+   */
+  deleteMessagesBefore(beforeSeq: number): number {
+    this.sql.exec("DELETE FROM messages WHERE seq <= ?", beforeSeq);
+    const result = this.sql.exec("SELECT changes() as deleted").toArray()[0];
+    return result ? (result.deleted as number) : 0;
+  }
+
+  /**
+   * Get the maximum sequence number in messages.
+   */
+  getMaxMessageSeq(): number {
+    const result = this.sql.exec("SELECT MAX(seq) as max_seq FROM messages").toArray()[0];
+    return result?.max_seq ? (result.max_seq as number) : 0;
+  }
+
+  /**
+   * Get checkpoint count (for stats).
+   */
+  getCheckpointCount(): number {
+    const result = this.sql.exec("SELECT COUNT(*) as count FROM context_checkpoints").toArray()[0];
+    return result ? (result.count as number) : 0;
   }
 }
