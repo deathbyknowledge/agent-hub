@@ -13,7 +13,9 @@
   "license": "MIT",
   "author": "Steve James <sjames@cloudflare.com>",
   "scripts": {
-    "docs": "typedoc"
+    "docs": "typedoc",
+    "test": "vitest run --config tests/vitest.config.ts",
+    "test:watch": "vitest --config tests/vitest.config.ts"
   },
   "exports": {
     ".": "./runtime/index.ts",
@@ -21,13 +23,17 @@
     "./vite": "./vite/index.ts"
   },
   "dependencies": {
-    "agents": "^0.2.30"
+    "agents": "^0.3.3",
+    "zod": "^3.25.64",
+    "zod-to-json-schema": "^3.24.5"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.0.0",
-    "@cloudflare/workers-types": "^4.20251205.0",
-    "@types/node": "^24.10.1",
+    "@cloudflare/vite-plugin": "^1.19.0",
+    "@cloudflare/vitest-pool-workers": "^0.11.1",
+    "@cloudflare/workers-types": "^4.20251221.0",
+    "@types/node": "^25.0.3",
     "typedoc": "^0.28.15",
-    "vite": "^6.4.1"
+    "vite": "^7.3.0",
+    "vitest": "^3.2.4"
   }
 }

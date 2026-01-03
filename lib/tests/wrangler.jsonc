@@ -1,0 +1,33 @@
+{
+  "name": "agent-hub-tests",
+  "main": "worker.ts",
+  "compatibility_date": "2025-04-17",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "enable_nodejs_tty_module",
+    "enable_nodejs_fs_module",
+    "enable_nodejs_http_modules",
+    "enable_nodejs_perf_hooks_module"
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "HUB_AGENT",
+        "class_name": "TestHubAgent"
+      },
+      {
+        "name": "AGENCY",
+        "class_name": "TestAgency"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "TestHubAgent",
+        "TestAgency"
+      ]
+    }
+  ]
+}
