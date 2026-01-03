@@ -176,36 +176,41 @@ export const subagents: AgentPlugin = {
       execute: async (p, toolCtx) => {
         const { description, subagentType } = p;
         const token = crypto.randomUUID();
-        const childId = crypto.randomUUID();
         const sql = ctx.agent.sqlite;
+        const parentAgentId = ctx.agent.info.threadId;
+        const vars = toolCtx.agent.vars;
 
-        // Spawn child
+        // Spawn child through Agency (creates parent-child relationship)
+        const agency = await getAgentByName(
+          toolCtx.agent.exports.Agency,
+          ctx.agent.info.agencyId
+        );
+
+        const spawnRes = await agency.fetch(
+          new Request("http://do/agents", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              agentType: subagentType,
+              requestContext: ctx.agent.info.request,
+              relatedAgentId: parentAgentId,
+            }),
+          })
+        );
+
+        if (!spawnRes.ok) return "Error: Failed to spawn subagent";
+
+        const spawnData = (await spawnRes.json()) as { id: string };
+        const childId = spawnData.id;
+
+        // Get stub for the newly spawned child to invoke it
         const subagent = await getAgentByName(
           toolCtx.agent.exports.HubAgent,
           childId
         );
 
-        // Register with parent info in meta
-        const initRes = await subagent.fetch(
-          new Request("http://do/register", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              id: childId,
-              createdAt: new Date().toISOString(),
-              agentType: subagentType,
-              request: ctx.agent.info.request,
-              agencyId: ctx.agent.info.agencyId,
-            }),
-          })
-        );
-
-        if (!initRes.ok) return "Error: Failed to initialize subagent";
-
-        const vars = toolCtx.agent.vars;
-
-        // Invoke with parent info in meta
-        const res = await subagent.fetch(
+        // Invoke with parent info in vars
+        const invokeRes = await subagent.fetch(
           new Request("http://do/invoke", {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -214,7 +219,7 @@ export const subagents: AgentPlugin = {
               vars: {
                 ...vars,
                 parent: {
-                  threadId: ctx.agent.info.threadId,
+                  threadId: parentAgentId,
                   token,
                 },
               },
@@ -222,8 +227,8 @@ export const subagents: AgentPlugin = {
           })
         );
 
-        if (!res.ok) {
-          return "Error: Failed to spawn subagent";
+        if (!invokeRes.ok) {
+          return "Error: Failed to invoke subagent";
         }
 
         // Fire event

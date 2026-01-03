@@ -22,6 +22,5 @@ export function parseModel(m: string): string {
   return idx >= 0 ? m.slice(idx + 1) : m;
 }
 
-export * from "./openai";
-export * from "./anthropic";
-export * from "./workers-ai";
+export * from "./chat-completions";
+export * from "./test";

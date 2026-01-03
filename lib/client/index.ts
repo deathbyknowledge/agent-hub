@@ -209,10 +209,25 @@ export interface AgentSummary {
   createdAt: string;
   request?: unknown;
   agencyId?: string;
+  relatedAgentId?: string;
 }
 
 export interface ListAgentsResponse {
   agents: AgentSummary[];
+}
+
+export interface AgentTreeResponse {
+  agent: AgentSummary;
+  ancestors: AgentSummary[];
+  descendants: AgentSummary[];
+}
+
+export interface AgentNode extends AgentSummary {
+  children: AgentNode[];
+}
+
+export interface AgentForestResponse {
+  roots: AgentNode[];
 }
 
 export interface SpawnAgentResponse extends ThreadMetadata {}
@@ -252,6 +267,8 @@ export interface CreateBlueprintRequest {
 
 export interface SpawnAgentRequest {
   agentType: string;
+  relatedAgentId?: string;
+  input?: Record<string, unknown>;
 }
 
 export interface InvokeRequest {
@@ -462,6 +479,14 @@ export class AgencyClient {
 
   async deleteAgent(agentId: string): Promise<OkResponse> {
     return this.request<OkResponse>("DELETE", `/agents/${agentId}`);
+  }
+
+  async getAgentTree(agentId: string): Promise<AgentTreeResponse> {
+    return this.request<AgentTreeResponse>("GET", `/agents/${agentId}/tree`);
+  }
+
+  async getAgentForest(): Promise<AgentForestResponse> {
+    return this.request<AgentForestResponse>("GET", "/agents/tree");
   }
 
   agent(agentId: string): AgentClient {

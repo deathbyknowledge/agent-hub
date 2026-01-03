@@ -1,4 +1,5 @@
 import { Agent, getAgentByName, type AgentContext } from "agents";
+import { Router, type IRequest } from "itty-router";
 import { parseCronExpression } from "cron-schedule";
 import type {
   AgentBlueprint,
@@ -114,6 +115,7 @@ export class Agency extends Agent<AgentEnv> {
   private _cachedAgencyName: string | null = null;
   /** Agency-level vars inherited by all spawned agents */
   readonly vars: Record<string, unknown>;
+  private _router: ReturnType<typeof Router<IRequest>> | null = null;
 
   onStart() {
     const stored = this.ctx.storage.kv.get<string>(AGENCY_NAME_KEY);
@@ -125,7 +127,63 @@ export class Agency extends Agent<AgentEnv> {
   }
 
   get exports() {
-    return (this.ctx as unknown as CfCtx).exports
+    return (this.ctx as unknown as CfCtx).exports;
+  }
+
+  private get router() {
+    if (!this._router) {
+      this._router = this.createRouter();
+    }
+    return this._router;
+  }
+
+  private createRouter() {
+    const router = Router();
+
+    // Blueprints
+    router.get("/blueprints", () => Response.json({ blueprints: this.listDbBlueprints() }));
+    router.post("/blueprints", (req: IRequest) => this.handleCreateBlueprint(req));
+    router.delete("/blueprints/:name", (req: IRequest) => this.handleDeleteBlueprint(req.params.name));
+
+    // Agents
+    router.get("/agents", () => this.handleListAgents());
+    router.get("/agents/tree", () => this.handleGetAgentForest());
+    router.post("/agents", (req: IRequest) => this.handleCreateAgent(req));
+    router.get("/agents/:agentId/tree", (req: IRequest) => this.handleGetAgentTree(req.params.agentId));
+    router.delete("/agents/:agentId", (req: IRequest) => this.handleDeleteAgent(req.params.agentId));
+
+    // Agency lifecycle
+    router.delete("/destroy", () => this.handleDeleteAgency());
+
+    // Schedules
+    router.get("/schedules", () => this.handleListSchedules());
+    router.post("/schedules", (req: IRequest) => this.handleCreateSchedule(req));
+    router.get("/schedules/:scheduleId", (req: IRequest) => this.handleGetSchedule(req.params.scheduleId));
+    router.patch("/schedules/:scheduleId", (req: IRequest) => this.handleUpdateSchedule(req.params.scheduleId, req));
+    router.delete("/schedules/:scheduleId", (req: IRequest) => this.handleDeleteSchedule(req.params.scheduleId));
+    router.post("/schedules/:scheduleId/pause", (req: IRequest) => this.handlePauseSchedule(req.params.scheduleId));
+    router.post("/schedules/:scheduleId/resume", (req: IRequest) => this.handleResumeSchedule(req.params.scheduleId));
+    router.post("/schedules/:scheduleId/trigger", (req: IRequest) => this.handleTriggerSchedule(req.params.scheduleId));
+    router.get("/schedules/:scheduleId/runs", (req: IRequest) => this.handleGetScheduleRuns(req.params.scheduleId));
+
+    // Vars
+    router.get("/vars", () => Response.json({ vars: { ...this.vars } }));
+    router.put("/vars", (req: IRequest) => this.handleSetVars(req));
+    router.get("/vars/:key", (req: IRequest) => this.handleGetVar(req.params.key));
+    router.put("/vars/:key", (req: IRequest) => this.handleSetVar(req.params.key, req));
+    router.delete("/vars/:key", (req: IRequest) => this.handleDeleteVar(req.params.key));
+
+    // Filesystem
+    router.all("/fs/*", (req: IRequest) => this.handleFilesystem(req, new URL(req.url).pathname));
+    router.all("/fs", (req: IRequest) => this.handleFilesystem(req, "/fs"));
+
+    // Internal
+    router.get("/internal/blueprint/:name", (req: IRequest) => this.handleGetInternalBlueprint(req.params.name));
+
+    // 404
+    router.all("*", () => new Response("Agency endpoint not found", { status: 404 }));
+
+    return router;
   }
 
   get agencyName(): string {
@@ -172,8 +230,14 @@ export class Agency extends Agent<AgentEnv> {
         id TEXT PRIMARY KEY,
         type TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        metadata TEXT
+        metadata TEXT,
+        related_agent_id TEXT
       )
+    `;
+
+    // Index for efficient tree queries
+    this.sql`
+      CREATE INDEX IF NOT EXISTS idx_agents_related ON agents(related_agent_id)
     `;
 
     this.sql`
@@ -228,149 +292,50 @@ export class Agency extends Agent<AgentEnv> {
   // ============================================================
 
   async onRequest(req: Request): Promise<Response> {
-    const url = new URL(req.url);
-    const path = url.pathname;
+    return this.router.fetch(req);
+  }
 
-    // --------------------------------------------------
-    // Blueprints Management
-    // --------------------------------------------------
+  // --- Vars Handlers ---
 
-    if (req.method === "GET" && path === "/blueprints") {
-      return Response.json({ blueprints: this.listDbBlueprints() });
+  private async handleSetVars(req: Request): Promise<Response> {
+    const body = (await req.json()) as Record<string, unknown>;
+    for (const key of Object.keys(this.vars)) {
+      delete this.vars[key];
     }
-
-    if (req.method === "POST" && path === "/blueprints") {
-      return this.handleCreateBlueprint(req);
+    for (const [key, value] of Object.entries(body)) {
+      this.vars[key] = value;
     }
+    return Response.json({ ok: true, vars: { ...this.vars } });
+  }
 
-    if (req.method === "DELETE" && path.startsWith("/blueprints/")) {
-      const name = path.slice("/blueprints/".length);
-      return this.handleDeleteBlueprint(name);
+  private handleGetVar(key: string): Response {
+    const decodedKey = decodeURIComponent(key);
+    return Response.json({ key: decodedKey, value: this.vars[decodedKey] });
+  }
+
+  private async handleSetVar(key: string, req: Request): Promise<Response> {
+    const decodedKey = decodeURIComponent(key);
+    const body = (await req.json()) as { value: unknown };
+    this.vars[decodedKey] = body.value;
+    return Response.json({ ok: true, key: decodedKey, value: body.value });
+  }
+
+  private handleDeleteVar(key: string): Response {
+    const decodedKey = decodeURIComponent(key);
+    delete this.vars[decodedKey];
+    return Response.json({ ok: true, key: decodedKey });
+  }
+
+  // --- Internal Handlers ---
+
+  private handleGetInternalBlueprint(name: string): Response {
+    const rows = this.sql<{ data: string }>`
+      SELECT data FROM blueprints WHERE name = ${name}
+    `;
+    if (rows.length > 0) {
+      return Response.json(JSON.parse(rows[0].data));
     }
-
-    // --------------------------------------------------
-    // Agent Management
-    // --------------------------------------------------
-
-    if (req.method === "GET" && path === "/agents") {
-      return this.handleListAgents();
-    }
-
-    if (req.method === "POST" && path === "/agents") {
-      return this.handleCreateAgent(req);
-    }
-
-    const deleteAgentMatch = path.match(/^\/agents\/([^/]+)$/);
-    if (deleteAgentMatch && req.method === "DELETE") {
-      return this.handleDeleteAgent(deleteAgentMatch[1]);
-    }
-
-    if (req.method === "DELETE" && path === "/destroy") {
-      return this.handleDeleteAgency();
-    }
-
-    // --------------------------------------------------
-    // Schedule Management
-    // --------------------------------------------------
-
-    if (req.method === "GET" && path === "/schedules") {
-      return this.handleListSchedules();
-    }
-
-    if (req.method === "POST" && path === "/schedules") {
-      return this.handleCreateSchedule(req);
-    }
-
-    const scheduleMatch = path.match(/^\/schedules\/([^/]+)(\/.*)?$/);
-    if (scheduleMatch) {
-      const scheduleId = scheduleMatch[1];
-      const action = scheduleMatch[2] || "";
-
-      if (req.method === "GET" && action === "") {
-        return this.handleGetSchedule(scheduleId);
-      }
-      if (req.method === "PATCH" && action === "") {
-        return this.handleUpdateSchedule(scheduleId, req);
-      }
-      if (req.method === "DELETE" && action === "") {
-        return this.handleDeleteSchedule(scheduleId);
-      }
-      if (req.method === "POST" && action === "/pause") {
-        return this.handlePauseSchedule(scheduleId);
-      }
-      if (req.method === "POST" && action === "/resume") {
-        return this.handleResumeSchedule(scheduleId);
-      }
-      if (req.method === "POST" && action === "/trigger") {
-        return this.handleTriggerSchedule(scheduleId);
-      }
-      if (req.method === "GET" && action === "/runs") {
-        return this.handleGetScheduleRuns(scheduleId);
-      }
-    }
-
-    // --------------------------------------------------
-    // Agency Vars
-    // --------------------------------------------------
-
-    if (req.method === "GET" && path === "/vars") {
-      return Response.json({ vars: { ...this.vars } });
-    }
-
-    if (req.method === "PUT" && path === "/vars") {
-      const body = (await req.json()) as Record<string, unknown>;
-      // Clear existing and set new
-      for (const key of Object.keys(this.vars)) {
-        delete this.vars[key];
-      }
-      for (const [key, value] of Object.entries(body)) {
-        this.vars[key] = value;
-      }
-      return Response.json({ ok: true, vars: { ...this.vars } });
-    }
-
-    const varMatch = path.match(/^\/vars\/([^/]+)$/);
-    if (varMatch) {
-      const key = decodeURIComponent(varMatch[1]);
-      if (req.method === "GET") {
-        return Response.json({ key, value: this.vars[key] });
-      }
-      if (req.method === "PUT") {
-        const body = (await req.json()) as { value: unknown };
-        this.vars[key] = body.value;
-        return Response.json({ ok: true, key, value: body.value });
-      }
-      if (req.method === "DELETE") {
-        delete this.vars[key];
-        return Response.json({ ok: true, key });
-      }
-    }
-
-    // --------------------------------------------------
-    // Filesystem
-    // --------------------------------------------------
-
-    if (path.startsWith("/fs")) {
-      return this.handleFilesystem(req, path);
-    }
-
-    // --------------------------------------------------
-    // Internal: Blueprint lookup for child agents
-    // --------------------------------------------------
-
-    const matchBp = path.match(/^\/internal\/blueprint\/([^/]+)$/);
-    if (req.method === "GET" && matchBp) {
-      const name = matchBp[1];
-      const rows = this.sql<{ data: string }>`
-        SELECT data FROM blueprints WHERE name = ${name}
-      `;
-      if (rows.length > 0) {
-        return Response.json(JSON.parse(rows[0].data));
-      }
-      return new Response(null, { status: 404 });
-    }
-
-    return new Response("Agency endpoint not found", { status: 404 });
+    return new Response(null, { status: 404 });
   }
 
   // ============================================================
@@ -446,12 +411,14 @@ export class Agency extends Agent<AgentEnv> {
       type: string;
       created_at: number;
       metadata: string;
+      related_agent_id: string | null;
     }>`SELECT * FROM agents ORDER BY created_at DESC`;
 
     const agents = rows.map((r) => ({
       id: r.id,
       agentType: r.type,
       createdAt: new Date(r.created_at).toISOString(),
+      relatedAgentId: r.related_agent_id || undefined,
       ...JSON.parse(r.metadata || "{}"),
     }));
 
@@ -463,9 +430,10 @@ export class Agency extends Agent<AgentEnv> {
       agentType: string;
       requestContext?: ThreadRequestContext;
       input?: Record<string, unknown>;
+      relatedAgentId?: string;
     };
 
-    return this.spawnAgent(body.agentType, body.requestContext, body.input);
+    return this.spawnAgent(body.agentType, body.requestContext, body.input, body.relatedAgentId);
   }
 
   private async handleDeleteAgent(agentId: string): Promise<Response> {
@@ -481,10 +449,126 @@ export class Agency extends Agent<AgentEnv> {
     return Response.json({ ok: true });
   }
 
+  /**
+   * Get the tree of agents related to a specific agent.
+   * Returns the agent, its ancestors (via relatedAgentId chain), and descendants.
+   */
+  private handleGetAgentTree(agentId: string): Response {
+    type AgentRow = {
+      id: string;
+      type: string;
+      created_at: number;
+      metadata: string;
+      related_agent_id: string | null;
+    };
+
+    // Get the target agent
+    const targetRows = this.sql<AgentRow>`
+      SELECT * FROM agents WHERE id = ${agentId}
+    `;
+    if (targetRows.length === 0) {
+      return new Response("Agent not found", { status: 404 });
+    }
+
+    const rowToAgent = (r: AgentRow) => ({
+      id: r.id,
+      agentType: r.type,
+      createdAt: new Date(r.created_at).toISOString(),
+      relatedAgentId: r.related_agent_id || undefined,
+      ...JSON.parse(r.metadata || "{}"),
+    });
+
+    // Get all descendants (children, grandchildren, etc.)
+    const descendants: AgentRow[] = [];
+    const queue = [agentId];
+    while (queue.length > 0) {
+      const parentId = queue.shift()!;
+      const children = this.sql<AgentRow>`
+        SELECT * FROM agents WHERE related_agent_id = ${parentId}
+      `;
+      for (const child of children) {
+        descendants.push(child);
+        queue.push(child.id);
+      }
+    }
+
+    // Get all ancestors (parent, grandparent, etc.)
+    const ancestors: AgentRow[] = [];
+    let current = targetRows[0];
+    while (current.related_agent_id) {
+      const parentRows = this.sql<AgentRow>`
+        SELECT * FROM agents WHERE id = ${current.related_agent_id}
+      `;
+      if (parentRows.length === 0) break;
+      ancestors.unshift(parentRows[0]);
+      current = parentRows[0];
+    }
+
+    return Response.json({
+      agent: rowToAgent(targetRows[0]),
+      ancestors: ancestors.map(rowToAgent),
+      descendants: descendants.map(rowToAgent),
+    });
+  }
+
+  /**
+   * Get the full forest of agents organized as trees.
+   * Root agents are those without a relatedAgentId.
+   */
+  private handleGetAgentForest(): Response {
+    type AgentRow = {
+      id: string;
+      type: string;
+      created_at: number;
+      metadata: string;
+      related_agent_id: string | null;
+    };
+
+    const allAgents = this.sql<AgentRow>`
+      SELECT * FROM agents ORDER BY created_at ASC
+    `;
+
+    type AgentNode = {
+      id: string;
+      agentType: string;
+      createdAt: string;
+      relatedAgentId?: string;
+      children: AgentNode[];
+      [key: string]: unknown;
+    };
+
+    // Build lookup maps
+    const agentMap = new Map<string, AgentNode>();
+    for (const r of allAgents) {
+      const meta = JSON.parse(r.metadata || "{}");
+      agentMap.set(r.id, {
+        id: r.id,
+        agentType: r.type,
+        createdAt: new Date(r.created_at).toISOString(),
+        relatedAgentId: r.related_agent_id || undefined,
+        children: [],
+        ...meta,
+      });
+    }
+
+    // Build tree structure
+    const roots: AgentNode[] = [];
+    for (const agent of agentMap.values()) {
+      if (agent.relatedAgentId && agentMap.has(agent.relatedAgentId)) {
+        agentMap.get(agent.relatedAgentId)!.children.push(agent);
+      } else {
+        roots.push(agent);
+      }
+    }
+
+    return Response.json({ roots });
+  }
+
   async spawnAgent(
     agentType: string,
     requestContext?: ThreadRequestContext,
-    input?: Record<string, unknown>
+    input?: Record<string, unknown>,
+    relatedAgentId?: string
   ): Promise<Response> {
     const id = crypto.randomUUID();
     const createdAt = Date.now();
@@ -493,11 +577,12 @@ export class Agency extends Agent<AgentEnv> {
       request: requestContext,
       agencyId: this.agencyName,
       input,
+      relatedAgentId,
     };
 
     this.sql`
-      INSERT INTO agents (id, type, created_at, metadata)
-      VALUES (${id}, ${agentType}, ${createdAt}, ${JSON.stringify(meta)})
+      INSERT INTO agents (id, type, created_at, metadata, related_agent_id)
+      VALUES (${id}, ${agentType}, ${createdAt}, ${JSON.stringify(meta)}, ${relatedAgentId ?? null})
     `;
 
     const stub = await getAgentByName(this.exports.HubAgent, id);

@@ -119,10 +119,7 @@ describe("Agency", () => {
       expect(data.agents).toEqual([]);
     });
 
-    // TODO: Agent spawning requires proper DO exports wiring which isn't
-    // available in the current test setup. The Agency needs access to HubAgent
-    // via ctx.exports but vitest-pool-workers doesn't wire this automatically.
-    it.skip("should spawn an agent from a static blueprint", async () => {
+    it("should spawn an agent from a static blueprint", async () => {
       const agencyStub = await getAgentByName(env.AGENCY, "test-agency-spawn");
 
       const res = await agencyStub.fetch(
@@ -149,7 +146,7 @@ describe("Agency", () => {
       expect(listData.agents[0].id).toBe(data.id);
     });
 
-    it.skip("should delete an agent", async () => {
+    it("should delete an agent", async () => {
       const agencyStub = await getAgentByName(env.AGENCY, "test-agency-delete-agent");
 
       // Spawn first

@@ -22,6 +22,12 @@ export default defineWorkersConfig({
         singleWorker: true,
         wrangler: {
           configPath: "./wrangler.jsonc"
+        },
+        // The test worker re-exports DO classes which esbuild can't follow,
+        // so we need to explicitly declare them here
+        additionalExports: {
+          HubAgent: "DurableObject",
+          Agency: "DurableObject"
         }
       }
     }

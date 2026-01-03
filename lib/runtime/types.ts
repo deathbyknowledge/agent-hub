@@ -262,6 +262,8 @@ export interface Tool<TInput = unknown> {
   meta: ToolMeta;
   execute: (input: TInput, ctx: ToolContext) => Promise<string | object | null>;
   varHints?: VarHint[];
+  /** Intrinsic tags for this tool. Merged with tags provided to `addTool()`. */
+  tags?: string[];
 }
 
 /** Context passed to a tool's execute function. */

@@ -2,7 +2,7 @@ import { getAgentByName } from "agents";
 import { HubAgent } from "./agent";
 import { Agency } from "./agency";
 import { AgentEventType } from "./events";
-import { makeOpenAI, type Provider } from "./providers";
+import { makeChatCompletions, type Provider } from "./providers";
 import type {
   Tool,
   AgentPlugin,
@@ -24,9 +24,12 @@ class ToolRegistry {
 
   addTool<T>(name: string, tool: Tool<T>, tags?: string[]) {
     this.tools.set(name, tool);
-    if (tags) {
-      this.toolTags.set(name, tags);
-      for (const tag of tags) {
+    // Merge intrinsic tags from tool definition with provided tags
+    const intrinsicTags = tool.tags ?? [];
+    const allTags = [...new Set([...intrinsicTags, ...(tags ?? [])])];
+    if (allTags.length > 0) {
+      this.toolTags.set(name, allTags);
+      for (const tag of allTags) {
         const existing = this.tags.get(tag) || [];
         existing.push(name);
         this.tags.set(tag, existing);
@@ -303,7 +306,7 @@ export class AgentHub {
           if (!apiKey)
             throw new Error("Neither LLM_API_KEY nor custom provider set");
 
-          baseProvider = makeOpenAI(apiKey, apiBase);
+          baseProvider = makeChatCompletions(apiKey, apiBase);
         }
 
         return {

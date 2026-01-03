@@ -203,10 +203,11 @@ export abstract class HubAgent<
 
       if (body.messages?.length) this.store.add(body.messages);
 
-      if (body.files && Array.isArray(body.files)) {
+      if (body.files && typeof body.files === "object") {
+        const fs = this.fs;
         await Promise.all(
           Object.entries(body.files).map(([filename, content]) =>
-            this.fs?.writeFile(`~/${filename}`, content)
+            fs.writeFile(`~/${filename}`, content)
           )
         );
       }

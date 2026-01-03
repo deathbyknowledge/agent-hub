@@ -36,6 +36,8 @@ export function tool<TSchema extends ZodType | ToolJsonSchema>(config: {
   description?: string;
   inputSchema: TSchema;
   varHints?: { name: string; required?: boolean; description?: string }[];
+  /** Intrinsic tags for this tool. Merged with tags provided to `addTool()`. */
+  tags?: string[];
   execute: (
     input: TSchema extends ZodType<infer T> ? T : unknown,
     ctx: ToolContext
@@ -59,7 +61,8 @@ export function tool<TSchema extends ZodType | ToolJsonSchema>(config: {
       parameters: jsonSchema
     },
     execute: config.execute,
-    varHints: config.varHints
+    varHints: config.varHints,
+    tags: config.tags
   };
 }
 

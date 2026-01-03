@@ -102,7 +102,11 @@ function fromOA(choice: { message: OAChatMsg }): ChatMessage {
   return { role: "assistant", reasoning: msg?.reasoning, content: msg?.content ?? "" };
 }
 
-export function makeOpenAI(
+/**
+ * Creates a provider for OpenAI-compatible chat completions APIs.
+ * Works with OpenAI, OpenRouter, Azure OpenAI, and other compatible endpoints.
+ */
+export function makeChatCompletions(
   apiKey: string,
   baseUrl = "https://api.openai.com/v1"
 ): Provider {
@@ -122,7 +126,7 @@ export function makeOpenAI(
       });
       if (!res.ok) {
         const errTxt = await res.text().catch(() => "");
-        throw new Error(`OpenAI error ${res.status}: ${errTxt}`);
+        throw new Error(`Chat completions error ${res.status}: ${errTxt}`);
       }
       const json = (await res.json()) as {
         choices: Array<{ message: OAChatMsg }>;
@@ -143,3 +147,6 @@ export function makeOpenAI(
     }
   };
 }
+
+/** @deprecated Use `makeChatCompletions` instead */
+export const makeOpenAI = makeChatCompletions;

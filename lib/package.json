@@ -20,10 +20,12 @@
   "exports": {
     ".": "./runtime/index.ts",
     "./client": "./client/index.ts",
-    "./vite": "./vite/index.ts"
+    "./vite": "./vite/index.ts",
+    "./plugins": "./runtime/plugins/index.ts"
   },
   "dependencies": {
     "agents": "^0.3.3",
+    "itty-router": "^5.0.22",
     "zod": "^3.25.64",
     "zod-to-json-schema": "^3.24.5"
   },
