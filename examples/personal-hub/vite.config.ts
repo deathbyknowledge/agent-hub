@@ -3,13 +3,15 @@ import react from "@vitejs/plugin-react";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import hub from "agent-hub/vite";
 
+const hasSandbox = (process.env.SANDBOX ?? "0") == "1";
+
 export default defineConfig({
   plugins: [
     react(),
     hub({
       srcDir: "./hub",
       outFile: "./_generated.ts",
-      defaultModel: "gpt-5-2025-08-07",
+      defaultModel: "z-ai/glm-4.7",
     }),
     cloudflare({
       config: {
@@ -25,22 +27,24 @@ export default defineConfig({
             bucket_name: "agents-hub-fs",
           },
         ],
-        durable_objects: {
-          bindings: [
+        ...(hasSandbox ? {
+          durable_objects: {
+            bindings: [
+              {
+                class_name: "Sandbox",
+                name: "SANDBOX",
+              },
+            ],
+          },
+          containers: [
             {
               class_name: "Sandbox",
-              name: "SANDBOX",
+              image: "./Dockerfile",
+              instance_type: "standard-2",
+              max_instances: 2,
             },
           ],
-        },
-        containers: [
-          {
-            class_name: "Sandbox",
-            image: "./Dockerfile",
-            instance_type: "standard-2",
-            max_instances: 2,
-          },
-        ],
+        } : {}),
         main: "_generated.ts",
         migrations: [
           {

@@ -44,6 +44,12 @@ const CORS_HEADERS = {
 };
 
 function withCors(response: Response): Response {
+  // Don't wrap WebSocket upgrade responses - they have a webSocket property
+  // that gets lost when creating a new Response
+  if ((response as any).webSocket) {
+    return response;
+  }
+  
   const newHeaders = new Headers(response.headers);
   for (const [key, value] of Object.entries(CORS_HEADERS)) {
     newHeaders.set(key, value);

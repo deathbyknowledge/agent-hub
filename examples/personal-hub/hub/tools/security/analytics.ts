@@ -94,7 +94,19 @@ async function executeGql<T = any>(args: {
     });
 
     if (res.status === 200) {
-      const data = await res.json<any>();
+      console.log("[DEBUG:cf-analytics] GQL response status:", res.status);
+      const text = await res.text();
+      if (!text) {
+        console.error("[DEBUG:cf-analytics] Empty GQL response!");
+        throw new Error("Cloudflare GraphQL returned empty response");
+      }
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("[DEBUG:cf-analytics] GQL JSON parse failed:", text.slice(0, 500));
+        throw new Error(`Cloudflare GraphQL returned invalid JSON: ${text.slice(0, 200)}`);
+      }
       if (data?.errors?.length) {
         throw new Error(`GraphQL error: ${JSON.stringify(data.errors[0])}`);
       }
@@ -111,10 +123,12 @@ async function executeGql<T = any>(args: {
     }
 
     let detail: any;
+    const errText = await res.text();
+    console.error("[DEBUG:cf-analytics] GQL error response:", res.status, errText.slice(0, 500));
     try {
-      detail = await res.json();
+      detail = JSON.parse(errText);
     } catch {
-      detail = await res.text();
+      detail = errText;
     }
     throw new Error(
       `GraphQL HTTP ${res.status}: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`

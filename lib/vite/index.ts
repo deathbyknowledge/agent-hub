@@ -139,7 +139,7 @@ function generateCode(
 
   imports.push('import { AgentHub } from "agent-hub";');
 
-  const hasSandboxCapability = !!process.env.SANDBOX;
+  const hasSandboxCapability = process.env.SANDBOX === "1";
   if (hasSandboxCapability) {
     imports.push('import { Sandbox } from "@cloudflare/sandbox";');
   }

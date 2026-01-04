@@ -413,6 +413,21 @@ export function useAgency(agencyId: string | null) {
       }),
   });
 
+  /**
+   * Send a message to a specific agent without needing a WebSocket connection.
+   * Useful for the command center where we message multiple agents.
+   */
+  const sendMessageToAgent = useCallback(
+    async (agentId: string, content: string) => {
+      if (!client) throw new Error("No agency selected");
+      const agentClient = client.agent(agentId);
+      await agentClient.invoke({
+        messages: [{ role: "user", content }],
+      });
+    },
+    [client]
+  );
+
   return {
     agents,
     blueprints,
@@ -421,6 +436,7 @@ export function useAgency(agencyId: string | null) {
     memoryDisks,
     loading,
     error: error as Error | null,
+    sendMessageToAgent,
     refreshAgents: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId!) }),
     refreshBlueprints: () =>
@@ -475,14 +491,6 @@ export function useAgency(agencyId: string | null) {
      */
     getOrCreateMind: async (): Promise<string> => {
       if (!client) throw new Error("No agency selected");
-
-      // Ensure HUB_BASE_URL and HUB_SECRET are set for list_capabilities tool
-      const baseUrl = window.location.origin;
-      const secret = getStoredSecret();
-      await client.setVar("HUB_BASE_URL", baseUrl);
-      if (secret) {
-        await client.setVar("HUB_SECRET", secret);
-      }
 
       // Check if mind agent already exists
       const { agents: currentAgents } = await client.listAgents();

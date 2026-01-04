@@ -1,13 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { cn } from "../lib/utils";
 import { ChatView } from "./ChatView";
-import type { Message } from "./ChatView";
-import type {
-  ChatMessage,
-  AgentState,
-  RunState,
-  ToolCall as APIToolCall,
-} from "agent-hub/client";
+import { convertChatMessages } from "./shared";
+import type { AgentState, RunState } from "agent-hub/client";
 
 interface MindPanelProps {
   isOpen: boolean;
@@ -23,91 +18,6 @@ interface MindPanelProps {
   onStop: () => Promise<void>;
   // Variant: "agency" (green) or "hub" (magenta)
   variant?: "agency" | "hub";
-}
-
-// Convert ChatMessage[] from API to Message[] for ChatView
-function convertChatMessages(apiMessages: ChatMessage[]): Message[] {
-  const messages: Message[] = [];
-  const toolResults = new Map<
-    string,
-    { content: string; status: "done" | "error" }
-  >();
-
-  // First pass: collect tool results
-  for (const msg of apiMessages) {
-    if (msg.role === "tool") {
-      const toolMsg = msg as {
-        role: "tool";
-        content: string;
-        toolCallId: string;
-      };
-      toolResults.set(toolMsg.toolCallId, {
-        content: toolMsg.content,
-        status: "done",
-      });
-    }
-  }
-
-  // Second pass: build messages with tool calls
-  for (let i = 0; i < apiMessages.length; i++) {
-    const msg = apiMessages[i];
-    const timestamp = msg.ts || "";
-
-    if (msg.role === "tool") continue;
-
-    if (msg.role === "assistant") {
-      const assistantMsg = msg as
-        | { role: "assistant"; content: string; reasoning?: string; ts?: string }
-        | { role: "assistant"; toolCalls?: APIToolCall[]; reasoning?: string; ts?: string };
-
-      const reasoning = "reasoning" in assistantMsg ? assistantMsg.reasoning : undefined;
-
-      if ("toolCalls" in assistantMsg && assistantMsg.toolCalls?.length) {
-        const toolCalls = assistantMsg.toolCalls.map((tc) => {
-          const result = toolResults.get(tc.id);
-          return {
-            id: tc.id,
-            name: tc.name,
-            args: tc.args as Record<string, unknown>,
-            result: result?.content,
-            status: result ? result.status : ("running" as const),
-          };
-        });
-
-        const content =
-          "content" in assistantMsg
-            ? (assistantMsg as { content?: string }).content || ""
-            : "";
-
-        messages.push({
-          id: `msg-${i}`,
-          role: "assistant",
-          content,
-          timestamp,
-          toolCalls,
-          reasoning,
-        });
-      } else if ("content" in assistantMsg && assistantMsg.content) {
-        messages.push({
-          id: `msg-${i}`,
-          role: "assistant",
-          content: assistantMsg.content,
-          timestamp,
-          reasoning,
-        });
-      }
-    } else {
-      const contentMsg = msg as { role: "user" | "system"; content: string };
-      messages.push({
-        id: `msg-${i}`,
-        role: contentMsg.role,
-        content: contentMsg.content || "",
-        timestamp,
-      });
-    }
-  }
-
-  return messages;
 }
 
 export function MindPanel({
@@ -158,7 +68,7 @@ export function MindPanel({
       {/* Panel */}
       <div
         className={cn(
-          "fixed top-0 right-0 h-full w-full max-w-lg bg-black border-l-2 z-50",
+          "fixed inset-0 sm:inset-auto sm:top-0 sm:right-0 sm:h-full sm:w-full sm:max-w-lg bg-black border-l-2 z-50",
           "flex flex-col",
           "transform transition-transform duration-300 ease-out",
           isOpen ? "translate-x-0" : "translate-x-full"

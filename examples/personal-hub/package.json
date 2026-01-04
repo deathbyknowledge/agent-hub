@@ -6,7 +6,7 @@
   "license": "MIT",
   "author": "Steve James <sjames@cloudflare.com>",
   "scripts": {
-    "dev": "SANDBOX=1 vite --configLoader runner",
+    "dev": "SANDBOX=0 vite --configLoader runner",
     "build": "SANDBOX=1 vite build --configLoader runner",
     "deploy": "SANDBOX=1 npm run build && wrangler deploy",
     "preview": "SANDBOX=1 vite preview",

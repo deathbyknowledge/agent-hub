@@ -116,6 +116,8 @@ export class Agency extends Agent<AgentEnv> {
   /** Agency-level vars inherited by all spawned agents */
   readonly vars: Record<string, unknown>;
   private _router: ReturnType<typeof Router<IRequest>> | null = null;
+  // Shuts off agents SDK default implementation, too noisy
+  observability = undefined;
 
   onStart() {
     const stored = this.ctx.storage.kv.get<string>(AGENCY_NAME_KEY);

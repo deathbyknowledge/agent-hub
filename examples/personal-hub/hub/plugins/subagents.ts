@@ -198,7 +198,9 @@ export const subagents: AgentPlugin = {
           })
         );
 
-        if (!spawnRes.ok) return "Error: Failed to spawn subagent";
+        if (!spawnRes.ok) {
+          return "Error: Failed to spawn subagent";
+        }
 
         const spawnData = (await spawnRes.json()) as { id: string };
         const childId = spawnData.id;

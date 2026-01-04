@@ -10,7 +10,7 @@ import {
   SettingsView,
   ConfirmModal,
   MindPanel,
-  CommandCenterApp,
+  HomeView,
   type TabId,
   type Message,
   type Todo,
@@ -20,16 +20,20 @@ import {
   useAgency,
   useAgent,
   usePlugins,
+  useActivityFeed,
+  useAgencyMetrics,
   setStoredSecret,
   QueryClient,
   QueryClientProvider,
 } from "./hooks";
-import type {
-  AgentBlueprint,
-  ChatMessage,
-  ToolCall as APIToolCall,
-} from "agent-hub/client";
+import type { AgentBlueprint, ChatMessage, ToolCall as APIToolCall } from "agent-hub/client";
 import { createRoot } from "react-dom/client";
+import {
+  type ScheduleSummary,
+  type DashboardMetrics,
+  convertChatMessages,
+  isSystemBlueprint,
+} from "./components/shared";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,106 +48,8 @@ const queryClient = new QueryClient({
 // Helper Functions
 // ============================================================================
 
-// Convert ChatMessage[] from API to Message[] for ChatView
-// API ChatMessage types:
-// - { role: "system" | "user" | "assistant"; content: string; ts?: string }
-// - { role: "assistant"; toolCalls?: ToolCall[]; ts?: string }
-// - { role: "tool"; content: string; toolCallId: string; ts?: string }
-function convertChatMessages(apiMessages: ChatMessage[]): Message[] {
-  const messages: Message[] = [];
-  const toolResults = new Map<
-    string,
-    { content: string; status: "done" | "error" }
-  >();
-
-  // First pass: collect tool results
-  for (const msg of apiMessages) {
-    if (msg.role === "tool") {
-      const toolMsg = msg as {
-        role: "tool";
-        content: string;
-        toolCallId: string;
-      };
-      toolResults.set(toolMsg.toolCallId, {
-        content: toolMsg.content,
-        status: "done",
-      });
-    }
-  }
-
-  // Second pass: build messages with tool calls
-  for (let i = 0; i < apiMessages.length; i++) {
-    const msg = apiMessages[i];
-    // Use timestamp from message if available (populated by store)
-    const timestamp = msg.ts || "";
-
-    if (msg.role === "tool") {
-      // Skip tool messages - they're attached to assistant messages
-      continue;
-    }
-
-    if (msg.role === "assistant") {
-      const assistantMsg = msg as
-        | { role: "assistant"; content: string; reasoning?: string; ts?: string }
-        | { role: "assistant"; toolCalls?: APIToolCall[]; reasoning?: string; ts?: string };
-
-      // Extract reasoning if present
-      const reasoning = "reasoning" in assistantMsg ? assistantMsg.reasoning : undefined;
-
-      // Check if this is a tool call message
-      if ("toolCalls" in assistantMsg && assistantMsg.toolCalls?.length) {
-        const toolCalls = assistantMsg.toolCalls.map((tc) => {
-          const result = toolResults.get(tc.id);
-          return {
-            id: tc.id,
-            name: tc.name,
-            args: tc.args as Record<string, unknown>,
-            result: result?.content,
-            status: result ? result.status : ("running" as const),
-          };
-        });
-
-        // Get content if it exists (some messages have both content and tool calls)
-        const content =
-          "content" in assistantMsg
-            ? (assistantMsg as { content?: string }).content || ""
-            : "";
-
-        messages.push({
-          id: `msg-${i}`,
-          role: "assistant",
-          content,
-          timestamp,
-          toolCalls,
-          reasoning,
-        });
-      } else if ("content" in assistantMsg && assistantMsg.content) {
-        // Regular assistant message with content
-        messages.push({
-          id: `msg-${i}`,
-          role: "assistant",
-          content: assistantMsg.content,
-          timestamp,
-          reasoning,
-        });
-      }
-    } else {
-      // User or system message
-      const contentMsg = msg as { role: "user" | "system"; content: string };
-      messages.push({
-        id: `msg-${i}`,
-        role: contentMsg.role,
-        content: contentMsg.content || "",
-        timestamp,
-      });
-    }
-  }
-
-  return messages;
-}
-
 // System blueprints start with _ and are hidden from the picker
-function isSystemBlueprint(bp: AgentBlueprint): boolean {
+function isSystemBlueprintLocal(bp: AgentBlueprint): boolean {
   return bp.name.startsWith("_");
 }
 
@@ -158,7 +64,7 @@ function BlueprintPicker({
   onClose: () => void;
 }) {
   // Filter out system blueprints
-  const visibleBlueprints = blueprints.filter((bp) => !isSystemBlueprint(bp));
+  const visibleBlueprints = blueprints.filter((bp) => !isSystemBlueprintLocal(bp));
 
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
@@ -389,9 +295,7 @@ function EventDetailModal({
             <h2 className="text-[11px] uppercase tracking-wider text-white truncate">
               {label}
             </h2>
-            <p className="text-[10px] text-white/40 font-mono truncate">
-              {type}
-            </p>
+            <p className="text-[10px] text-white/40 font-mono truncate">{type}</p>
           </div>
           <button
             onClick={onClose}
@@ -590,9 +494,7 @@ function AgentView({
         onDelete={() => setShowDeleteAgent(true)}
         onMenuClick={onMenuClick}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {renderContent()}
-      </div>
+      <div className="flex-1 flex flex-col overflow-hidden">{renderContent()}</div>
 
       {/* Event detail modal */}
       {selectedEvent && (
@@ -667,7 +569,7 @@ function SettingsRoute({
 
   return (
     <>
-      <div className="px-3 py-2 border-b border-white bg-black relative">
+      <div className="px-3 py-2 border-b border-white bg-black relative shrink-0">
         {/* Mobile menu button */}
         {onMenuClick && (
           <button
@@ -743,88 +645,147 @@ function SettingsRoute({
     </>
   );
 }
-// Empty State (no agent selected)
+
+// ============================================================================
+// Home View Route (handles /:agencyId - dashboard)
+// ============================================================================
+
+function HomeRoute({
+  agencyId,
+  onMenuClick,
+  onCreateAgent,
+}: {
+  agencyId: string;
+  onMenuClick?: () => void;
+  onCreateAgent: (blueprintName: string) => Promise<void>;
+}) {
+  const { agencies } = useAgencies();
+  const { agents, blueprints, spawnAgent, getOrCreateMind, sendMessageToAgent } = useAgency(agencyId);
+  const { items: activityItems, addUserMessage, refresh: refreshActivity } = useActivityFeed(agencyId);
+  const { metrics, subscribeToNewAgents } = useAgencyMetrics(agencyId);
+  const [, navigate] = useLocation();
+
+  const agency = agencies.find((a) => a.id === agencyId);
+
+  // Build dashboard metrics
+  const dashboardMetrics: DashboardMetrics = useMemo(() => {
+    const activeAgents = agents.filter((a) => !a.agentType.startsWith("_")).length;
+    return {
+      agents: {
+        total: activeAgents,
+        active: metrics.runsCompleted > 0 ? Math.min(activeAgents, metrics.runsCompleted) : 0,
+        idle: activeAgents,
+        error: metrics.runsErrored,
+      },
+      runs: {
+        today: metrics.runsCompleted + metrics.runsErrored,
+        week: metrics.runsCompleted + metrics.runsErrored,
+        successRate:
+          metrics.runsCompleted + metrics.runsErrored > 0
+            ? Math.round((metrics.runsCompleted / (metrics.runsCompleted + metrics.runsErrored)) * 100)
+            : 100,
+        hourlyData: Array.from(metrics.tokensByDay.values()).slice(-12),
+      },
+      schedules: {
+        total: 0, // Will be populated from useAgency
+        active: 0,
+        paused: 0,
+      },
+      tokens: metrics.totalTokens > 0 ? {
+        today: metrics.totalTokens,
+        week: metrics.totalTokens,
+        dailyData: Array.from(metrics.tokensByDay.values()),
+      } : undefined,
+      responseTime: metrics.responseTimes.length > 0 ? {
+        avg: Math.round(metrics.responseTimes.reduce((a, b) => a + b, 0) / metrics.responseTimes.length),
+        p95: Math.round(metrics.responseTimes.sort((a, b) => a - b)[Math.floor(metrics.responseTimes.length * 0.95)] || 0),
+        recentData: metrics.responseTimes.slice(-12),
+      } : undefined,
+    };
+  }, [agents, metrics]);
+
+  // Handle sending message to agent - stays in command center view
+  const handleSendMessage = useCallback(
+    async (target: string, message: string) => {
+      // Find or create the target agent
+      let targetAgentId: string;
+      let isNewAgent = false;
+
+      if (target === "_agency-mind") {
+        // Get or create the agency mind
+        targetAgentId = await getOrCreateMind();
+        // Check if this is a newly created mind
+        isNewAgent = !agents.find((a) => a.id === targetAgentId);
+      } else {
+        // Find existing agent
+        const agent = agents.find((a) => a.id === target);
+        if (!agent) {
+          console.error("Agent not found:", target);
+          return;
+        }
+        targetAgentId = agent.id;
+      }
+
+      // Add optimistic update to activity feed
+      addUserMessage(target, message, targetAgentId);
+
+      // Actually send the message to the agent
+      await sendMessageToAgent(targetAgentId, message);
+
+      // If we created a new agent, subscribe to it for metrics/activity updates
+      if (isNewAgent) {
+        subscribeToNewAgents();
+      }
+
+      // Refresh activity feed to pick up any immediate responses
+      // (WebSocket will handle real-time updates after this)
+      setTimeout(() => refreshActivity(), 1000);
+    },
+    [agents, getOrCreateMind, addUserMessage, sendMessageToAgent, subscribeToNewAgents, refreshActivity]
+  );
+
+  // Handle creating new agent from blueprint
+  const handleCreateAgent = useCallback(
+    async (blueprintName: string) => {
+      const agent = await spawnAgent(blueprintName);
+      navigate(`/${agencyId}/agent/${agent.id}`);
+    },
+    [agencyId, spawnAgent, navigate]
+  );
+
+  return (
+    <HomeView
+      agencyId={agencyId}
+      agencyName={agency?.name}
+      agents={agents}
+      blueprints={blueprints}
+      metrics={dashboardMetrics}
+      activityItems={activityItems}
+      onSendMessage={handleSendMessage}
+      onCreateAgent={handleCreateAgent}
+      onMenuClick={onMenuClick}
+    />
+  );
+}
+
+// ============================================================================
+// Empty State (no agency selected)
 // ============================================================================
 
 function EmptyState({
-  hasAgency,
-  hasAgents,
   onMenuClick,
 }: {
-  hasAgency: boolean;
-  hasAgents?: boolean;
   onMenuClick?: () => void;
 }) {
-  if (!hasAgency) {
-    return (
-      <div className="flex-1 flex items-center justify-center relative bg-black">
-        {/* Mobile menu button */}
-        {onMenuClick && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onMenuClick();
-            }}
-            className="md:hidden fixed top-4 left-4 p-2 text-white/50 hover:text-white transition-colors z-10"
-            aria-label="Open menu"
-          >
-            <span className="text-xs">[=]</span>
-          </button>
-        )}
-        <div className="text-center max-w-md px-4 border border-white/20 p-8">
-          <div className="text-[#00ff00] text-3xl mb-4 font-mono">▓</div>
-          <h2 className="text-xs uppercase tracking-widest text-white mb-3">
-            SYSTEM INITIALIZED
-          </h2>
-          <p className="text-[10px] uppercase tracking-wider text-white/40 mb-4">
-            SELECT AGENCY FROM CONTROL PANEL OR INITIALIZE NEW INSTANCE
-          </p>
-          <div className="text-[10px] text-white/20 font-mono">
-            STATUS: AWAITING_SELECTION
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!hasAgents) {
-    return (
-      <div className="flex-1 flex items-center justify-center relative bg-black">
-        {/* Mobile menu button */}
-        {onMenuClick && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onMenuClick();
-            }}
-            className="md:hidden fixed top-4 left-4 p-2 text-white/50 hover:text-white transition-colors z-10"
-            aria-label="Open menu"
-          >
-            <span className="text-xs">[=]</span>
-          </button>
-        )}
-        <div className="text-center max-w-md px-4 border border-dashed border-white/30 p-8">
-          <div className="text-white/30 text-2xl mb-4 font-mono">+</div>
-          <h2 className="text-xs uppercase tracking-widest text-white mb-3">
-            NO AGENTS DEPLOYED
-          </h2>
-          <p className="text-[10px] uppercase tracking-wider text-white/40 mb-4">
-            SPAWN NEW AGENT VIA CONTROL PANEL. SELECT BLUEPRINT TO INITIALIZE.
-          </p>
-          <div className="text-[10px] text-white/20 font-mono">
-            AGENTS: 0 | READY: TRUE
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex-1 flex items-center justify-center relative bg-black">
       {/* Mobile menu button */}
       {onMenuClick && (
         <button
-          onClick={onMenuClick}
+          onClick={(e) => {
+            e.stopPropagation();
+            onMenuClick();
+          }}
           className="md:hidden fixed top-4 left-4 p-2 text-white/50 hover:text-white transition-colors z-10"
           aria-label="Open menu"
         >
@@ -832,13 +793,16 @@ function EmptyState({
         </button>
       )}
       <div className="text-center max-w-md px-4 border border-white/20 p-8">
-        <div className="text-white/40 text-2xl mb-4 font-mono">◈</div>
+        <div className="text-[#00ff00] text-3xl mb-4 font-mono">▓</div>
         <h2 className="text-xs uppercase tracking-widest text-white mb-3">
-          SELECT AGENT
+          SYSTEM INITIALIZED
         </h2>
-        <p className="text-[10px] uppercase tracking-wider text-white/40">
-          CHOOSE ACTIVE AGENT FROM CONTROL PANEL TO ACCESS TERMINAL
+        <p className="text-[10px] uppercase tracking-wider text-white/40 mb-4">
+          SELECT AGENCY FROM CONTROL PANEL OR INITIALIZE NEW INSTANCE
         </p>
+        <div className="text-[10px] text-white/20 font-mono">
+          STATUS: AWAITING_SELECTION
+        </div>
       </div>
     </div>
   );
@@ -850,22 +814,21 @@ function EmptyState({
 
 function MainContent({
   agencyId,
-  hasAgents,
   onMenuClick,
+  onCreateAgent,
 }: {
   agencyId: string | null;
-  hasAgents: boolean;
   onMenuClick: () => void;
+  onCreateAgent: (blueprintName: string) => Promise<void>;
 }) {
-  // Match agent routes
+  // Match routes
   const [matchAgent, paramsAgent] = useRoute("/:agencyId/agent/:agentId");
-  const [matchAgentTab, paramsAgentTab] = useRoute(
-    "/:agencyId/agent/:agentId/:tab"
-  );
+  const [matchAgentTab, paramsAgentTab] = useRoute("/:agencyId/agent/:agentId/:tab");
   const [matchSettings] = useRoute("/:agencyId/settings");
+  const [matchHome] = useRoute("/:agencyId");
 
   if (!agencyId) {
-    return <EmptyState hasAgency={false} onMenuClick={onMenuClick} />;
+    return <EmptyState onMenuClick={onMenuClick} />;
   }
 
   if (matchSettings) {
@@ -893,60 +856,38 @@ function MainContent({
     );
   }
 
-  return (
-    <EmptyState
-      hasAgency={true}
-      hasAgents={hasAgents}
-      onMenuClick={onMenuClick}
-    />
-  );
+  // Default to home/dashboard view
+  if (matchHome) {
+    return (
+      <HomeRoute
+        agencyId={agencyId}
+        onMenuClick={onMenuClick}
+        onCreateAgent={onCreateAgent}
+      />
+    );
+  }
+
+  return <EmptyState onMenuClick={onMenuClick} />;
 }
 
 // ============================================================================
 // App Component
 // ============================================================================
 
-// Layout mode types
-type LayoutMode = "classic" | "command-center";
-
-function getStoredLayout(): LayoutMode {
-  if (typeof window !== "undefined") {
-    const stored = localStorage.getItem("hub_layout");
-    if (stored === "command-center") return "command-center";
-  }
-  return "classic";
-}
-
-function setStoredLayout(mode: LayoutMode): void {
-  localStorage.setItem("hub_layout", mode);
-}
-
 export default function App() {
   const [location, navigate] = useLocation();
 
-  // Layout mode - persisted in localStorage
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>(getStoredLayout);
-
-  // Auth state - check if we need to show unlock form
+  // Auth state
   const [isLocked, setIsLocked] = useState(false);
   const [authError, setAuthError] = useState<string | undefined>();
 
-  // Mobile menu state - default to true for desktop, false for mobile
+  // Mobile menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(() => {
     if (typeof window !== "undefined") {
       return window.innerWidth >= 768;
     }
     return true;
   });
-
-  // Handle layout toggle
-  const toggleLayout = useCallback(() => {
-    setLayoutMode((prev) => {
-      const next = prev === "classic" ? "command-center" : "classic";
-      setStoredLayout(next);
-      return next;
-    });
-  }, []);
 
   // Modal state
   const [showBlueprintPicker, setShowBlueprintPicker] = useState(false);
@@ -958,9 +899,7 @@ export default function App() {
   const [mindAgentId, setMindAgentId] = useState<string | null>(null);
   const [isMindLoading, setIsMindLoading] = useState(false);
 
-
-
-  // Parse agencyId and agentId from URL
+  // Parse agencyId from URL
   const pathParts = location.split("/").filter(Boolean);
   const agencyId = pathParts[0] || null;
   const agentId = pathParts[1] === "agent" ? pathParts[2] || null : null;
@@ -972,10 +911,10 @@ export default function App() {
     error: agenciesError,
     hasFetched: agenciesFetched,
   } = useAgencies();
-  const { agents, blueprints, spawnAgent, getOrCreateMind } = useAgency(agencyId);
+  const { agents, blueprints, schedules, spawnAgent, getOrCreateMind } = useAgency(agencyId);
   const { run: runState } = useAgent(agencyId, agentId);
-  
-  // Agency Mind agent state (separate from selected agent)
+
+  // Agency Mind agent state
   const {
     state: mindState,
     run: mindRunState,
@@ -985,10 +924,9 @@ export default function App() {
     cancel: cancelMind,
   } = useAgent(agencyId, mindAgentId);
 
-  
   const isUnauthorized = agenciesError?.message.includes("401") ?? false;
 
-  // Check if we got a 401 error (need auth)
+  // Check if we got a 401 error
   useEffect(() => {
     if (agenciesError && agenciesError.message.includes("401")) {
       setIsLocked(true);
@@ -999,7 +937,6 @@ export default function App() {
   const handleUnlock = useCallback((secret: string) => {
     setStoredSecret(secret);
     setAuthError(undefined);
-    // Reload the page to re-init all hooks with the new secret
     window.location.reload();
   }, []);
 
@@ -1012,14 +949,12 @@ export default function App() {
   // Handle opening the Agency Mind panel
   const handleOpenMind = useCallback(async () => {
     if (!agencyId) return;
-    
-    // If we already have a mind agent ID, just open the panel
+
     if (mindAgentId) {
       setIsMindOpen(true);
       return;
     }
 
-    // Otherwise, find or create the mind agent
     setIsMindLoading(true);
     try {
       const id = await getOrCreateMind();
@@ -1034,10 +969,7 @@ export default function App() {
 
   // Derive agent status
   const agentStatus = useMemo(() => {
-    const status: Record<
-      string,
-      "running" | "paused" | "done" | "error" | "idle"
-    > = {};
+    const status: Record<string, "running" | "paused" | "done" | "error" | "idle"> = {};
     agents.forEach((a) => {
       if (a.id === agentId && runState) {
         status[a.id] =
@@ -1054,6 +986,17 @@ export default function App() {
     });
     return status;
   }, [agents, agentId, runState]);
+
+  // Convert schedules to summary format
+  const scheduleSummaries: ScheduleSummary[] = useMemo(() => {
+    return schedules.map((s) => ({
+      id: s.id,
+      name: s.name,
+      agentType: s.agentType,
+      status: (s.status === "paused" ? "paused" : "active") as "active" | "paused",
+      type: s.type as "once" | "cron" | "interval",
+    }));
+  }, [schedules]);
 
   // Handlers
   const handleCreateAgency = async (name?: string) => {
@@ -1081,17 +1024,10 @@ export default function App() {
     return <AuthLoadingScreen />;
   }
 
-  // Show auth unlock form if locked
   if (isLocked || isUnauthorized) {
     return <AuthUnlockForm onUnlock={handleUnlock} error={authError} />;
   }
 
-  // Command Center layout
-  if (layoutMode === "command-center") {
-    return <CommandCenterApp onToggleLayout={toggleLayout} />;
-  }
-
-  // Classic layout
   return (
     <div className="h-screen flex bg-black">
       {/* Sidebar */}
@@ -1102,13 +1038,12 @@ export default function App() {
         agents={agents}
         selectedAgentId={agentId}
         onCreateAgent={() => handleCreateAgent()}
+        schedules={scheduleSummaries}
         agentStatus={agentStatus}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
         onOpenMind={handleOpenMind}
         isMindActive={isMindOpen}
-        onToggleLayout={toggleLayout}
-        layoutMode={layoutMode}
       />
 
       {/* Blueprint picker modal */}
@@ -1137,8 +1072,8 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0">
         <MainContent
           agencyId={agencyId}
-          hasAgents={agents.length > 0}
           onMenuClick={() => setIsMobileMenuOpen(true)}
+          onCreateAgent={handleCreateAgent}
         />
       </div>
 
@@ -1157,7 +1092,6 @@ export default function App() {
           onStop={cancelMind}
         />
       )}
-
     </div>
   );
 }

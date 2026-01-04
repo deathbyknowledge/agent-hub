@@ -128,6 +128,7 @@ export function makeChatCompletions(
         const errTxt = await res.text().catch(() => "");
         throw new Error(`Chat completions error ${res.status}: ${errTxt}`);
       }
+
       const json = (await res.json()) as {
         choices: Array<{ message: OAChatMsg }>;
         usage: { prompt_tokens: number; completion_tokens: number };

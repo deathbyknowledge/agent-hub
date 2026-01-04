@@ -241,7 +241,7 @@ export function ChatView({
   return (
     <div className="flex flex-col h-full bg-black">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4">
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center max-w-sm border border-white/20 p-6">
@@ -268,7 +268,7 @@ export function ChatView({
       </div>
 
       {/* Input area */}
-      <div className="border-t-2 border-white bg-black p-3">
+      <div className="border-t-2 border-white bg-black p-2 sm:p-3">
         <div className="flex items-center gap-2">
           <div className="flex-1 flex items-stretch border border-white/50 focus-within:border-[#00ff00] focus-within:bg-black transition-colors">
             {/* Line carets - one > per line */}

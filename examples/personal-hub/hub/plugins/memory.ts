@@ -47,12 +47,11 @@ async function fetchEmbeddings(
   });
 
   if (!res.ok) {
-    throw new Error(`Embedding API error: ${res.status} - ${await res.text()}`);
+    const errText = await res.text();
+    throw new Error(`Embedding API error: ${res.status} - ${errText}`);
   }
 
-  const json = (await res.json()) as {
-    data: { embedding: number[]; index: number }[];
-  };
+  const json = (await res.json()) as { data: { embedding: number[]; index: number }[] };
   return json.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
 }
 
