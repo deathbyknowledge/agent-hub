@@ -1,6 +1,5 @@
 import { HNSW } from "hnsw";
-import { tool, z, type AgentPlugin } from "agent-hub";
-import type { AgentFileSystem } from "lib/runtime/fs";
+import { tool, z, type AgentPlugin, type AgentFileSystem } from "agent-hub";
 
 type MemoryEntry = {
   content: string;
@@ -51,31 +50,36 @@ async function fetchEmbeddings(
     throw new Error(`Embedding API error: ${res.status} - ${errText}`);
   }
 
-  const json = (await res.json()) as { data: { embedding: number[]; index: number }[] };
-  return json.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+  const json = (await res.json()) as {
+    data: Array<{ embedding: number[] }>;
+  };
+  return json.data.map((d) => d.embedding);
 }
 
-async function listDisks(
-  fs: AgentFileSystem
-): Promise<Array<{ name: string; description?: string; entryCount: number }>> {
-  const entries = await fs.readDir("/shared/memories").catch(() => []);
-  const disks: Array<{ name: string; description?: string; entryCount: number }> = [];
+type DiskMeta = {
+  name: string;
+  description?: string;
+  entryCount: number;
+};
 
-  for (const entry of entries) {
+async function listDisks(fs: AgentFileSystem): Promise<DiskMeta[]> {
+  const dir = await fs.readDir("/shared/memories");
+  const disks: DiskMeta[] = [];
+
+  for (const entry of dir) {
     if (entry.type === "file" && entry.path.endsWith(".idz")) {
-      const name = entry.path.replace(/.*\//, "").replace(/\.idz$/, "");
-      try {
-        const content = await fs.readFile(entry.path);
-        if (content) {
-          const idz = JSON.parse(content) as IDZFile;
+      const content = await fs.readFile(entry.path);
+      if (content) {
+        try {
+          const data = JSON.parse(content) as IDZFile;
           disks.push({
-            name,
-            description: idz.description,
-            entryCount: idz.entries?.length || 0,
+            name: data.name,
+            description: data.description,
+            entryCount: data.entries.length,
           });
+        } catch {
+          // Skip invalid files
         }
-      } catch {
-        disks.push({ name, entryCount: 0 });
       }
     }
   }
@@ -83,58 +87,68 @@ async function listDisks(
   return disks;
 }
 
-async function loadDisk(fs: AgentFileSystem, name: string): Promise<IDZFile | null> {
+async function loadDisk(
+  fs: AgentFileSystem,
+  name: string
+): Promise<IDZFile | null> {
   const content = await fs.readFile(diskPath(name));
   if (!content) return null;
   return JSON.parse(content) as IDZFile;
 }
 
-async function saveDisk(fs: AgentFileSystem, idz: IDZFile): Promise<void> {
-  await fs.writeFile(diskPath(idz.name), JSON.stringify(idz));
+async function saveDisk(fs: AgentFileSystem, disk: IDZFile): Promise<void> {
+  await fs.writeFile(diskPath(disk.name), JSON.stringify(disk, null, 2));
 }
 
 async function searchDisk(
   fs: AgentFileSystem,
   vars: Record<string, unknown>,
-  name: string,
+  diskName: string,
   query: string,
-  k: number
-): Promise<MemoryEntry[]> {
-  const idz = await loadDisk(fs, name);
-  if (!idz) throw new Error(`Disk '${name}' not found`);
-
-  let entries = idz.entries;
-
-  // Compute embeddings if missing
-  if (!idz.hasEmbeddings && entries.length > 0) {
-    const embeddings = await fetchEmbeddings(
-      entries.map((e) => e.content),
-      vars
-    );
-    entries = entries.map((e, i) => ({ ...e, embedding: embeddings[i] }));
-    // Save back with embeddings
-    const updated: IDZFile = { ...idz, hasEmbeddings: true, entries };
-    await saveDisk(fs, updated);
+  k: number = 5
+): Promise<Array<MemoryEntry & { score: number }>> {
+  const disk = await loadDisk(fs, diskName);
+  if (!disk) {
+    throw new Error(`Memory disk '${diskName}' not found`);
   }
 
-  if (entries.length === 0) return [];
+  if (!disk.hasEmbeddings || disk.entries.length === 0) {
+    // Fallback to simple text search if no embeddings
+    const results: Array<MemoryEntry & { score: number }> = [];
+    const queryLower = query.toLowerCase();
+    for (const entry of disk.entries) {
+      if (entry.content.toLowerCase().includes(queryLower)) {
+        results.push({ content: entry.content, extra: entry.extra, score: 1 });
+      }
+    }
+    return results.slice(0, k);
+  }
 
-  // Build index and search
-  const hnsw = new HNSW(32, 200, null, "cosine");
-  const indexData = entries
-    .map((e, i) => (e.embedding ? { id: i, vector: e.embedding } : null))
-    .filter(Boolean) as { id: number; vector: number[] }[];
+  // Get query embedding
+  const [queryEmbedding] = await fetchEmbeddings([query], vars);
 
-  if (indexData.length === 0) return [];
-  await hnsw.buildIndex(indexData);
+  // Build HNSW index
+  const dim = disk.entries[0].embedding!.length;
+  const index = new HNSW(16, 200, dim);
 
-  const [queryVec] = await fetchEmbeddings([query], vars);
-  const results = hnsw.searchKNN(queryVec, Math.min(k, indexData.length));
+  for (let i = 0; i < disk.entries.length; i++) {
+    const entry = disk.entries[i];
+    if (entry.embedding) {
+      await index.addPoint(i, entry.embedding);
+    }
+  }
 
-  return results
-    .map((r) => entries[r.id])
-    .filter(Boolean)
-    .map((e) => ({ content: e.content, extra: e.extra }));
+  // Search
+  const results = index.searchKNN(queryEmbedding, k);
+
+  return results.map((r: { id: number; score: number }) => {
+    const entry = disk.entries[r.id];
+    return {
+      content: entry.content,
+      extra: entry.extra,
+      score: r.score,
+    };
+  });
 }
 
 async function addMemory(
@@ -143,12 +157,11 @@ async function addMemory(
   diskName: string,
   content: string,
   extra?: Record<string, unknown>
-): Promise<{ success: boolean; message: string }> {
-  let idz = await loadDisk(fs, diskName);
+): Promise<{ message: string }> {
+  let disk = await loadDisk(fs, diskName);
 
-  // Create disk if it doesn't exist
-  if (!idz) {
-    idz = {
+  if (!disk) {
+    disk = {
       version: 1,
       name: diskName,
       hasEmbeddings: false,
@@ -156,39 +169,38 @@ async function addMemory(
     };
   }
 
-  // Add the new entry (without embedding - will be computed on search)
-  const newEntry: StoredEntry = { content, extra };
-  
-  // If disk already has embeddings, compute embedding for new entry
-  if (idz.hasEmbeddings) {
-    try {
-      const [embedding] = await fetchEmbeddings([content], vars);
-      newEntry.embedding = embedding;
-    } catch (e) {
-      // If embedding fails, mark disk as needing re-embedding
-      idz.hasEmbeddings = false;
-    }
+  // Get embedding for the new content
+  let embedding: number[] | undefined;
+  try {
+    const [emb] = await fetchEmbeddings([content], vars);
+    embedding = emb;
+    disk.hasEmbeddings = true;
+  } catch {
+    // Continue without embedding if it fails
   }
 
-  idz.entries.push(newEntry);
-  await saveDisk(fs, idz);
+  disk.entries.push({
+    content,
+    extra,
+    embedding,
+  });
+
+  await saveDisk(fs, disk);
 
   return {
-    success: true,
-    message: `Added memory to '${diskName}' (${idz.entries.length} total entries)`,
+    message: `Memory stored in '${diskName}'. Total entries: ${disk.entries.length}`,
   };
 }
 
 export const memory: AgentPlugin = {
   name: "memory",
-  tags: ["memory"],
+  tags: [],
 
   varHints: [
     {
       name: "EMBEDDING_API_BASE",
       required: true,
-      description:
-        "Base URL for embedding API (e.g., https://api.openai.com/v1)",
+      description: "Base URL for embedding API (e.g., https://api.openai.com/v1)",
     },
     {
       name: "EMBEDDING_API_KEY",

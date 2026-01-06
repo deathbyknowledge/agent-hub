@@ -148,6 +148,3 @@ export function makeChatCompletions(
     }
   };
 }
-
-/** @deprecated Use `makeChatCompletions` instead */
-export const makeOpenAI = makeChatCompletions;

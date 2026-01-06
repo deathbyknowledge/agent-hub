@@ -1,27 +1,86 @@
 {
-  "name": "agent-hub",
-  "description": "A serverless agentic runtime",
+  "name": "agents-hub",
+  "version": "0.0.2",
+  "description": "A serverless agentic runtime for Cloudflare Workers",
   "keywords": [
     "cloudflare",
+    "workers",
     "agents",
     "ai",
     "llm",
-    "durable objects"
+    "durable objects",
+    "serverless"
   ],
   "type": "module",
-  "version": "0.0.1",
   "license": "MIT",
   "author": "Steve James <sjames@cloudflare.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/deathbyknowledge/agent-hub"
+  },
+  "homepage": "https://github.com/deathbyknowledge/agent-hub#readme",
+  "bugs": {
+    "url": "https://github.com/deathbyknowledge/agent-hub/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "runtime",
+    "client",
+    "vite",
+    "README.md"
+  ],
+  "main": "./runtime/index.ts",
+  "types": "./runtime/index.ts",
+  "exports": {
+    ".": {
+      "types": "./runtime/index.ts",
+      "import": "./runtime/index.ts"
+    },
+    "./client": {
+      "types": "./client/index.ts",
+      "import": "./client/index.ts"
+    },
+    "./vite": {
+      "types": "./vite/index.ts",
+      "import": "./vite/index.ts"
+    },
+    "./plugins": {
+      "types": "./runtime/plugins/index.ts",
+      "import": "./runtime/plugins/index.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/runtime/index.js",
+    "types": "./dist/runtime/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/runtime/index.d.ts",
+        "import": "./dist/runtime/index.js"
+      },
+      "./client": {
+        "types": "./dist/client/index.d.ts",
+        "import": "./dist/client/index.js"
+      },
+      "./vite": {
+        "types": "./dist/vite/index.d.ts",
+        "import": "./dist/vite/index.js"
+      },
+      "./plugins": {
+        "types": "./dist/runtime/plugins/index.d.ts",
+        "import": "./dist/runtime/plugins/index.js"
+      }
+    }
+  },
   "scripts": {
+    "build": "tsup",
     "docs": "typedoc",
     "test": "vitest run --config tests/vitest.config.ts",
-    "test:watch": "vitest --config tests/vitest.config.ts"
-  },
-  "exports": {
-    ".": "./runtime/index.ts",
-    "./client": "./client/index.ts",
-    "./vite": "./vite/index.ts",
-    "./plugins": "./runtime/plugins/index.ts"
+    "test:watch": "vitest --config tests/vitest.config.ts",
+    "prepublishOnly": "npm run build && npm run test"
   },
   "dependencies": {
     "agents": "^0.3.3",
@@ -29,11 +88,21 @@
     "zod": "^3.25.64",
     "zod-to-json-schema": "^3.24.5"
   },
+  "peerDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "vite": "^6.0.0 || ^7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.19.0",
     "@cloudflare/vitest-pool-workers": "^0.11.1",
     "@cloudflare/workers-types": "^4.20251221.0",
     "@types/node": "^25.0.3",
+    "tsup": "^8.5.1",
     "typedoc": "^0.28.15",
     "vite": "^7.3.0",
     "vitest": "^3.2.4"

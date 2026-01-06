@@ -10,9 +10,6 @@ import type {
 } from "./types";
 import { PersistedObject } from "./persisted";
 
-// Re-export MCPServersState for external use
-export type { MCPServersState };
-
 // ============================================================
 // Schedule Types
 // ============================================================
