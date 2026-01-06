@@ -39,7 +39,7 @@ export default defineConfig({
           containers: [
             {
               class_name: "Sandbox",
-              image: "./Dockerfile",
+              image: "../../Dockerfile",
               instance_type: "standard-2",
               max_instances: 2,
             },
