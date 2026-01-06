@@ -19,6 +19,6 @@
   "scripts": {
     "tsc": "npx tsc --noEmit",
     "docs": "typedoc",
-    "test": "npm run test -w agent-hub"
+    "test": "npm run test -w agents-hub"
   }
 }

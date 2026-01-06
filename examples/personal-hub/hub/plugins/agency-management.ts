@@ -86,11 +86,12 @@ export const agencyManagement: AgentPlugin = {
 
   async beforeModel(ctx, plan) {
     try {
-      const [blueprintsRes, agentsRes, schedulesRes, varsRes] = await Promise.all([
+      const [blueprintsRes, agentsRes, schedulesRes, varsRes, mcpRes] = await Promise.all([
         agencyFetch(ctx, "/blueprints"),
         agencyFetch(ctx, "/agents"),
         agencyFetch(ctx, "/schedules"),
         agencyFetch(ctx, "/vars"),
+        agencyFetch(ctx, "/mcp"),
       ]);
 
       const combined = new Map<string, AgentBlueprint>();
@@ -117,11 +118,16 @@ export const agencyManagement: AgentPlugin = {
       const vars = varsRes.ok
         ? ((await varsRes.json()) as { vars: Record<string, unknown> }).vars
         : {};
+      const mcpServers = mcpRes.ok
+        ? ((await mcpRes.json()) as { servers: Array<{ id: string; name: string; status: string }> }).servers
+        : [];
 
       const agencyId = ctx.agent.info.agencyId;
       const blueprintNames = blueprints.map((b) => b.name).join(", ") || "none";
       const activeSchedules = schedules.filter((s) => s.status === "active").length;
       const varCount = Object.keys(vars).length;
+      const readyMcpServers = mcpServers.filter((s) => s.status === "ready").length;
+      const mcpServerNames = mcpServers.map((s) => `${s.name} (${s.status})`).join(", ") || "none";
 
       const contextBlock = `
 ## Agency Context
@@ -134,6 +140,7 @@ You are the mind of agency **"${agencyId}"**.
 | Agents | ${agents.length} | Currently spawned instances |
 | Schedules | ${schedules.length} | ${activeSchedules} active |
 | Variables | ${varCount} | Agency-level configuration |
+| MCP Servers | ${mcpServers.length} | ${readyMcpServers} ready: ${mcpServerNames} |
 
 This context is automatically refreshed each turn.
 `;
@@ -689,6 +696,140 @@ Use this to understand what capabilities exist when creating or updating bluepri
         })),
         hint: "Capabilities can be plugin names, tool names, or @tag to include all tools/plugins with that tag",
       };
+    },
+  }));
+
+  // ============================================================
+  // MCP Server Management Tools
+  // ============================================================
+
+  ctx.registerTool(tool({
+    name: "list_mcp_servers",
+    description: "List all MCP servers connected to this agency with their status",
+    inputSchema: z.object({}),
+    execute: async () => {
+      const res = await agencyFetch(ctx, "/mcp");
+      if (!res.ok) return `Error: ${res.status} ${await res.text()}`;
+      const data = (await res.json()) as { servers: Array<{ id: string; name: string; url: string; status: string; error?: string }> };
+      return data.servers.map((s) => ({
+        id: s.id,
+        name: s.name,
+        url: s.url,
+        status: s.status,
+        error: s.error,
+      }));
+    },
+  }));
+
+  ctx.registerTool(tool({
+    name: "add_mcp_server",
+    description: "Add a new MCP server to this agency. Returns the server config. If status is 'authenticating', the authUrl needs to be opened for OAuth.",
+    inputSchema: z.object({
+      name: z.string().describe("Display name for the server"),
+      url: z.string().describe("MCP server URL (e.g., https://mcp.github.com/sse)"),
+      token: z.string().optional().describe("Optional bearer token for API key authentication"),
+    }),
+    execute: async ({ name, url, token }) => {
+      const body: { name: string; url: string; headers?: Record<string, string> } = { name, url };
+      if (token) {
+        body.headers = { Authorization: `Bearer ${token}` };
+      }
+      const res = await agencyFetch(ctx, "/mcp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) return `Error: ${res.status} ${await res.text()}`;
+      const data = (await res.json()) as { server: { id: string; name: string; status: string; authUrl?: string } };
+      if (data.server.status === "authenticating" && data.server.authUrl) {
+        return {
+          ...data.server,
+          message: `Server requires OAuth authentication. Direct the user to open this URL: ${data.server.authUrl}`,
+        };
+      }
+      return data.server;
+    },
+  }));
+
+  ctx.registerTool(tool({
+    name: "remove_mcp_server",
+    description: "Remove an MCP server from this agency",
+    inputSchema: z.object({
+      serverId: z.string().describe("Server ID to remove"),
+    }),
+    execute: async ({ serverId }) => {
+      const res = await agencyFetch(ctx, `/mcp/${encodeURIComponent(serverId)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) return `Error: ${res.status} ${await res.text()}`;
+      return { ok: true, message: `MCP server ${serverId} removed` };
+    },
+  }));
+
+  ctx.registerTool(tool({
+    name: "retry_mcp_server",
+    description: "Retry connecting to a failed MCP server",
+    inputSchema: z.object({
+      serverId: z.string().describe("Server ID to retry"),
+    }),
+    execute: async ({ serverId }) => {
+      const res = await agencyFetch(ctx, `/mcp/${encodeURIComponent(serverId)}/retry`, {
+        method: "POST",
+      });
+      if (!res.ok) return `Error: ${res.status} ${await res.text()}`;
+      const data = (await res.json()) as { server: { id: string; name: string; status: string; authUrl?: string } };
+      if (data.server.status === "authenticating" && data.server.authUrl) {
+        return {
+          ...data.server,
+          message: `Server requires OAuth authentication. Direct the user to open this URL: ${data.server.authUrl}`,
+        };
+      }
+      return data.server;
+    },
+  }));
+
+  ctx.registerTool(tool({
+    name: "list_mcp_tools",
+    description: "List all tools available from connected MCP servers (only from servers in 'ready' state)",
+    inputSchema: z.object({
+      serverId: z.string().optional().describe("Optional: filter tools by server ID"),
+    }),
+    execute: async ({ serverId }) => {
+      const res = await agencyFetch(ctx, "/mcp/tools");
+      if (!res.ok) return `Error: ${res.status} ${await res.text()}`;
+      const data = (await res.json()) as { tools: Array<{ serverId: string; name: string; description?: string; inputSchema?: unknown }> };
+      let tools = data.tools;
+      if (serverId) {
+        tools = tools.filter((t) => t.serverId === serverId);
+      }
+      return tools.map((t) => ({
+        serverId: t.serverId,
+        name: t.name,
+        description: t.description,
+      }));
+    },
+  }));
+
+  ctx.registerTool(tool({
+    name: "call_mcp_tool",
+    description: "Call a tool from a connected MCP server. The server must be in 'ready' state.",
+    inputSchema: z.object({
+      serverId: z.string().describe("MCP server ID"),
+      toolName: z.string().describe("Name of the tool to call"),
+      arguments: z.record(z.unknown()).optional().describe("Arguments to pass to the tool"),
+    }),
+    execute: async ({ serverId, toolName, arguments: args }) => {
+      const res = await agencyFetch(ctx, "/mcp/call", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          serverId,
+          toolName,
+          arguments: args || {},
+        }),
+      });
+      if (!res.ok) return `Error: ${res.status} ${await res.text()}`;
+      return res.json();
     },
   }));
 }
