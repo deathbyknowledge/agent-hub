@@ -1,5 +1,5 @@
-import type { AgentPlugin } from "agent-hub";
-import { tool } from "agent-hub";
+import type { AgentPlugin } from "agents-hub";
+import { tool } from "agents-hub";
 import z from "zod";
 
 export type Todo = {

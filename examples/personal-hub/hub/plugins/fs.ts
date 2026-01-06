@@ -1,4 +1,4 @@
-import {tool, type AgentPlugin} from "agent-hub";
+import {tool, type AgentPlugin} from "agents-hub";
 import z from 'zod';
 
 export const filesystem: AgentPlugin = {

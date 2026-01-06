@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { cloudflare } from "@cloudflare/vite-plugin";
-import hub from "agent-hub/vite";
+import hub from "agents-hub/vite";
 
 const hasSandbox = (process.env.SANDBOX ?? "0") == "1";
 

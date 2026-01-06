@@ -4,7 +4,7 @@ import {
   type AgentPlugin,
   type AgentBlueprint,
   type PluginContext,
-} from "agent-hub";
+} from "agents-hub";
 import { getAgentByName } from "agents";
 
 async function agencyFetch(

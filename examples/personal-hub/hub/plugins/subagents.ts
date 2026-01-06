@@ -4,7 +4,7 @@ import {
   type AgentEnv,
   AgentEventType,
   type AgentPlugin,
-} from "agent-hub";
+} from "agents-hub";
 import { getAgentByName } from "agents";
 
 const SubagentEventType = {

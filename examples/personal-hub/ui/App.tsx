@@ -26,7 +26,7 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "./hooks";
-import type { AgentBlueprint, ChatMessage, ToolCall as APIToolCall } from "agent-hub/client";
+import type { AgentBlueprint, ChatMessage, ToolCall as APIToolCall } from "agents-hub/client";
 import { createRoot } from "react-dom/client";
 import {
   type ScheduleSummary,

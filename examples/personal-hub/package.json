@@ -6,7 +6,7 @@
   "license": "MIT",
   "author": "Steve James <sjames@cloudflare.com>",
   "scripts": {
-    "dev": "SANDBOX=0 vite --configLoader runner",
+    "dev": "SANDBOX=1 vite --configLoader runner",
     "build": "SANDBOX=1 vite build --configLoader runner",
     "deploy": "SANDBOX=1 npm run build && npm run deploy:upload && npm run deploy:activate",
     "deploy:upload": "wrangler versions upload -c dist/agents_hub/wrangler.json",

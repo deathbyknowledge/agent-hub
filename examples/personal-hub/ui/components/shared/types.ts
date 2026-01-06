@@ -1,7 +1,7 @@
 /**
  * Shared type definitions for the UI components
  */
-import type { AgentBlueprint, AgentEvent, AgentSchedule, ChatMessage, ToolCall as APIToolCall } from "agent-hub/client";
+import type { AgentBlueprint, AgentEvent, AgentSchedule, ChatMessage, ToolCall as APIToolCall } from "agents-hub/client";
 
 // Re-export client types for convenience
 export type { AgentBlueprint, AgentEvent, AgentSchedule, ChatMessage, APIToolCall };

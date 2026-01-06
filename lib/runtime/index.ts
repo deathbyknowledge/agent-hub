@@ -6,4 +6,5 @@ export * from "./events";
 export * from "./hub";
 export * from "./tools";
 export * from "./fs";
+export * from "./config";
 export * as plugins from "./plugins";

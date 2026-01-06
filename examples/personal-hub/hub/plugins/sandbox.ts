@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { tool, type AgentPlugin } from "agent-hub";
+import { tool, type AgentPlugin } from "agents-hub";
 import { getSandbox, Sandbox } from "@cloudflare/sandbox";
 
 const SandboxBashSchema = z.object({

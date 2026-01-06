@@ -3,7 +3,7 @@
  * Tagged with "security" - only available to security-tagged agents.
  */
 
-import { tool } from "agent-hub";
+import { tool } from "agents-hub";
 import * as z from "zod";
 
 // ============================================================

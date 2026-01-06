@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { cn } from "../lib/utils";
 import { ChatView } from "./ChatView";
 import { convertChatMessages } from "./shared";
-import type { AgentState, RunState } from "agent-hub/client";
+import type { AgentState, RunState } from "agents-hub/client";
 
 interface MindPanelProps {
   isOpen: boolean;

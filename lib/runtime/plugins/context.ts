@@ -1,4 +1,10 @@
-import type { AgentPlugin, PluginContext, ChatMessage, HubAgent} from "agent-hub";
+import type { AgentPlugin, PluginContext, ChatMessage } from "../types";
+import type { HubAgent } from "../agent";
+import type { ModelPlanBuilder } from "../plan";
+import {
+  DEFAULT_CONTEXT_KEEP_RECENT,
+  DEFAULT_CONTEXT_SUMMARIZE_AT,
+} from "../config";
 
 // IDZ file format for memory storage
 type IDZFile = {
@@ -52,7 +58,7 @@ function buildSummaryPrompt(
     if ("content" in msg && typeof msg.content === "string") {
       content = msg.content;
     } else if ("toolCalls" in msg && msg.toolCalls) {
-      content = `[Tool calls: ${msg.toolCalls.map((tc) => tc.name).join(", ")}]`;
+      content = `[Tool calls: ${msg.toolCalls.map((tc: { name: string }) => tc.name).join(", ")}]`;
     } else {
       content = "[No content]";
     }
@@ -122,14 +128,14 @@ async function storeMemories(
   memories: string[]
 ): Promise<void> {
   const path = `/shared/memories/${diskName}.idz`;
-  let idz: IDZFile;
+  let idz: IDZFile | null = null;
 
   // Try to load existing disk
   try {
     const content = await fs.readFile(path);
     idz = content ? JSON.parse(content) : null;
   } catch {
-    idz = null as unknown as IDZFile;
+    idz = null;
   }
 
   // Create new disk if doesn't exist
@@ -161,20 +167,35 @@ async function storeMemories(
   await fs.writeFile(path, JSON.stringify(idz));
 }
 
-export const contextManagement: AgentPlugin = {
-  name: "context-management",
-  tags: ["context-management"],
+/**
+ * Context management plugin that automatically summarizes long conversations.
+ * 
+ * When the message count exceeds CONTEXT_SUMMARIZE_AT, older messages are
+ * summarized using an LLM call, archived to the filesystem, and deleted
+ * from the active context. The summary is prepended to future requests.
+ * 
+ * Optionally extracts important facts as "memories" and stores them to
+ * a memory disk for long-term retrieval.
+ * 
+ * @var CONTEXT_KEEP_RECENT - Messages to keep in full (default: 20)
+ * @var CONTEXT_SUMMARIZE_AT - Trigger summarization threshold (default: 40)
+ * @var CONTEXT_MEMORY_DISK - Optional disk name for extracted memories
+ * @var CONTEXT_SUMMARY_MODEL - Optional model for summarization
+ */
+export const context: AgentPlugin = {
+  name: "context",
+  tags: ["context"],
 
   varHints: [
     {
       name: "CONTEXT_KEEP_RECENT",
       required: false,
-      description: "Messages to keep in full (default: 20)",
+      description: `Messages to keep in full (default: ${DEFAULT_CONTEXT_KEEP_RECENT})`,
     },
     {
       name: "CONTEXT_SUMMARIZE_AT",
       required: false,
-      description: "Summarize when message count exceeds this (default: 40)",
+      description: `Summarize when message count exceeds this (default: ${DEFAULT_CONTEXT_SUMMARIZE_AT})`,
     },
     {
       name: "CONTEXT_MEMORY_DISK",
@@ -199,10 +220,10 @@ export const contextManagement: AgentPlugin = {
     };
   },
 
-  async beforeModel(ctx, plan) {
+  async beforeModel(ctx: PluginContext, plan: ModelPlanBuilder) {
     // Get configuration with defaults
-    const KEEP_RECENT = (ctx.agent.vars.CONTEXT_KEEP_RECENT as number) ?? 20;
-    const SUMMARIZE_AT = (ctx.agent.vars.CONTEXT_SUMMARIZE_AT as number) ?? 40;
+    const KEEP_RECENT = (ctx.agent.vars.CONTEXT_KEEP_RECENT as number) ?? DEFAULT_CONTEXT_KEEP_RECENT;
+    const SUMMARIZE_AT = (ctx.agent.vars.CONTEXT_SUMMARIZE_AT as number) ?? DEFAULT_CONTEXT_SUMMARIZE_AT;
     const MEMORY_DISK = ctx.agent.vars.CONTEXT_MEMORY_DISK as string | undefined;
     const SUMMARY_MODEL = ctx.agent.vars.CONTEXT_SUMMARY_MODEL as string | undefined;
 
@@ -229,7 +250,7 @@ export const contextManagement: AgentPlugin = {
             role: "assistant",
             content: `[Conversation Summary]\n${checkpoint.summary}`,
           },
-          ...recentMessages.filter((m) => m.role !== "system"),
+          ...recentMessages.filter((m: ChatMessage) => m.role !== "system"),
         ]);
       }
       return;
@@ -268,7 +289,7 @@ export const contextManagement: AgentPlugin = {
         {}
       );
     } catch (err) {
-      console.error("context-management: Summarization failed:", err);
+      console.error("context: Summarization failed:", err);
       return;
     }
 
@@ -288,7 +309,7 @@ export const contextManagement: AgentPlugin = {
       try {
         await storeMemories(fs, MEMORY_DISK, memories);
       } catch (err) {
-        console.warn("context-management: Failed to store memories:", err);
+        console.warn("context: Failed to store memories:", err);
       }
     }
 
@@ -309,7 +330,7 @@ export const contextManagement: AgentPlugin = {
         ctx.agent.info.threadId || "unknown"
       );
     } catch (err) {
-      console.warn("context-management: Failed to archive messages:", err);
+      console.warn("context: Failed to archive messages:", err);
     }
 
     // Store checkpoint in DB
@@ -333,9 +354,7 @@ export const contextManagement: AgentPlugin = {
         role: "assistant",
         content: `[Conversation Summary]\n${summary}`,
       },
-      ...toKeep.filter((m) => m.role !== "system"),
+      ...toKeep.filter((m: ChatMessage) => m.role !== "system"),
     ]);
   },
 };
-
-export default contextManagement;

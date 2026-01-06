@@ -19,6 +19,7 @@ import { Store } from "./store";
 import { PersistedObject } from "../persisted";
 import { AgentFileSystem } from "../fs";
 import { ModelPlanBuilder } from "../plan";
+import { DEFAULT_MAX_ITERATIONS, MAX_TOOLS_PER_TICK } from "../config";
 
 export type Info = {
   threadId: string;
@@ -29,8 +30,6 @@ export type Info = {
   pendingToolCalls?: ToolCall[];
   blueprint?: AgentBlueprint;
 };
-
-const MAX_TOOLS_PER_TICK = 25;
 export abstract class HubAgent<
   Env extends AgentEnv = AgentEnv,
 > extends Agent<Env> {
@@ -55,10 +54,14 @@ export abstract class HubAgent<
       prefix: "_runState",
       defaults: {
         status: "registered",
+        step: 0,
       },
     });
     this.vars = PersistedObject<Record<string, unknown>>(kv, {
       prefix: "_vars",
+      defaults: {
+        MAX_ITERATIONS: DEFAULT_MAX_ITERATIONS,
+      },
     });
   }
 
@@ -101,11 +104,15 @@ export abstract class HubAgent<
     if (this._fs) return this._fs;
 
     const bucket = this.env.FS;
-    if (!bucket) throw new Error("R2 bucket not configured. Set FS binding in wrangler.jsonc.");
+    if (!bucket)
+      throw new Error(
+        "R2 bucket not configured. Set FS binding in wrangler.jsonc."
+      );
 
     const agencyId = this.info.agencyId;
     const agentId = this.info.threadId;
-    if (!agencyId || !agentId) throw new Error("Agent identity not set. Call registerThread first.");
+    if (!agencyId || !agentId)
+      throw new Error("Agent identity not set. Call registerThread first.");
 
     this._fs = new AgentFileSystem(bucket, { agencyId, agentId });
     return this._fs;
@@ -238,6 +245,19 @@ export abstract class HubAgent<
     try {
       if (this.runState.status !== "running") return;
 
+      // MAX_ITERATIONS: undefined = use default (200), 0 = disabled, >0 = custom limit
+      const maxIterations = this.vars.MAX_ITERATIONS as number | undefined;
+      const iterationLimit = maxIterations === 0 ? Infinity : (maxIterations ?? DEFAULT_MAX_ITERATIONS);
+      if (this.runState.step >= iterationLimit) {
+        this.runState.status = "error";
+        this.runState.reason = `Maximum iterations exceeded (${iterationLimit})`;
+        this.emit(AgentEventType.AGENT_ERROR, {
+          error: this.runState.reason,
+          step: this.runState.step,
+        });
+        return;
+      }
+
       this.emit(AgentEventType.RUN_TICK, {
         step: this.runState.step,
       });
@@ -271,8 +291,20 @@ export abstract class HubAgent<
 
         if (!toolCalls.length) {
           this.runState.status = "completed";
-          for (const plugin of this.plugins)
-            await plugin.onRunComplete?.(this.pluginContext, { final: reply });
+
+          // Call plugin hooks with error protection
+          for (const plugin of this.plugins) {
+            try {
+              await plugin.onRunComplete?.(this.pluginContext, {
+                final: reply,
+              });
+            } catch (pluginError) {
+              console.error(
+                `Plugin ${plugin.name} onRunComplete error:`,
+                pluginError
+              );
+            }
+          }
 
           this.emit(AgentEventType.AGENT_COMPLETED, { result: reply });
           return;
@@ -442,7 +474,13 @@ export abstract class HubAgent<
 
     const seq = this.store.addEvent(evt);
     const event = { ...evt, seq };
-    this.plugins.forEach((p) => p.onEvent?.(this.pluginContext, event));
+    for (const p of this.plugins) {
+      try {
+        p.onEvent?.(this.pluginContext, event);
+      } catch (e) {
+        console.error(`Plugin ${p.name} onEvent error:`, e);
+      }
+    }
     this.broadcast(JSON.stringify(event));
   }
 }

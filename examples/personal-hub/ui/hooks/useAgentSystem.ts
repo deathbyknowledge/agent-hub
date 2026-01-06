@@ -15,7 +15,7 @@ import {
   type WebSocketEvent,
   type McpServerConfig,
   type AddMcpServerRequest,
-} from "agent-hub/client";
+} from "agents-hub/client";
 
 // Get base URL from current location
 function getBaseUrl(): string {

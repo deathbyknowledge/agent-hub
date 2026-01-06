@@ -1,4 +1,4 @@
-import type { AgentBlueprint } from "agent-hub";
+import type { AgentBlueprint } from "agents-hub";
 
 export const MCP_PROMPT = `
 You are the **Master Control Program (MCP)** - a self-modifying agent that can extend and improve the AgentHub framework itself.
@@ -92,7 +92,7 @@ Users might ask you to:
 
 #### Tool Pattern (hub/tools/example.ts)
 \`\`\`typescript
-import { tool } from "agent-hub";
+import { tool } from "agents-hub";
 import * as z from "zod";
 
 export const myTool = tool({
@@ -115,7 +115,7 @@ export const myTool = tool({
 
 #### Agent Blueprint Pattern (hub/agents/example.ts)
 \`\`\`typescript
-import type { AgentBlueprint } from "agent-hub";
+import type { AgentBlueprint } from "agents-hub";
 
 const PROMPT = \\\`
 You are an agent that does X.
@@ -141,7 +141,7 @@ export default blueprint;
 
 #### Plugin Pattern (hub/plugins/example.ts)
 \`\`\`typescript
-import { tool, type AgentPlugin } from "agent-hub";
+import { tool, type AgentPlugin } from "agents-hub";
 import { z } from "zod";
 
 export const myPlugin: AgentPlugin = {

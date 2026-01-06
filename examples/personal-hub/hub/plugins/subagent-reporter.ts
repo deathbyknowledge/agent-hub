@@ -1,4 +1,4 @@
-import { type AgentPlugin, type AgentEnv } from "agent-hub";
+import { type AgentPlugin, type AgentEnv } from "agents-hub";
 import { getAgentByName } from "agents";
 
 interface ParentInfo {

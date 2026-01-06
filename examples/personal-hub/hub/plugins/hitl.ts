@@ -1,2 +1,2 @@
 // Re-export from library
-export { hitl } from "agent-hub/plugins";
+export { hitl } from "agents-hub/plugins";

@@ -1,5 +1,5 @@
 import { useState, useMemo, createContext, useContext } from "react";
-import type { AgentEvent } from "agent-hub/client";
+import type { AgentEvent } from "agents-hub/client";
 import { cn } from "../lib/utils";
 
 // ============================================================================

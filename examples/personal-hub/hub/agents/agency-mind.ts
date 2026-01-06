@@ -1,4 +1,4 @@
-import type { AgentBlueprint } from "agent-hub";
+import type { AgentBlueprint } from "agents-hub";
 
 const AGENCY_MIND_PROMPT = `
 # Agency Mind

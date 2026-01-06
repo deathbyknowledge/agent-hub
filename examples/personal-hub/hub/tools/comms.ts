@@ -1,4 +1,4 @@
-import { tool } from "agent-hub";
+import { tool } from "agents-hub";
 import * as z from "zod";
 
 export const sendGChatMessageTool = tool({

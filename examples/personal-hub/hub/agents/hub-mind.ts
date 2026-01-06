@@ -14,7 +14,7 @@
  * This is a system blueprint (prefixed with _) and is not shown in the
  * regular blueprint picker. It lives in a special "_system" agency.
  */
-import { type AgentBlueprint } from "agent-hub";
+import { type AgentBlueprint } from "agents-hub";
 
 export const hubMind: AgentBlueprint = {
   name: "_hub-mind",

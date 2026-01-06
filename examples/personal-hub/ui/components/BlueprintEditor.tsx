@@ -4,7 +4,7 @@ import { Button } from "./Button";
 import { ConfirmModal } from "./ConfirmModal";
 import { Select } from "./Select";
 import { VarEditor } from "./VarEditor";
-import type { AgentBlueprint, PluginInfo, ToolInfo } from "agent-hub/client";
+import type { AgentBlueprint, PluginInfo, ToolInfo } from "agents-hub/client";
 
 interface BlueprintEditorProps {
   blueprints: AgentBlueprint[];

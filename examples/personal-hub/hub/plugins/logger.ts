@@ -1,2 +1,2 @@
 // Re-export from library
-export { logger } from "agent-hub/plugins";
+export { logger } from "agents-hub/plugins";

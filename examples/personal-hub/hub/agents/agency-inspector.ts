@@ -1,4 +1,4 @@
-import type { AgentBlueprint } from "agent-hub";
+import type { AgentBlueprint } from "agents-hub";
 
 const INSPECTOR_PROMPT = `
 # Agency Inspector

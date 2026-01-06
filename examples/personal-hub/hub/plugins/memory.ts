@@ -1,5 +1,5 @@
 import { HNSW } from "hnsw";
-import { tool, z, type AgentPlugin, type AgentFileSystem } from "agent-hub";
+import { tool, z, type AgentPlugin, type AgentFileSystem } from "agents-hub";
 
 type MemoryEntry = {
   content: string;

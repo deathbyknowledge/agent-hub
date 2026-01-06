@@ -17,7 +17,7 @@ import type {
   VarHint,
   McpServerConfig,
   AddMcpServerRequest,
-} from "agent-hub/client";
+} from "agents-hub/client";
 
 export interface MemoryDisk {
   name: string;
@@ -555,8 +555,12 @@ function ScheduleRunsModal({
 
 // Built-in runtime variables help dropdown
 const BUILTIN_VARS = [
+  // LLM Provider
   { name: "LLM_API_KEY", description: "API key for the LLM provider", required: true },
-  { name: "LLM_BASE_URL", description: "Base URL for the LLM API endpoint", required: false },
+  { name: "LLM_API_BASE", description: "Base URL for the LLM API endpoint (default: OpenAI)", required: false },
+  { name: "DEFAULT_MODEL", description: "Default model when not specified in blueprint", required: false },
+  // Agent Loop
+  { name: "MAX_ITERATIONS", description: "Max agent loop iterations (default: 200, 0 = disabled)", required: false },
 ];
 
 function BuiltInVarsHelp({ vars }: { vars: Record<string, unknown> }) {

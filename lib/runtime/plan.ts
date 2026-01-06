@@ -45,8 +45,9 @@ export class ModelPlanBuilder {
 
     const toolDefs = Object.values(this.agent.tools).map((tool) => tool.meta);
 
-    // Use overridden messages if set, otherwise default from store
+    // Use overridden messages if set by a plugin (e.g., context), otherwise default from store
     const messages = this._messages ?? this.agent.messages.filter((m) => m.role !== "system");
+    
     return {
       model: this._model ?? this.agent.model ?? "openai:gpt-4.1",
       systemPrompt,
