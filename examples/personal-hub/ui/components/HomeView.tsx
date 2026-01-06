@@ -235,12 +235,13 @@ function UserMessage({
     <div className="mb-4 px-3 sm:px-4 flex flex-col items-end">
       <div className="flex items-center gap-2 mb-1">
         {target && (
-          <span className="text-[10px] text-white/40 uppercase">→ {target}</span>
+          <span className="text-[10px] text-white/40 uppercase">{target} {'<-'}</span>
         )}
         <span className="text-[10px] uppercase tracking-wider text-white/70 font-medium">
           YOU
         </span>
       </div>
+
 
       {item.content && (
         <div
@@ -628,7 +629,8 @@ interface HomeViewProps {
   metrics: DashboardMetrics;
   activityItems: ActivityItem[];
   onSendMessage: (target: string, message: string) => Promise<void>;
-  onCreateAgent: (blueprintName: string) => Promise<void>;
+  /** Create a new agent from blueprint. If message is provided, send it after creation. */
+  onCreateAgent: (blueprintName: string, message?: string) => Promise<void>;
   onMenuClick?: () => void;
 }
 
@@ -675,8 +677,10 @@ export function HomeView({
       setLastTarget(target);
 
       if (target.startsWith("new:")) {
+        // Spawn new agent from blueprint, then send the message
+        // This keeps user in the command center instead of navigating away
         const blueprintName = target.slice(4);
-        await onCreateAgent(blueprintName);
+        await onCreateAgent(blueprintName, message);
         return;
       }
 

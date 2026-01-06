@@ -538,6 +538,7 @@ function SettingsRoute({
     schedules,
     vars,
     memoryDisks,
+    mcpServers,
     refreshSchedules,
     createSchedule,
     deleteSchedule,
@@ -560,6 +561,10 @@ function SettingsRoute({
     writeFile,
     deleteFile,
     deleteAgency,
+    addMcpServer,
+    removeMcpServer,
+    retryMcpServer,
+    refreshMcpServers,
   } = useAgency(agencyId);
   const { agencies } = useAgencies();
   const { plugins, tools } = usePlugins();
@@ -625,6 +630,11 @@ function SettingsRoute({
           writeFile={writeFile}
           deleteFile={deleteFile}
           onDeleteAgency={() => setShowDeleteAgency(true)}
+          mcpServers={mcpServers}
+          onAddMcpServer={addMcpServer}
+          onRemoveMcpServer={removeMcpServer}
+          onRetryMcpServer={retryMcpServer}
+          onRefreshMcpServers={refreshMcpServers}
         />
       </div>
 
@@ -653,15 +663,13 @@ function SettingsRoute({
 function HomeRoute({
   agencyId,
   onMenuClick,
-  onCreateAgent,
 }: {
   agencyId: string;
   onMenuClick?: () => void;
-  onCreateAgent: (blueprintName: string) => Promise<void>;
 }) {
   const { agencies } = useAgencies();
   const { agents, blueprints, spawnAgent, getOrCreateMind, sendMessageToAgent } = useAgency(agencyId);
-  const { items: activityItems, addUserMessage, refresh: refreshActivity } = useActivityFeed(agencyId);
+  const { items: activityItems, addUserMessage, refresh: refreshActivity, subscribeToAgent } = useActivityFeed(agencyId);
   const { metrics, subscribeToNewAgents } = useAgencyMetrics(agencyId);
   const [, navigate] = useLocation();
 
@@ -726,31 +734,48 @@ function HomeRoute({
         targetAgentId = agent.id;
       }
 
+      // If we created a new agent, subscribe to it for real-time updates
+      if (isNewAgent) {
+        subscribeToAgent(targetAgentId);
+        subscribeToNewAgents();
+      }
+
       // Add optimistic update to activity feed
       addUserMessage(target, message, targetAgentId);
 
       // Actually send the message to the agent
       await sendMessageToAgent(targetAgentId, message);
 
-      // If we created a new agent, subscribe to it for metrics/activity updates
-      if (isNewAgent) {
-        subscribeToNewAgents();
-      }
-
       // Refresh activity feed to pick up any immediate responses
       // (WebSocket will handle real-time updates after this)
       setTimeout(() => refreshActivity(), 1000);
     },
-    [agents, getOrCreateMind, addUserMessage, sendMessageToAgent, subscribeToNewAgents, refreshActivity]
+    [agents, getOrCreateMind, addUserMessage, sendMessageToAgent, subscribeToAgent, subscribeToNewAgents, refreshActivity]
   );
 
   // Handle creating new agent from blueprint
+  // If message is provided, send it to the agent and stay in command center
   const handleCreateAgent = useCallback(
-    async (blueprintName: string) => {
+    async (blueprintName: string, message?: string) => {
       const agent = await spawnAgent(blueprintName);
-      navigate(`/${agencyId}/agent/${agent.id}`);
+
+      if (message) {
+        // Subscribe to the new agent's WebSocket for real-time updates
+        subscribeToAgent(agent.id);
+        subscribeToNewAgents();
+
+        // Send message and stay in command center
+        addUserMessage(blueprintName, message, agent.id);
+        await sendMessageToAgent(agent.id, message);
+
+        // Refresh activity feed to pick up any immediate responses
+        setTimeout(() => refreshActivity(), 1000);
+      } else {
+        // Navigate to agent page when no initial message
+        navigate(`/${agencyId}/agent/${agent.id}`);
+      }
     },
-    [agencyId, spawnAgent, navigate]
+    [agencyId, spawnAgent, navigate, addUserMessage, sendMessageToAgent, subscribeToAgent, subscribeToNewAgents, refreshActivity]
   );
 
   return (
@@ -815,11 +840,9 @@ function EmptyState({
 function MainContent({
   agencyId,
   onMenuClick,
-  onCreateAgent,
 }: {
   agencyId: string | null;
   onMenuClick: () => void;
-  onCreateAgent: (blueprintName: string) => Promise<void>;
 }) {
   // Match routes
   const [matchAgent, paramsAgent] = useRoute("/:agencyId/agent/:agentId");
@@ -862,7 +885,6 @@ function MainContent({
       <HomeRoute
         agencyId={agencyId}
         onMenuClick={onMenuClick}
-        onCreateAgent={onCreateAgent}
       />
     );
   }
@@ -1073,7 +1095,6 @@ export default function App() {
         <MainContent
           agencyId={agencyId}
           onMenuClick={() => setIsMobileMenuOpen(true)}
-          onCreateAgent={handleCreateAgent}
         />
       </div>
 
