@@ -391,4 +391,108 @@ describe("Agency", () => {
       expect(listData.schedules).toHaveLength(0);
     });
   });
+
+  describe("mcp", () => {
+    it("should list MCP servers (initially empty)", async () => {
+      const agencyStub = await getAgentByName(env.AGENCY, "test-agency-mcp-empty");
+
+      const res = await agencyStub.fetch(
+        new Request("http://do/mcp", { method: "GET" })
+      );
+
+      expect(res.ok).toBe(true);
+      const data = await res.json() as { servers: unknown[] };
+      expect(data.servers).toEqual([]);
+    });
+
+    it("should list MCP tools (empty when no servers connected)", async () => {
+      const agencyStub = await getAgentByName(env.AGENCY, "test-agency-mcp-tools-empty");
+
+      const res = await agencyStub.fetch(
+        new Request("http://do/mcp/tools", { method: "GET" })
+      );
+
+      expect(res.ok).toBe(true);
+      const data = await res.json() as { tools: unknown[] };
+      expect(data.tools).toEqual([]);
+    });
+
+    it("should reject MCP tool call when server not found", async () => {
+      const agencyStub = await getAgentByName(env.AGENCY, "test-agency-mcp-call-notfound");
+
+      const res = await agencyStub.fetch(
+        new Request("http://do/mcp/call", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            serverId: "nonexistent",
+            toolName: "test_tool",
+            arguments: {},
+          }),
+        })
+      );
+
+      expect(res.ok).toBe(false);
+      expect(res.status).toBe(404);
+    });
+
+    it("should validate add MCP server request", async () => {
+      const agencyStub = await getAgentByName(env.AGENCY, "test-agency-mcp-add-invalid");
+
+      // Missing name
+      const res1 = await agencyStub.fetch(
+        new Request("http://do/mcp", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ url: "https://mcp.example.com/sse" }),
+        })
+      );
+      expect(res1.ok).toBe(false);
+      expect(res1.status).toBe(400);
+
+      // Missing url
+      const res2 = await agencyStub.fetch(
+        new Request("http://do/mcp", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "test" }),
+        })
+      );
+      expect(res2.ok).toBe(false);
+      expect(res2.status).toBe(400);
+
+      // Invalid url
+      const res3 = await agencyStub.fetch(
+        new Request("http://do/mcp", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "test", url: "not-a-url" }),
+        })
+      );
+      expect(res3.ok).toBe(false);
+      expect(res3.status).toBe(400);
+    });
+
+    it("should return 404 when removing nonexistent MCP server", async () => {
+      const agencyStub = await getAgentByName(env.AGENCY, "test-agency-mcp-remove-notfound");
+
+      const res = await agencyStub.fetch(
+        new Request("http://do/mcp/nonexistent", { method: "DELETE" })
+      );
+
+      expect(res.ok).toBe(false);
+      expect(res.status).toBe(404);
+    });
+
+    it("should return 404 when retrying nonexistent MCP server", async () => {
+      const agencyStub = await getAgentByName(env.AGENCY, "test-agency-mcp-retry-notfound");
+
+      const res = await agencyStub.fetch(
+        new Request("http://do/mcp/nonexistent/retry", { method: "POST" })
+      );
+
+      expect(res.ok).toBe(false);
+      expect(res.status).toBe(404);
+    });
+  });
 });

@@ -1,6 +1,6 @@
 import { getAgentByName } from "agents";
 import { HubAgent } from "./agent";
-import { Agency } from "./agency";
+import { Agency, type McpToolCallRequest, type McpToolCallResponse } from "./agency";
 import { AgentEventType } from "./events";
 import { makeChatCompletions, type Provider } from "./providers";
 import type {
@@ -9,8 +9,144 @@ import type {
   AgentBlueprint,
   ThreadMetadata,
   AgentEnv,
+  ToolContext,
 } from "./types";
 import { createHandler, type HandlerOptions } from "./worker";
+
+// MCP tool info from Agency (matches MCPServersState.tools shape)
+interface McpToolInfo {
+  serverId: string;
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+/**
+ * Create a proxy tool that calls an MCP tool via the Agency.
+ * The Agency holds the actual MCP connection and handles the call.
+ */
+function createMcpProxyTool(toolInfo: McpToolInfo, agencyId: string): Tool<Record<string, unknown>> {
+  // Prefix tool name with server ID to avoid collisions
+  const toolName = `mcp_${toolInfo.serverId}_${toolInfo.name}`;
+  
+  return {
+    meta: {
+      name: toolName,
+      description: toolInfo.description || `MCP tool: ${toolInfo.name} (server: ${toolInfo.serverId})`,
+      parameters: toolInfo.inputSchema || { type: "object", properties: {} },
+    },
+    tags: ["mcp", `mcp:${toolInfo.serverId}`],
+    execute: async (args: Record<string, unknown>, ctx: ToolContext) => {
+      const agencyStub = await getAgentByName(ctx.agent.exports.Agency, agencyId);
+      
+      const request: McpToolCallRequest = {
+        serverId: toolInfo.serverId,
+        toolName: toolInfo.name,
+        arguments: args,
+      };
+      
+      const res = await agencyStub.fetch(
+        new Request("http://do/mcp/call", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        })
+      );
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        // TODO: Add retry logic for transient failures
+        throw new Error(`MCP tool call failed: ${errorText}`);
+      }
+      
+      const result = await res.json<McpToolCallResponse>();
+      
+      if (result.isError) {
+        const errorContent = result.content?.find(c => c.type === "text");
+        throw new Error(errorContent?.text || "MCP tool returned an error");
+      }
+      
+      // Format the result for the model
+      if (result.content) {
+        const textParts = result.content
+          .filter(c => c.type === "text")
+          .map(c => c.text)
+          .filter(Boolean);
+        return textParts.join("\n") || JSON.stringify(result.content);
+      }
+      
+      if (result.toolResult !== undefined) {
+        return typeof result.toolResult === "string" 
+          ? result.toolResult 
+          : JSON.stringify(result.toolResult);
+      }
+      
+      return "Tool completed with no output";
+    },
+  };
+}
+
+/**
+ * Filter MCP tools based on capability patterns.
+ * Patterns:
+ *   - "mcp:*" → all MCP tools from all servers
+ *   - "mcp:servername" → all tools from a specific server
+ *   - "mcp:servername:toolname" → specific tool from a server
+ */
+function filterMcpToolsByCapabilities(
+  tools: McpToolInfo[],
+  capabilities: string[]
+): McpToolInfo[] {
+  const mcpCaps = capabilities.filter(c => c.startsWith("mcp:"));
+  if (mcpCaps.length === 0) return [];
+  
+  const selected: McpToolInfo[] = [];
+  const seen = new Set<string>();
+  
+  for (const cap of mcpCaps) {
+    const parts = cap.split(":");
+    
+    if (parts[1] === "*") {
+      // mcp:* → all tools
+      for (const tool of tools) {
+        const key = `${tool.serverId}:${tool.name}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          selected.push(tool);
+        }
+      }
+    } else if (parts.length === 2) {
+      // mcp:servername → all tools from that server
+      const serverName = parts[1];
+      for (const tool of tools) {
+        if (tool.serverId === serverName) {
+          const key = `${tool.serverId}:${tool.name}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            selected.push(tool);
+          }
+        }
+      }
+    } else if (parts.length >= 3) {
+      // mcp:servername:toolname → specific tool
+      const serverName = parts[1];
+      const toolName = parts.slice(2).join(":"); // Handle colons in tool name
+      for (const tool of tools) {
+        if (tool.serverId === serverName && tool.name === toolName) {
+          const key = `${tool.serverId}:${tool.name}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            selected.push(tool);
+          }
+        }
+      }
+    }
+  }
+  
+  return selected;
+}
+
+
 
 type AgentHubOptions = {
   defaultModel?: string;
@@ -252,12 +388,12 @@ export class AgentHub {
         }
 
         let bp: AgentBlueprint | undefined;
+        const agencyStub = await getAgentByName(
+          this.exports.Agency,
+          agencyId
+        );
 
         try {
-          const agencyStub = await getAgentByName(
-            this.exports.Agency,
-            agencyId
-          );
           const res = await agencyStub.fetch(
             `http://do/internal/blueprint/${type}`
           );
@@ -282,6 +418,48 @@ export class AgentHub {
         }
       }
 
+      /**
+       * Refresh MCP tools from the Agency.
+       * Called before each model invocation to ensure tools are available
+       * even after agent eviction/restart.
+       */
+      async refreshMcpTools(): Promise<void> {
+        const agencyId = this.info.agencyId;
+        if (!agencyId) return;
+
+        const blueprint = this.blueprint;
+        const hasMcpCaps = blueprint.capabilities.some(c => c.startsWith("mcp:"));
+        if (!hasMcpCaps) return;
+
+        try {
+          const agencyStub = await getAgentByName(this.exports.Agency, agencyId);
+          const mcpToolsRes = await agencyStub.fetch("http://do/mcp/tools");
+          
+          if (!mcpToolsRes.ok) {
+            console.warn("[MCP] Failed to fetch tools:", mcpToolsRes.status);
+            return;
+          }
+          
+          const { tools: mcpTools } = await mcpToolsRes.json<{ tools: McpToolInfo[] }>();
+          const filteredTools = filterMcpToolsByCapabilities(mcpTools, blueprint.capabilities);
+          
+          // Clear old MCP tools
+          for (const key of Object.keys(this._tools)) {
+            if (key.startsWith("mcp_")) {
+              delete this._tools[key];
+            }
+          }
+          
+          // Register new MCP tools
+          for (const toolInfo of filteredTools) {
+            const proxyTool = createMcpProxyTool(toolInfo, agencyId);
+            this._tools[proxyTool.meta.name] = proxyTool;
+          }
+        } catch (e) {
+          console.warn("[MCP] Failed to refresh tools:", e);
+        }
+      }
+
       get tools() {
         const blueprint = this.blueprint;
         const tools = toolRegistry.selectByCapabilities(blueprint.capabilities);
@@ -293,7 +471,22 @@ export class AgentHub {
 
       get plugins() {
         const blueprint = this.blueprint;
-        return pluginRegistry.selectByCapabilities(blueprint.capabilities);
+        const basePlugins = pluginRegistry.selectByCapabilities(blueprint.capabilities);
+        
+        // Add internal MCP injector plugin if blueprint has MCP capabilities
+        const hasMcpCaps = blueprint.capabilities.some(c => c.startsWith("mcp:"));
+        if (hasMcpCaps) {
+          const mcpInjectorPlugin: AgentPlugin = {
+            name: "_mcp-injector",
+            tags: [],
+            beforeModel: async () => {
+              await this.refreshMcpTools();
+            },
+          };
+          return [mcpInjectorPlugin, ...basePlugins];
+        }
+        
+        return basePlugins;
       }
 
       get provider(): Provider {

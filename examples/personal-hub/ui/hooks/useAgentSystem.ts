@@ -13,6 +13,8 @@ import {
   type RunState,
   type AgentEvent,
   type WebSocketEvent,
+  type McpServerConfig,
+  type AddMcpServerRequest,
 } from "agent-hub/client";
 
 // Get base URL from current location
@@ -60,6 +62,7 @@ export const queryKeys = {
   schedules: (agencyId: string) => ["schedules", agencyId] as const,
   vars: (agencyId: string) => ["vars", agencyId] as const,
   memoryDisks: (agencyId: string) => ["memoryDisks", agencyId] as const,
+  mcpServers: (agencyId: string) => ["mcpServers", agencyId] as const,
 };
 
 // ============================================================================
@@ -270,6 +273,15 @@ export function useAgency(agencyId: string | null) {
     enabled: !!agencyId,
   });
 
+  const { data: mcpServers = [] } = useQuery({
+    queryKey: queryKeys.mcpServers(agencyId!),
+    queryFn: async () => {
+      const { servers } = await client!.listMcpServers();
+      return servers;
+    },
+    enabled: !!agencyId,
+  });
+
   // Mutations
   const spawnMutation = useMutation({
     mutationFn: async (agentType: string) => client!.spawnAgent({ agentType }),
@@ -413,6 +425,36 @@ export function useAgency(agencyId: string | null) {
       }),
   });
 
+  const addMcpServerMutation = useMutation({
+    mutationFn: async (request: AddMcpServerRequest) => {
+      const { server } = await client!.addMcpServer(request);
+      return server;
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.mcpServers(agencyId!),
+      }),
+  });
+
+  const removeMcpServerMutation = useMutation({
+    mutationFn: (serverId: string) => client!.removeMcpServer(serverId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.mcpServers(agencyId!),
+      }),
+  });
+
+  const retryMcpServerMutation = useMutation({
+    mutationFn: async (serverId: string) => {
+      const { server } = await client!.retryMcpServer(serverId);
+      return server;
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.mcpServers(agencyId!),
+      }),
+  });
+
   /**
    * Send a message to a specific agent without needing a WebSocket connection.
    * Useful for the command center where we message multiple agents.
@@ -434,6 +476,7 @@ export function useAgency(agencyId: string | null) {
     schedules,
     vars,
     memoryDisks,
+    mcpServers,
     loading,
     error: error as Error | null,
     sendMessageToAgent,
@@ -452,6 +495,10 @@ export function useAgency(agencyId: string | null) {
     refreshMemoryDisks: () =>
       queryClient.invalidateQueries({
         queryKey: queryKeys.memoryDisks(agencyId!),
+      }),
+    refreshMcpServers: () =>
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.mcpServers(agencyId!),
       }),
     spawnAgent: spawnMutation.mutateAsync,
     listDirectory,
@@ -485,6 +532,9 @@ export function useAgency(agencyId: string | null) {
     createBlueprint: blueprintMutation.mutateAsync,
     updateBlueprint: blueprintMutation.mutateAsync,
     deleteBlueprint: deleteBlueprintMutation.mutateAsync,
+    addMcpServer: addMcpServerMutation.mutateAsync,
+    removeMcpServer: removeMcpServerMutation.mutateAsync,
+    retryMcpServer: retryMcpServerMutation.mutateAsync,
     /**
      * Get or create the Agency Mind agent for this agency.
      * Returns the agent ID of the existing or newly spawned mind.
@@ -923,11 +973,38 @@ export function useActivityFeed(agencyId: string | null) {
     setItems((prev) => [...prev, newItem]);
   }, []);
 
+  // Subscribe to a specific new agent's WebSocket (for newly spawned agents)
+  const subscribeToAgent = useCallback(
+    (agentId: string) => {
+      if (!agencyId || wsRefs.current.has(agentId)) return;
+
+      try {
+        const client = getClient().agency(agencyId);
+        const agentClient = client.agent(agentId);
+        const connection = agentClient.connect({
+          onEvent: () => {
+            fetchActivity();
+          },
+          onOpen: () => {},
+          onClose: () => {
+            wsRefs.current.delete(agentId);
+          },
+          onError: () => {},
+        });
+        wsRefs.current.set(agentId, connection);
+      } catch (e) {
+        console.error("Failed to subscribe to agent:", agentId, e);
+      }
+    },
+    [agencyId, fetchActivity]
+  );
+
   return {
     items,
     isLoading,
     refresh: fetchActivity,
     addUserMessage,
+    subscribeToAgent,
   };
 }
 

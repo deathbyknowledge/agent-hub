@@ -192,6 +192,47 @@ export interface GetPluginsResponse {
   tools: ToolInfo[];
 }
 
+// ============================================================
+// MCP Server Types
+// ============================================================
+
+// SDK states: "authenticating" | "connecting" | "connected" | "discovering" | "ready" | "failed"
+export type McpServerStatus = "authenticating" | "connecting" | "connected" | "discovering" | "ready" | "failed";
+
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  url: string;
+  status: McpServerStatus;
+  authUrl?: string;
+  error?: string;
+}
+
+export interface AddMcpServerRequest {
+  name: string;
+  url: string;
+  headers?: Record<string, string>;
+}
+
+export interface McpToolInfo {
+  serverId: string;
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+export interface ListMcpToolsResponse {
+  tools: McpToolInfo[];
+}
+
+export interface ListMcpServersResponse {
+  servers: McpServerConfig[];
+}
+
+export interface McpServerResponse {
+  server: McpServerConfig;
+}
+
 export interface CreateAgencyResponse extends AgencyMeta {}
 
 export interface ListBlueprintsResponse {
@@ -713,6 +754,28 @@ export class AgencyClient {
 
   async deleteVar(key: string): Promise<OkResponse> {
     return this.request<OkResponse>("DELETE", `/vars/${encodeURIComponent(key)}`);
+  }
+
+  // MCP Server methods
+
+  async listMcpServers(): Promise<ListMcpServersResponse> {
+    return this.request<ListMcpServersResponse>("GET", "/mcp");
+  }
+
+  async addMcpServer(request: AddMcpServerRequest): Promise<McpServerResponse> {
+    return this.request<McpServerResponse>("POST", "/mcp", request);
+  }
+
+  async removeMcpServer(serverId: string): Promise<OkResponse> {
+    return this.request<OkResponse>("DELETE", `/mcp/${serverId}`);
+  }
+
+  async retryMcpServer(serverId: string): Promise<McpServerResponse> {
+    return this.request<McpServerResponse>("POST", `/mcp/${serverId}/retry`);
+  }
+
+  async listMcpTools(): Promise<ListMcpToolsResponse> {
+    return this.request<ListMcpToolsResponse>("GET", "/mcp/tools");
   }
 
   async deleteAgency(): Promise<OkResponse> {

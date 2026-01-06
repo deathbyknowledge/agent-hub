@@ -1,4 +1,4 @@
-import { Agent, getAgentByName, type AgentContext } from "agents";
+import { Agent, getAgentByName, type AgentContext, type MCPServersState } from "agents";
 import { Router, type IRequest } from "itty-router";
 import { parseCronExpression } from "cron-schedule";
 import type {
@@ -9,6 +9,9 @@ import type {
   CfCtx,
 } from "./types";
 import { PersistedObject } from "./persisted";
+
+// Re-export MCPServersState for external use
+export type { MCPServersState };
 
 // ============================================================
 // Schedule Types
@@ -85,6 +88,35 @@ function validateBlueprint(bp: AgentBlueprint): string | null {
     return "Blueprint must have a prompt";
   }
   return null;
+}
+export type McpServerStatus = "authenticating" | "connecting" | "connected" | "discovering" | "ready" | "failed";
+
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  url: string;
+  status: McpServerStatus;
+  authUrl?: string;
+  error?: string;
+}
+
+export interface AddMcpServerRequest {
+  name: string;
+  url: string;
+  headers?: Record<string, string>;
+}
+
+export interface McpToolCallRequest {
+  serverId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface McpToolCallResponse {
+  content?: Array<{ type: string; text?: string; [key: string]: unknown }>;
+  toolResult?: unknown;
+  isError?: boolean;
+  [key: string]: unknown;
 }
 
 function validateSchedule(req: CreateScheduleRequest): string | null {
@@ -174,6 +206,14 @@ export class Agency extends Agent<AgentEnv> {
     router.get("/vars/:key", (req: IRequest) => this.handleGetVar(req.params.key));
     router.put("/vars/:key", (req: IRequest) => this.handleSetVar(req.params.key, req));
     router.delete("/vars/:key", (req: IRequest) => this.handleDeleteVar(req.params.key));
+
+    // MCP Servers (uses SDK's built-in MCP management)
+    router.get("/mcp", () => this.handleListMcpServers());
+    router.post("/mcp", (req: IRequest) => this.handleAddMcpServer(req));
+    router.delete("/mcp/:id", (req: IRequest) => this.handleRemoveMcpServer(req.params.id));
+    router.post("/mcp/:id/retry", (req: IRequest) => this.handleRetryMcpServer(req.params.id));
+    router.get("/mcp/tools", () => this.handleListMcpTools());
+    router.post("/mcp/call", (req: IRequest) => this.handleMcpToolCall(req));
 
     // Filesystem
     router.all("/fs/:path+", (req: IRequest) => this.handleFilesystem(req, req.params.path || ""));
@@ -326,6 +366,190 @@ export class Agency extends Agent<AgentEnv> {
     const decodedKey = decodeURIComponent(key);
     delete this.vars[decodedKey];
     return Response.json({ ok: true, key: decodedKey });
+  }
+
+  private handleListMcpServers(): Response {
+    // Use SDK's getMcpServers() which returns MCPServersState
+    const mcpState = this.getMcpServers();
+    const servers = this.convertMcpStateToServers(mcpState);
+    return Response.json({ servers });
+  }
+
+  private async handleAddMcpServer(req: Request): Promise<Response> {
+    const body = (await req.json()) as AddMcpServerRequest;
+
+    if (!body.name || typeof body.name !== "string") {
+      return new Response("Server must have a name", { status: 400 });
+    }
+    if (!body.url || typeof body.url !== "string") {
+      return new Response("Server must have a URL", { status: 400 });
+    }
+
+    // Validate URL
+    try {
+      new URL(body.url);
+    } catch {
+      return new Response("Invalid URL", { status: 400 });
+    }
+
+    try {
+      // Use SDK's addMcpServer - it returns { id, authUrl }
+      // Pass headers through transport options if provided (for token auth)
+      const result = await this.addMcpServer(
+        body.name,
+        body.url,
+        undefined, // callbackHost (auto-derived from request)
+        undefined, // agentsPrefix
+        body.headers ? { transport: { headers: body.headers } } : undefined
+      );
+      
+      // Get the full server state
+      const mcpState = this.getMcpServers();
+      const serverState = mcpState.servers[result.id];
+      
+      const server: McpServerConfig = {
+        id: result.id,
+        name: serverState?.name || body.name,
+        url: serverState?.server_url || body.url,
+        status: (serverState?.state || "connecting") as McpServerStatus,
+        authUrl: result.authUrl,
+      };
+
+      return Response.json({ server }, { status: 201 });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return new Response(`Failed to add MCP server: ${message}`, { status: 500 });
+    }
+  }
+
+  private async handleRemoveMcpServer(id: string): Promise<Response> {
+    const mcpState = this.getMcpServers();
+    if (!mcpState.servers[id]) {
+      return new Response("MCP server not found", { status: 404 });
+    }
+
+    try {
+      await this.removeMcpServer(id);
+      return Response.json({ ok: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return new Response(`Failed to remove MCP server: ${message}`, { status: 500 });
+    }
+  }
+
+  private async handleRetryMcpServer(id: string): Promise<Response> {
+    const mcpState = this.getMcpServers();
+    const serverState = mcpState.servers[id];
+    if (!serverState) {
+      return new Response("MCP server not found", { status: 404 });
+    }
+
+    try {
+      // Remove and re-add the server to retry connection
+      const name = serverState.name;
+      const url = serverState.server_url;
+      
+      await this.removeMcpServer(id);
+      const result = await this.addMcpServer(name, url);
+      
+      const newMcpState = this.getMcpServers();
+      const newServerState = newMcpState.servers[result.id];
+      
+      const server: McpServerConfig = {
+        id: result.id,
+        name: newServerState?.name || name,
+        url: newServerState?.server_url || url,
+        status: (newServerState?.state || "connecting") as McpServerStatus,
+        authUrl: result.authUrl,
+      };
+
+      return Response.json({ server });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return new Response(`Failed to retry MCP server: ${message}`, { status: 500 });
+    }
+  }
+
+  /**
+   * Call an MCP tool. Used by agents to proxy tool calls through the Agency.
+   */
+  private async handleMcpToolCall(req: Request): Promise<Response> {
+    const body = (await req.json()) as McpToolCallRequest;
+
+    if (!body.serverId || typeof body.serverId !== "string") {
+      return new Response("serverId is required", { status: 400 });
+    }
+    if (!body.toolName || typeof body.toolName !== "string") {
+      return new Response("toolName is required", { status: 400 });
+    }
+
+    const mcpState = this.getMcpServers();
+    const serverState = mcpState.servers[body.serverId];
+    
+    if (!serverState) {
+      return new Response(`MCP server '${body.serverId}' not found`, { status: 404 });
+    }
+    
+    if (serverState.state !== "ready") {
+      // TODO: Add retry logic for transient connection failures
+      return new Response(
+        `MCP server '${body.serverId}' is not ready (state: ${serverState.state})`,
+        { status: 503 }
+      );
+    }
+
+    try {
+      const result = await this.mcp.callTool({
+        serverId: body.serverId,
+        name: body.toolName,
+        arguments: body.arguments || {},
+      });
+
+      return Response.json(result satisfies McpToolCallResponse);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // TODO: Add retry logic for transient failures
+      return new Response(`MCP tool call failed: ${message}`, { status: 500 });
+    }
+  }
+
+  /**
+   * Get available MCP tools. Used by agents to discover tools from connected servers.
+   */
+  private handleListMcpTools(): Response {
+    const mcpState = this.getMcpServers();
+    
+    // Filter to only include tools from ready servers
+    const readyServerIds = new Set(
+      Object.entries(mcpState.servers)
+        .filter(([_, s]) => s.state === "ready")
+        .map(([id]) => id)
+    );
+
+    const tools = mcpState.tools.filter(t => readyServerIds.has(t.serverId));
+    
+    return Response.json({ tools });
+  }
+
+  /**
+   * Convert SDK's MCPServersState to our McpServerConfig array
+   */
+  private convertMcpStateToServers(mcpState: MCPServersState): McpServerConfig[] {
+    return Object.entries(mcpState.servers).map(([id, server]) => ({
+      id,
+      name: server.name,
+      url: server.server_url,
+      status: server.state as McpServerStatus,
+      authUrl: server.auth_url || undefined,
+      error: (server as { error?: string }).error,
+    }));
+  }
+
+  /**
+   * Get all configured MCP servers in our format.
+   */
+  listMcpServersConfig(): McpServerConfig[] {
+    return this.convertMcpStateToServers(this.getMcpServers());
   }
 
   // --- Internal Handlers ---
@@ -589,13 +813,20 @@ export class Agency extends Agent<AgentEnv> {
 
     const stub = await getAgentByName(this.exports.HubAgent, id);
 
+    // Include MCP server configs in vars for the agent (for capability-based tool injection)
+    const mcpServers = this.listMcpServersConfig();
+    const varsWithMcp = {
+      ...this.vars,
+      MCP_SERVERS: mcpServers.length > 0 ? mcpServers : undefined,
+    };
+
     const initPayload: ThreadMetadata = {
       id,
       createdAt: new Date(createdAt).toISOString(),
       agentType,
       request: requestContext ?? {},
       agencyId: this.agencyName,
-      vars: { ...this.vars },
+      vars: varsWithMcp,
     };
 
     const res = await stub.fetch(
@@ -1251,3 +1482,6 @@ function rowToRun(row: ScheduleRunRow): ScheduleRun {
     retryCount: row.retry_count,
   };
 }
+
+// Note: MCP server storage is handled by the SDK's this.addMcpServer() / this.getMcpServers()
+// No SQL row types needed.

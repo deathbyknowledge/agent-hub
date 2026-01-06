@@ -14,7 +14,9 @@ import type {
   AgentScheduleType,
   PluginInfo,
   ToolInfo,
-  VarHint
+  VarHint,
+  McpServerConfig,
+  AddMcpServerRequest,
 } from "agent-hub/client";
 
 export interface MemoryDisk {
@@ -56,6 +58,12 @@ interface SettingsViewProps {
   writeFile?: (path: string, content: string) => Promise<unknown>;
   deleteFile?: (path: string) => Promise<unknown>;
   onDeleteAgency?: () => void;
+  // MCP Servers
+  mcpServers?: McpServerConfig[];
+  onAddMcpServer?: (request: AddMcpServerRequest) => Promise<McpServerConfig>;
+  onRemoveMcpServer?: (serverId: string) => Promise<unknown>;
+  onRetryMcpServer?: (serverId: string) => Promise<McpServerConfig>;
+  onRefreshMcpServers?: () => Promise<unknown>;
 }
 
 // Format relative time
@@ -1059,7 +1067,257 @@ function MemoryDisksEditor({
   );
 }
 
-type SettingsTab = "blueprints" | "schedules" | "variables" | "memory" | "files";
+// MCP Server Status Badge
+// SDK states: "authenticating" | "connecting" | "connected" | "discovering" | "ready" | "failed"
+function McpStatusBadge({ status }: { status: McpServerConfig["status"] }) {
+  const styles: Record<string, string> = {
+    authenticating: "border-[#ffaa00] text-[#ffaa00]",
+    connecting: "border-[#00aaff] text-[#00aaff]",
+    connected: "border-[#00aaff] text-[#00aaff]",
+    discovering: "border-[#aa00ff] text-[#aa00ff]",
+    ready: "border-[#00ff00] text-[#00ff00]",
+    failed: "border-[#ff0000] text-[#ff0000]",
+  };
+
+  return (
+    <span
+      className={cn(
+        "px-1 py-0.5 border text-[10px] uppercase tracking-wider",
+        styles[status] || "border-white/30 text-white/30"
+      )}
+    >
+      {status}
+    </span>
+  );
+}
+
+// MCP Servers Editor component
+function McpServersEditor({
+  servers,
+  onAdd,
+  onRemove,
+  onRetry,
+  onRefresh,
+}: {
+  servers: McpServerConfig[];
+  onAdd: (request: AddMcpServerRequest) => Promise<McpServerConfig>;
+  onRemove: (serverId: string) => Promise<unknown>;
+  onRetry: (serverId: string) => Promise<McpServerConfig>;
+  onRefresh: () => Promise<unknown>;
+}) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newUrl, setNewUrl] = useState("");
+  const [newToken, setNewToken] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+
+  const handleAdd = async () => {
+    if (!newName.trim() || !newUrl.trim()) return;
+    setIsAdding(true);
+    try {
+      const result = await onAdd({
+        name: newName.trim(),
+        url: newUrl.trim(),
+        ...(newToken.trim() && {
+          headers: { Authorization: `Bearer ${newToken.trim()}` },
+        }),
+      });
+
+      // If server requires OAuth, open the auth URL in a popup
+      if (result.status === "authenticating" && result.authUrl) {
+        const popup = window.open(
+          result.authUrl,
+          "mcp-oauth",
+          "width=600,height=700,popup=yes"
+        );
+        if (popup) {
+          // Poll for popup close, then refresh
+          const interval = setInterval(() => {
+            if (popup.closed) {
+              clearInterval(interval);
+              onRefresh();
+            }
+          }, 500);
+        }
+      }
+
+      setNewName("");
+      setNewUrl("");
+      setNewToken("");
+      setShowAdd(false);
+    } catch (err) {
+      console.error("Failed to add MCP server:", err);
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleRetry = async (serverId: string) => {
+    try {
+      const result = await onRetry(serverId);
+      // Handle OAuth if needed
+      if (result.status === "authenticating" && result.authUrl) {
+        const popup = window.open(
+          result.authUrl,
+          "mcp-oauth",
+          "width=600,height=700,popup=yes"
+        );
+        if (popup) {
+          const interval = setInterval(() => {
+            if (popup.closed) {
+              clearInterval(interval);
+              onRefresh();
+            }
+          }, 500);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to retry MCP server:", err);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {servers.length === 0 && !showAdd ? (
+        <p className="text-sm text-neutral-400 py-4 text-center">
+          No MCP servers configured. Add one to extend agent capabilities.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {servers.map((server) => (
+            <div
+              key={server.id}
+              className="flex items-center gap-3 p-3 rounded-lg border border-neutral-200 dark:border-neutral-700"
+            >
+              <span className="text-neutral-400 shrink-0 text-xs">[MCP]</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                    {server.name}
+                  </span>
+                  <McpStatusBadge status={server.status} />
+                </div>
+                <div className="text-xs text-neutral-500 truncate">
+                  {server.url}
+                </div>
+                {server.error && (
+                  <div className="text-xs text-red-500 mt-1 truncate">
+                    {server.error}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {(server.status === "failed" || server.status === "authenticating") && (
+                  <button
+                    onClick={() => handleRetry(server.id)}
+                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+                    title={server.status === "authenticating" ? "Authenticate" : "Retry"}
+                  >
+                    <span className="text-xs">{server.status === "authenticating" ? "[🔑]" : "[↻]"}</span>
+                  </button>
+                )}
+                {deleteConfirm === server.id ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => {
+                        onRemove(server.id);
+                        setDeleteConfirm(null);
+                      }}
+                      className="p-1 rounded bg-red-100 dark:bg-red-900/30 text-red-600"
+                      title="Confirm delete"
+                    >
+                      <span className="text-xs">[OK]</span>
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirm(null)}
+                      className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 text-xs"
+                      title="Cancel"
+                    >
+                      [X]
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setDeleteConfirm(server.id)}
+                    className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-600 text-xs"
+                    title="Delete"
+                  >
+                    [X]
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAdd && (
+        <div className="p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 space-y-2">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Server name (e.g., github)"
+            className="w-full px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800"
+            autoFocus
+          />
+          <input
+            type="url"
+            value={newUrl}
+            onChange={(e) => setNewUrl(e.target.value)}
+            placeholder="Server URL (e.g., https://mcp.github.com/sse)"
+            className="w-full px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800"
+          />
+          <input
+            type="password"
+            value={newToken}
+            onChange={(e) => setNewToken(e.target.value)}
+            placeholder="Token (optional, for API key auth)"
+            className="w-full px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800"
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setShowAdd(false);
+                setNewName("");
+                setNewUrl("");
+                setNewToken("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleAdd}
+              disabled={!newName.trim() || !newUrl.trim() || isAdding}
+            >
+              {isAdding ? "Adding..." : "Add Server"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!showAdd && (
+        <div className="flex items-center gap-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<span className="text-xs">[+]</span>}
+            onClick={() => setShowAdd(true)}
+          >
+            Add MCP Server
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type SettingsTab = "blueprints" | "schedules" | "variables" | "memory" | "files" | "mcp";
 
 
 export function SettingsView({
@@ -1094,6 +1352,11 @@ export function SettingsView({
   writeFile,
   deleteFile,
   onDeleteAgency,
+  mcpServers = [],
+  onAddMcpServer,
+  onRemoveMcpServer,
+  onRetryMcpServer,
+  onRefreshMcpServers,
 }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("blueprints");
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -1131,6 +1394,7 @@ export function SettingsView({
     { id: "blueprints", label: "[BPT]", color: "text-[#ffaa00]" },
     { id: "variables", label: "[VAR]", color: "text-[#00ff00]" },
     { id: "memory", label: "[MEM]", color: "text-[#00aaff]" },
+    { id: "mcp", label: "[MCP]", color: "text-[#ff00ff]" },
     { id: "files", label: "[FS]", color: "text-white" },
     { id: "schedules", label: "[SCH]", color: "text-white/50" },
   ];
@@ -1261,6 +1525,58 @@ export function SettingsView({
             showPathInput
             headerLabel="Filesystem"
           />
+        </LayerCardContent>
+      </LayerCard>
+        )}
+
+        {/* MCP Tab */}
+        {activeTab === "mcp" && (
+      <LayerCard>
+        <LayerCardFooter className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-[#ff00ff]">[MCP]</span>
+            <span className="text-[11px] uppercase tracking-wider text-white">
+              MCP Servers
+            </span>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<span className="text-xs">[↻]</span>}
+            onClick={() => onRefreshMcpServers?.()}
+          >
+            Refresh
+          </Button>
+        </LayerCardFooter>
+        <LayerCardContent>
+          {onAddMcpServer && onRemoveMcpServer && onRetryMcpServer && onRefreshMcpServers ? (
+            <McpServersEditor
+              servers={mcpServers}
+              onAdd={onAddMcpServer}
+              onRemove={onRemoveMcpServer}
+              onRetry={onRetryMcpServer}
+              onRefresh={onRefreshMcpServers}
+            />
+          ) : (
+            <p className="text-sm text-neutral-400 py-4 text-center">
+              MCP server management is not available.
+            </p>
+          )}
+          
+          {/* MCP Help Section */}
+          <div className="mt-4 pt-4 border-t border-white/20">
+            <div className="text-[10px] uppercase tracking-wider text-white/50 mb-2">
+              About MCP Servers
+            </div>
+            <p className="text-xs text-white/40 leading-relaxed">
+              MCP (Model Context Protocol) servers extend agent capabilities with external tools.
+              Add servers like GitHub, Slack, or custom integrations. Some servers require OAuth
+              authentication - a popup will open when needed.
+            </p>
+            <p className="text-xs text-white/40 leading-relaxed mt-2">
+              Tools from connected MCP servers are automatically available to all agents in this agency.
+            </p>
+          </div>
         </LayerCardContent>
       </LayerCard>
         )}

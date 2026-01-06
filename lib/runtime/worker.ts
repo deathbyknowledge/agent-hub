@@ -332,6 +332,54 @@ const deleteVar = async (req: IRequest, { ctx }: RequestContext) => {
   );
 };
 
+// --- MCP Servers ---
+
+const listMcpServers = async (req: IRequest, { ctx }: RequestContext) => {
+  const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
+  return agencyStub.fetch(new Request("http://do/mcp"));
+};
+
+const addMcpServer = async (req: IRequest, { ctx }: RequestContext) => {
+  const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
+  return agencyStub.fetch(
+    new Request("http://do/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: req.body,
+    })
+  );
+};
+
+const removeMcpServer = async (req: IRequest, { ctx }: RequestContext) => {
+  const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
+  return agencyStub.fetch(
+    new Request(`http://do/mcp/${req.params.serverId}`, { method: "DELETE" })
+  );
+};
+
+const retryMcpServer = async (req: IRequest, { ctx }: RequestContext) => {
+  const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
+  return agencyStub.fetch(
+    new Request(`http://do/mcp/${req.params.serverId}/retry`, { method: "POST" })
+  );
+};
+
+const listMcpTools = async (req: IRequest, { ctx }: RequestContext) => {
+  const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
+  return agencyStub.fetch(new Request("http://do/mcp/tools"));
+};
+
+const callMcpTool = async (req: IRequest, { ctx }: RequestContext) => {
+  const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
+  return agencyStub.fetch(
+    new Request("http://do/mcp/call", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: req.body,
+    })
+  );
+};
+
 const handleFilesystem = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   const fsPath = req.params.path || "";
@@ -418,6 +466,14 @@ export const createHandler = (opts: HandlerOptions = {}) => {
   router.get("/agency/:agencyId/vars/:varKey", getVar);
   router.put("/agency/:agencyId/vars/:varKey", setVar);
   router.delete("/agency/:agencyId/vars/:varKey", deleteVar);
+
+  // MCP Servers
+  router.get("/agency/:agencyId/mcp", listMcpServers);
+  router.post("/agency/:agencyId/mcp", addMcpServer);
+  router.get("/agency/:agencyId/mcp/tools", listMcpTools);
+  router.post("/agency/:agencyId/mcp/call", callMcpTool);
+  router.delete("/agency/:agencyId/mcp/:serverId", removeMcpServer);
+  router.post("/agency/:agencyId/mcp/:serverId/retry", retryMcpServer);
 
   // Filesystem (greedy param for path)
   router.all("/agency/:agencyId/fs/:path+", handleFilesystem);
