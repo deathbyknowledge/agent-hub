@@ -16,6 +16,7 @@ export default defineConfig({
     "cloudflare:workers",
     // Peer dependencies
     "@cloudflare/workers-types",
+    "@cloudflare/vite-plugin",
     // Dependencies - let consumer bundle these
     "agents",
     "itty-router",
@@ -24,6 +25,7 @@ export default defineConfig({
     // Node built-ins used by vite plugin
     "node:fs",
     "node:path",
+    "node:module",
     // Vite - peer dep for vite plugin
     "vite",
   ],

@@ -17,7 +17,7 @@
     "examples/**/*"
   ],
   "scripts": {
-    "tsc": "npx tsc --noEmit",
+    "tsc": "tsc --noEmit && npm run tsc -w agents-hub",
     "docs": "typedoc",
     "test": "npm run test -w agents-hub"
   }

@@ -273,7 +273,7 @@ export type ToolContext = {
   callId: string;
 };
 
-type Exports = {
+export type Exports = {
   HubAgent: DurableObjectNamespace<HubAgent>;
   Agency: DurableObjectNamespace<Agency>;
 };

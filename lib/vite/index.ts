@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import type { Plugin, ViteDevServer } from "vite";
 
 interface DiscoveredModule {
@@ -16,10 +17,57 @@ interface DiscoveryResult {
   plugins: DiscoveredModule[];
 }
 
-interface AgentsPluginOptions {
+/**
+ * Cloudflare wrangler config subset that users can customize.
+ * The plugin will merge this with required defaults for agents-hub.
+ */
+export interface CloudflareConfig {
+  name?: string;
+  compatibility_date?: string;
+  routes?: Array<{
+    pattern: string;
+    zone_name?: string;
+    custom_domain?: boolean;
+  }>;
+  /** Additional durable_objects bindings (HubAgent/Agency are added automatically) */
+  durable_objects?: {
+    bindings?: Array<{
+      class_name: string;
+      name: string;
+    }>;
+  };
+  /** Additional migrations (HubAgent/Agency migration is added automatically) */
+  migrations?: Array<{
+    new_sqlite_classes?: string[];
+    tag: string;
+  }>;
+  /** Additional containers config */
+  containers?: Array<{
+    class_name: string;
+    image: string;
+    instance_type?: string;
+    max_instances?: number;
+  }>;
+  /** Any other wrangler config options */
+  [key: string]: unknown;
+}
+
+export interface AgentsPluginOptions {
   srcDir?: string;
   outFile?: string;
   defaultModel?: string;
+  /**
+   * Enable sandbox (container) support.
+   * When true, adds Sandbox DO binding and container config.
+   */
+  sandbox?: boolean;
+  /**
+   * Cloudflare plugin configuration.
+   * - If undefined: uses default cloudflare config
+   * - If null: disables cloudflare plugin (codegen only)
+   * - If object: merges with required defaults
+   */
+  cloudflare?: CloudflareConfig | null;
 }
 
 const TS_EXTENSIONS = [".ts", ".tsx"];
@@ -130,6 +178,7 @@ function generateCode(
   defaultModel: string,
   srcDir: string,
   outFile: string,
+  sandbox: boolean,
 ): string {
   const outDir = path.dirname(outFile);
   const imports: string[] = [];
@@ -139,8 +188,7 @@ function generateCode(
 
   imports.push('import { AgentHub } from "agents-hub";');
 
-  const hasSandboxCapability = process.env.SANDBOX === "1";
-  if (hasSandboxCapability) {
+  if (sandbox) {
     imports.push('import { Sandbox } from "@cloudflare/sandbox";');
   }
   imports.push("");
@@ -215,7 +263,7 @@ function generateCode(
     "const { HubAgent, Agency, handler } = hub.export();",
   ];
 
-  if (hasSandboxCapability) {
+  if (sandbox) {
     lines.push("export { HubAgent, Agency, Sandbox };");
   } else {
     lines.push("export { HubAgent, Agency };");
@@ -226,16 +274,152 @@ function generateCode(
   return lines.join("\n");
 }
 
+/**
+ * Build cloudflare config with required defaults for agents-hub.
+ */
+function buildCloudflareConfig(
+  userConfig: CloudflareConfig | undefined,
+  outFile: string,
+  sandbox: boolean,
+): Record<string, unknown> {
+  const mainFile = path.basename(outFile);
+
+  // Required base config
+  const baseConfig: Record<string, unknown> = {
+    compatibility_date: "2025-11-17",
+    compatibility_flags: ["nodejs_compat", "allow_importable_env"],
+    assets: {
+      not_found_handling: "single-page-application",
+      run_worker_first: ["/api/*", "/agencies", "/agency/*", "/plugins"],
+    },
+    r2_buckets: [
+      {
+        binding: "FS",
+        bucket_name: "agents-hub-fs",
+      },
+    ],
+    main: mainFile,
+  };
+
+  // TODO: Auto-managing migration tags is fragile for existing deployments.
+  // Consider letting users fully control migrations in the future.
+  const baseMigrations = [
+    {
+      new_sqlite_classes: ["HubAgent", "Agency"],
+      tag: "v1",
+    },
+  ];
+
+  // Add sandbox config if enabled
+  const sandboxDOBindings: Array<{ class_name: string; name: string }> = [];
+  const sandboxMigrations: Array<{ new_sqlite_classes: string[]; tag: string }> = [];
+  const sandboxContainers: Array<Record<string, unknown>> = [];
+
+  if (sandbox) {
+    sandboxDOBindings.push({
+      class_name: "Sandbox",
+      name: "SANDBOX",
+    });
+    sandboxMigrations.push({
+      new_sqlite_classes: ["Sandbox"],
+      tag: "v2",
+    });
+    sandboxContainers.push({
+      class_name: "Sandbox",
+      image: process.env.NODE_ENV === "development" ? "./Dockerfile" : "../../Dockerfile",
+      instance_type: "standard-2",
+      max_instances: 2,
+    });
+  }
+
+  // Merge user config
+  const {
+    durable_objects: userDO,
+    migrations: userMigrations,
+    containers: userContainers,
+    assets: userAssets,
+    ...restUserConfig
+  } = userConfig || {};
+
+  // Merge durable_objects bindings
+  const doBindings = [
+    ...sandboxDOBindings,
+    ...(userDO?.bindings || []),
+  ];
+
+  // Merge migrations (base + sandbox + user)
+  const allMigrations = [
+    ...baseMigrations,
+    ...sandboxMigrations,
+    ...(userMigrations || []),
+  ];
+
+  // Merge containers
+  const allContainers = [
+    ...sandboxContainers,
+    ...(userContainers || []),
+  ];
+
+  // Merge assets config
+  const mergedAssets = {
+    ...(baseConfig.assets as Record<string, unknown>),
+    ...(userAssets || {}),
+  };
+
+  const finalConfig: Record<string, unknown> = {
+    ...baseConfig,
+    ...restUserConfig,
+    assets: mergedAssets,
+    migrations: allMigrations,
+  };
+
+  if (doBindings.length > 0) {
+    finalConfig.durable_objects = { bindings: doBindings };
+  }
+
+  if (allContainers.length > 0) {
+    finalConfig.containers = allContainers;
+  }
+
+  return finalConfig;
+}
+
+/**
+ * Creates the agents-hub Vite plugin with integrated Cloudflare support.
+ *
+ * @example
+ * ```ts
+ * import { defineConfig } from "vite";
+ * import react from "@vitejs/plugin-react";
+ * import hub from "agents-hub/vite";
+ *
+ * export default defineConfig({
+ *   plugins: [
+ *     react(),
+ *     hub({
+ *       srcDir: "./hub",
+ *       defaultModel: "gpt-4o",
+ *       sandbox: true,
+ *       cloudflare: {
+ *         name: "my-hub",
+ *         routes: [{ pattern: "hub.example.com", ... }],
+ *       },
+ *     }),
+ *   ]
+ * });
+ * ```
+ */
 export default function agentsPlugin(
   options: AgentsPluginOptions = {}
-): Plugin {
+): Plugin | Plugin[] {
   const srcDir = path.resolve(options.srcDir || "./hub");
   const outFile = path.resolve(options.outFile || "./_generated.ts");
   const defaultModel = options.defaultModel || "gpt-4o";
+  const sandbox = options.sandbox ?? false;
 
   function regenerate() {
     const discovery = discoverModules(srcDir);
-    const code = generateCode(discovery, defaultModel, srcDir, outFile);
+    const code = generateCode(discovery, defaultModel, srcDir, outFile, sandbox);
 
     fs.mkdirSync(path.dirname(outFile), { recursive: true });
     fs.writeFileSync(outFile, code, "utf-8");
@@ -249,7 +433,7 @@ export default function agentsPlugin(
   // Generate immediately on plugin load (before Cloudflare plugin validates)
   regenerate();
 
-  return {
+  const codegenPlugin: Plugin = {
     name: "vite-plugin-agents",
     enforce: "pre" as const,
 
@@ -289,4 +473,16 @@ export default function agentsPlugin(
       });
     },
   };
+
+  // If cloudflare is explicitly null, return only the codegen plugin
+  if (options.cloudflare === null) {
+    return codegenPlugin;
+  }
+
+  // Build cloudflare config and return combined plugins
+  const cfConfig = buildCloudflareConfig(options.cloudflare, outFile, sandbox);
+  const cfPlugins = cloudflare({ config: cfConfig });
+  const plugins = Array.isArray(cfPlugins) ? cfPlugins : [cfPlugins];
+
+  return [codegenPlugin, ...plugins];
 }
