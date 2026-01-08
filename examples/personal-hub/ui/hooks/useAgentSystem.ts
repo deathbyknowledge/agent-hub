@@ -13,6 +13,8 @@ import {
   type RunState,
   type AgentEvent,
   type WebSocketEvent,
+  type AgencyWebSocketEvent,
+  type AgencyWebSocket,
   type McpServerConfig,
   type AddMcpServerRequest,
 } from "agents-hub/client";
@@ -63,7 +65,94 @@ export const queryKeys = {
   vars: (agencyId: string) => ["vars", agencyId] as const,
   memoryDisks: (agencyId: string) => ["memoryDisks", agencyId] as const,
   mcpServers: (agencyId: string) => ["mcpServers", agencyId] as const,
+  agentState: (agencyId: string, agentId: string) => ["agentState", agencyId, agentId] as const,
+  agentEvents: (agencyId: string, agentId: string) => ["agentEvents", agencyId, agentId] as const,
 };
+
+// ============================================================================
+// Agency WebSocket Manager - Single connection per agency for all agent events
+// ============================================================================
+
+type AgencyEventListener = (event: AgencyWebSocketEvent) => void;
+
+interface AgencyWsManager {
+  connection: AgencyWebSocket | null;
+  listeners: Set<AgencyEventListener>;
+  connecting: boolean;
+}
+
+const agencyWsManagers = new Map<string, AgencyWsManager>();
+
+function getOrCreateAgencyWsManager(agencyId: string): AgencyWsManager {
+  let manager = agencyWsManagers.get(agencyId);
+  if (!manager) {
+    manager = {
+      connection: null,
+      listeners: new Set(),
+      connecting: false,
+    };
+    agencyWsManagers.set(agencyId, manager);
+  }
+  return manager;
+}
+
+function connectAgencyWs(agencyId: string): void {
+  const manager = getOrCreateAgencyWsManager(agencyId);
+  if (manager.connection || manager.connecting) return;
+
+  manager.connecting = true;
+  const client = getClient().agency(agencyId);
+  
+  const ws = client.connect({
+    onOpen: () => {
+      manager.connecting = false;
+    },
+    onEvent: (event) => {
+      // Notify all listeners
+      for (const listener of manager.listeners) {
+        try {
+          listener(event);
+        } catch (e) {
+          console.error("[AgencyWS] Listener error:", e);
+        }
+      }
+    },
+    onClose: () => {
+      manager.connection = null;
+      manager.connecting = false;
+    },
+    onError: () => {
+      manager.connection = null;
+      manager.connecting = false;
+    },
+  });
+
+  manager.connection = ws;
+}
+
+function subscribeToAgencyEvents(
+  agencyId: string,
+  listener: AgencyEventListener
+): () => void {
+  const manager = getOrCreateAgencyWsManager(agencyId);
+  manager.listeners.add(listener);
+  
+  // Ensure connection exists
+  if (!manager.connection && !manager.connecting) {
+    connectAgencyWs(agencyId);
+  }
+
+  // Return unsubscribe function
+  return () => {
+    manager.listeners.delete(listener);
+    
+    // If no more listeners, close connection
+    if (manager.listeners.size === 0 && manager.connection) {
+      manager.connection.close();
+      manager.connection = null;
+    }
+  };
+}
 
 // ============================================================================
 // useAgencies - List and manage agencies
@@ -282,6 +371,43 @@ export function useAgency(agencyId: string | null) {
     enabled: !!agencyId,
   });
 
+  // Subscribe to live MCP server updates via agency WebSocket
+  useEffect(() => {
+    if (!agencyId) return;
+
+    const unsubscribe = subscribeToAgencyEvents(agencyId, (event) => {
+      // The agents-sdk broadcasts MCP state changes as cf_agent_mcp_servers
+      if (event.type === "cf_agent_mcp_servers" && "mcp" in event) {
+        const mcpState = (event as { mcp: { servers: Record<string, unknown> } }).mcp;
+        if (mcpState?.servers) {
+          // Convert SDK's MCPServersState to our McpServerConfig array
+          const servers: McpServerConfig[] = Object.entries(mcpState.servers).map(
+            ([id, server]: [string, unknown]) => {
+              const s = server as {
+                name?: string;
+                url?: string;
+                status?: string;
+                error?: string;
+                authUrl?: string;
+              };
+              return {
+                id,
+                name: s.name || id,
+                url: s.url || "",
+                status: (s.status || "connecting") as McpServerConfig["status"],
+                error: s.error,
+                authUrl: s.authUrl,
+              };
+            }
+          );
+          queryClient.setQueryData(queryKeys.mcpServers(agencyId), servers);
+        }
+      }
+    });
+
+    return unsubscribe;
+  }, [agencyId, queryClient]);
+
   // Mutations
   const spawnMutation = useMutation({
     mutationFn: async (agentType: string) => client!.spawnAgent({ agentType }),
@@ -496,10 +622,7 @@ export function useAgency(agencyId: string | null) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.memoryDisks(agencyId!),
       }),
-    refreshMcpServers: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.mcpServers(agencyId!),
-      }),
+    // Note: refreshMcpServers removed - MCP updates come live via agency WebSocket
     spawnAgent: spawnMutation.mutateAsync,
     listDirectory,
     readFile,
@@ -561,7 +684,7 @@ export function useAgency(agencyId: string | null) {
 }
 
 // ============================================================================
-// useAgent - Work with a specific agent (WebSocket + state)
+// useAgent - Work with a specific agent (Agency WebSocket + incremental state)
 // ============================================================================
 
 interface AgentHookState {
@@ -584,7 +707,8 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
   });
 
   const agentClientRef = useRef<AgentClient | null>(null);
-  const wsRef = useRef<{ close: () => void } | null>(null);
+  // Track which subagents we're monitoring (for trace view)
+  const monitoredAgentsRef = useRef<Set<string>>(new Set());
 
   // Create agent client when IDs change
   useEffect(() => {
@@ -666,7 +790,7 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
           for (const subId of subagentIds) {
             await fetchThreadEvents(subId);
           }
-        } catch (e) {
+        } catch {
           // Subagent might still be initializing - skip silently
           // Its events will be fetched on next refresh
         }
@@ -674,6 +798,9 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
 
       // Start with the main agent
       await fetchThreadEvents(agentId);
+
+      // Track all monitored agents for live updates
+      monitoredAgentsRef.current = fetchedThreads;
 
       // Sort all events by timestamp
       allEvents.sort(
@@ -686,50 +813,99 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     }
   }, [agencyId, agentId]);
 
-  // Connect WebSocket
-  const connect = useCallback(() => {
-    const agentClient = agentClientRef.current;
-    if (!agentClient) return;
+  // Handle incoming events from agency WebSocket
+  const handleAgencyEvent = useCallback((event: AgencyWebSocketEvent) => {
+    if (!agentId) return;
+    
+    // Check if event is for this agent or one of its subagents
+    const isRelevant = event.agentId === agentId || 
+      monitoredAgentsRef.current.has(event.agentId);
+    
+    if (!isRelevant) return;
 
-    // Close existing connection
-    wsRef.current?.close();
-
-    const connection = agentClient.connect({
-      onOpen: () => {
-        setHookState((prev) => ({ ...prev, connected: true }));
-      },
-      onClose: () => {
-        setHookState((prev) => ({ ...prev, connected: false }));
-      },
-      onError: (e) => {
-        console.error("WebSocket error:", e);
-      },
-      onEvent: (event: WebSocketEvent) => {
-        // Handle WebSocket events - refetch state and events
-        console.log("WebSocket event:", event.type, event);
+    // Update run state based on event type
+    if (event.agentId === agentId) {
+      if (event.type === "run.started") {
+        setHookState((prev) => ({
+          ...prev,
+          run: { ...prev.run, status: "running", step: 0 } as RunState,
+        }));
+      } else if (event.type === "agent.completed") {
+        setHookState((prev) => ({
+          ...prev,
+          run: { ...prev.run, status: "completed" } as RunState,
+        }));
+        // Fetch full state to get final messages
         fetchState();
-        fetchEvents();
-      },
+      } else if (event.type === "agent.error") {
+        setHookState((prev) => ({
+          ...prev,
+          run: { 
+            ...prev.run, 
+            status: "error",
+            reason: (event.data as { error?: string })?.error,
+          } as RunState,
+        }));
+      } else if (event.type === "run.tick") {
+        const step = (event.data as { step?: number })?.step ?? 0;
+        setHookState((prev) => ({
+          ...prev,
+          run: { ...prev.run, status: "running", step } as RunState,
+        }));
+      } else if (event.type === "run.paused") {
+        setHookState((prev) => ({
+          ...prev,
+          run: { 
+            ...prev.run, 
+            status: "paused",
+            reason: (event.data as { reason?: string })?.reason,
+          } as RunState,
+        }));
+      } else if (event.type === "run.resumed") {
+        setHookState((prev) => ({
+          ...prev,
+          run: { ...prev.run, status: "running" } as RunState,
+        }));
+      } else if (event.type === "run.canceled") {
+        setHookState((prev) => ({
+          ...prev,
+          run: { ...prev.run, status: "canceled" } as RunState,
+        }));
+      }
+    }
+
+    // Append event to trace (for all relevant agents)
+    // Cast to extend with threadId for display purposes
+    setHookState((prev) => {
+      const newEvent = {
+        ...event,
+        threadId: event.agentId,
+      } as AgentEvent & { threadId: string };
+      return {
+        ...prev,
+        events: [...prev.events, newEvent].sort(
+          (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+        ),
+      };
     });
 
-    wsRef.current = connection;
-  }, [fetchState, fetchEvents]);
+    // If a subagent was spawned, add it to monitored list
+    if (event.type === "subagent.spawned") {
+      const childId = (event.data as { childThreadId?: string })?.childThreadId;
+      if (childId) {
+        monitoredAgentsRef.current.add(childId);
+      }
+    }
 
-  // Disconnect on cleanup or ID change
-  useEffect(() => {
-    return () => {
-      wsRef.current?.close();
-      wsRef.current = null;
-    };
-  }, [agencyId, agentId]);
-
-  // Auto-connect and fetch state when agent changes
-  useEffect(() => {
-    if (agentClientRef.current) {
+    // For model.completed, refresh state to get new messages
+    if (event.type === "model.completed" && event.agentId === agentId) {
       fetchState();
-      fetchEvents();
-      connect();
-    } else {
+    }
+  }, [agentId, fetchState]);
+
+  // Subscribe to agency WebSocket
+  useEffect(() => {
+    if (!agencyId || !agentId) {
       setHookState({
         state: null,
         run: null,
@@ -738,8 +914,23 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
         loading: false,
         error: null,
       });
+      return;
     }
-  }, [agencyId, agentId, fetchState, fetchEvents, connect]);
+
+    // Fetch initial state and events
+    fetchState();
+    fetchEvents();
+
+    // Subscribe to agency events
+    setHookState((prev) => ({ ...prev, connected: true }));
+    const unsubscribe = subscribeToAgencyEvents(agencyId, handleAgencyEvent);
+
+    return () => {
+      unsubscribe();
+      setHookState((prev) => ({ ...prev, connected: false }));
+      monitoredAgentsRef.current.clear();
+    };
+  }, [agencyId, agentId, fetchState, fetchEvents, handleAgencyEvent]);
 
   // Send message
   const sendMessage = useCallback(
@@ -764,14 +955,10 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
         };
       });
 
-      // Invoke agent
+      // Invoke agent - response will come via WebSocket events
       await agentClient.invoke({ messages: [message] });
-
-      // Refresh state to get the response
-      // (WebSocket should handle real-time updates, but poll as fallback)
-      setTimeout(fetchState, 500);
     },
-    [fetchState]
+    []
   );
 
   // Cancel run
@@ -779,8 +966,7 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     const agentClient = agentClientRef.current;
     if (!agentClient) return;
     await agentClient.action("cancel");
-    await fetchState();
-  }, [fetchState]);
+  }, []);
 
   // Approve tool calls
   const approve = useCallback(
@@ -788,9 +974,8 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
       const agentClient = agentClientRef.current;
       if (!agentClient) return;
       await agentClient.action("approve", { toolCallIds, approved });
-      await fetchState();
     },
-    [fetchState]
+    []
   );
 
   return {
@@ -800,7 +985,7 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     approve,
     refresh: fetchState,
     refreshEvents: fetchEvents,
-    reconnect: connect,
+    reconnect: () => {}, // No-op - agency WS handles reconnection
   };
 }
 
@@ -825,10 +1010,10 @@ export interface ActivityItem {
 export function useActivityFeed(agencyId: string | null) {
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const wsRefs = useRef<Map<string, { close: () => void }>>(new Map());
-  const agentStatesRef = useRef<Map<string, { messages: ChatMessage[]; status: string }>>(new Map());
+  // Track agent types for display
+  const agentTypesRef = useRef<Map<string, string>>(new Map());
 
-  // Fetch all agents and their states
+  // Fetch all agents and their states (initial load only)
   const fetchActivity = useCallback(async () => {
     if (!agencyId) {
       setItems([]);
@@ -842,17 +1027,16 @@ export function useActivityFeed(agencyId: string | null) {
 
       const allItems: ActivityItem[] = [];
 
+      // Build agent type lookup
+      for (const agent of agents) {
+        agentTypesRef.current.set(agent.id, agent.agentType);
+      }
+
       // Fetch state for each agent
       for (const agent of agents) {
         try {
           const agentClient = client.agent(agent.id);
           const { state, run } = await agentClient.getState();
-
-          // Store state for WebSocket updates
-          agentStatesRef.current.set(agent.id, {
-            messages: state?.messages || [],
-            status: run?.status || "idle",
-          });
 
           // Convert messages to activity items
           if (state?.messages) {
@@ -917,46 +1101,90 @@ export function useActivityFeed(agencyId: string | null) {
     }
   }, [agencyId]);
 
-  // Subscribe to WebSocket updates for all agents
-  const subscribeToAgents = useCallback(async () => {
-    if (!agencyId) return;
-
-    // Clean up existing connections
-    wsRefs.current.forEach((ws) => ws.close());
-    wsRefs.current.clear();
-
-    try {
-      const client = getClient().agency(agencyId);
-      const { agents } = await client.listAgents();
-
-      for (const agent of agents) {
-        const agentClient = client.agent(agent.id);
-        const connection = agentClient.connect({
-          onEvent: () => {
-            // Refetch activity when any agent has an update
-            fetchActivity();
-          },
-          onOpen: () => {},
-          onClose: () => {},
-          onError: () => {},
-        });
-        wsRefs.current.set(agent.id, connection);
-      }
-    } catch (e) {
-      console.error("Failed to subscribe to agents:", e);
+  // Handle incoming events from agency WebSocket
+  const handleAgencyEvent = useCallback((event: AgencyWebSocketEvent) => {
+    const agentType = event.agentType || agentTypesRef.current.get(event.agentId) || "unknown";
+    
+    // Update agent type lookup
+    if (event.agentType) {
+      agentTypesRef.current.set(event.agentId, event.agentType);
     }
-  }, [agencyId, fetchActivity]);
 
-  // Initial fetch and subscription
+    // Add activity items based on event type
+    if (event.type === "agent.completed") {
+      setItems((prev) => {
+        // Remove any "running" status item for this agent
+        const filtered = prev.filter(
+          (item) => !(item.id === `${event.agentId}-run` && item.status === "running")
+        );
+        return filtered;
+      });
+    } else if (event.type === "run.started") {
+      setItems((prev) => [
+        ...prev,
+        {
+          id: `${event.agentId}-run`,
+          timestamp: event.ts,
+          type: "agent_event",
+          agentId: event.agentId,
+          agentType,
+          event: "Running",
+          status: "running",
+        },
+      ]);
+    } else if (event.type === "model.completed") {
+      // A model response was generated - fetch latest state for this agent
+      // to get the new message
+      const client = getClient().agency(agencyId!);
+      client.agent(event.agentId).getState().then(({ state }) => {
+        if (!state?.messages?.length) return;
+        
+        const lastMsg = state.messages[state.messages.length - 1];
+        if (lastMsg.role !== "assistant") return;
+        
+        const content = (lastMsg as { content?: string }).content;
+        if (!content) return;
+
+        setItems((prev) => {
+          // Check if we already have this message
+          const msgId = `${event.agentId}-msg-${state.messages.length - 1}`;
+          if (prev.some((item) => item.id === msgId)) return prev;
+
+          const newItem: ActivityItem = {
+            id: msgId,
+            timestamp: lastMsg.ts || event.ts,
+            type: "message",
+            from: agentType,
+            content,
+            agentId: event.agentId,
+            agentType,
+            status: "done",
+          };
+          return [...prev, newItem].sort(
+            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+        });
+      }).catch(() => {
+        // Ignore errors - agent might be gone
+      });
+    }
+  }, [agencyId]);
+
+  // Subscribe to agency WebSocket
   useEffect(() => {
-    fetchActivity();
-    subscribeToAgents();
+    if (!agencyId) {
+      setItems([]);
+      return;
+    }
 
-    return () => {
-      wsRefs.current.forEach((ws) => ws.close());
-      wsRefs.current.clear();
-    };
-  }, [fetchActivity, subscribeToAgents]);
+    // Initial fetch
+    fetchActivity();
+
+    // Subscribe to all agency events
+    const unsubscribe = subscribeToAgencyEvents(agencyId, handleAgencyEvent);
+
+    return unsubscribe;
+  }, [agencyId, fetchActivity, handleAgencyEvent]);
 
   // Add a user message to the feed (optimistic update)
   const addUserMessage = useCallback((target: string, content: string, agentId: string) => {
@@ -971,32 +1199,19 @@ export function useActivityFeed(agencyId: string | null) {
       agentType: target,
     };
     setItems((prev) => [...prev, newItem]);
+    
+    // Update agent type lookup
+    agentTypesRef.current.set(agentId, target);
   }, []);
 
-  // Subscribe to a specific new agent's WebSocket (for newly spawned agents)
+  // No longer needed - agency WS handles all agents automatically
   const subscribeToAgent = useCallback(
-    (agentId: string) => {
-      if (!agencyId || wsRefs.current.has(agentId)) return;
-
-      try {
-        const client = getClient().agency(agencyId);
-        const agentClient = client.agent(agentId);
-        const connection = agentClient.connect({
-          onEvent: () => {
-            fetchActivity();
-          },
-          onOpen: () => {},
-          onClose: () => {
-            wsRefs.current.delete(agentId);
-          },
-          onError: () => {},
-        });
-        wsRefs.current.set(agentId, connection);
-      } catch (e) {
-        console.error("Failed to subscribe to agent:", agentId, e);
+    (agentId: string, agentType?: string) => {
+      if (agentType) {
+        agentTypesRef.current.set(agentId, agentType);
       }
     },
-    [agencyId, fetchActivity]
+    []
   );
 
   return {
@@ -1150,24 +1365,21 @@ const EMPTY_METRICS: AgencyMetrics = {
  * 
  * Strategy:
  * 1. Initial load: Fetch all events from all agents once
- * 2. WebSocket: Subscribe to each agent, update metrics incrementally on new events
- * 3. No polling: Metrics update in real-time via WebSocket
+ * 2. Agency WebSocket: Subscribe to all agent events, update metrics incrementally
+ * 3. No polling: Metrics update in real-time via single agency WebSocket
  */
 export function useAgencyMetrics(agencyId: string | null) {
   const [metrics, setMetrics] = useState<AgencyMetrics>(EMPTY_METRICS);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   
-  // Track WebSocket connections
-  const wsRefs = useRef<Map<string, { close: () => void }>>(new Map());
-  // Track which agents we've already subscribed to
-  const subscribedAgents = useRef<Set<string>>(new Set());
   // Track model.started timestamps for response time calculation
   const modelStartTimes = useRef<Map<string, number>>(new Map());
 
   // Process a single event and update metrics incrementally
-  const processEvent = useCallback((event: AgentEvent, agentId: string) => {
+  const processEvent = useCallback((event: AgencyWebSocketEvent) => {
     const eventDate = new Date(event.ts).toISOString().split("T")[0];
+    const agentId = event.agentId;
 
     setMetrics((prev) => {
       const next = { ...prev, tokensByDay: new Map(prev.tokensByDay) };
@@ -1202,30 +1414,8 @@ export function useAgencyMetrics(agencyId: string | null) {
     });
   }, []);
 
-  // Subscribe to a single agent's WebSocket for real-time updates
-  const subscribeToAgent = useCallback((agencyId: string, agentId: string) => {
-    if (subscribedAgents.current.has(agentId)) return;
-    subscribedAgents.current.add(agentId);
-
-    const client = getClient().agency(agencyId).agent(agentId);
-    const connection = client.connect({
-      onEvent: (event) => {
-        processEvent(event, agentId);
-      },
-      onOpen: () => {},
-      onClose: () => {
-        // Remove from subscribed so we can resubscribe if needed
-        subscribedAgents.current.delete(agentId);
-        wsRefs.current.delete(agentId);
-      },
-      onError: () => {},
-    });
-
-    wsRefs.current.set(agentId, connection);
-  }, [processEvent]);
-
-  // Initial fetch of all events + subscribe to WebSockets
-  const fetchAndSubscribe = useCallback(async () => {
+  // Initial fetch of all historical events
+  const fetchHistoricalMetrics = useCallback(async () => {
     if (!agencyId) {
       setMetrics(EMPTY_METRICS);
       setHasFetched(false);
@@ -1278,9 +1468,6 @@ export function useAgencyMetrics(agencyId: string | null) {
               runsErrored++;
             }
           }
-
-          // Subscribe to WebSocket for real-time updates
-          subscribeToAgent(agencyId, agent.id);
         } catch {
           // Agent might be initializing, skip
         }
@@ -1299,68 +1486,38 @@ export function useAgencyMetrics(agencyId: string | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [agencyId, subscribeToAgent]);
+  }, [agencyId]);
 
-  // Cleanup WebSocket connections
-  const cleanup = useCallback(() => {
-    wsRefs.current.forEach((ws) => ws.close());
-    wsRefs.current.clear();
-    subscribedAgents.current.clear();
-    modelStartTimes.current.clear();
-  }, []);
-
-  // Fetch on agency change
+  // Subscribe to agency WebSocket for live updates
   useEffect(() => {
-    // Cleanup previous subscriptions
-    cleanup();
-    
-    if (agencyId) {
-      fetchAndSubscribe();
-    } else {
+    if (!agencyId) {
       setMetrics(EMPTY_METRICS);
       setHasFetched(false);
+      return;
     }
 
-    return cleanup;
-  }, [agencyId, fetchAndSubscribe, cleanup]);
+    // Fetch historical metrics
+    fetchHistoricalMetrics();
 
-  // Subscribe to newly created agents (called when agent list changes)
-  const subscribeToNewAgents = useCallback(async () => {
-    if (!agencyId || !hasFetched) return;
+    // Subscribe to agency events for live updates
+    const unsubscribe = subscribeToAgencyEvents(agencyId, processEvent);
 
-    try {
-      const client = getClient().agency(agencyId);
-      const { agents } = await client.listAgents();
+    return () => {
+      unsubscribe();
+      modelStartTimes.current.clear();
+    };
+  }, [agencyId, fetchHistoricalMetrics, processEvent]);
 
-      for (const agent of agents) {
-        if (!subscribedAgents.current.has(agent.id)) {
-          // New agent - fetch its events and subscribe
-          try {
-            const agentClient = client.agent(agent.id);
-            const { events } = await agentClient.getEvents();
-
-            // Process historical events
-            for (const event of events) {
-              processEvent(event, agent.id);
-            }
-
-            // Subscribe for future events
-            subscribeToAgent(agencyId, agent.id);
-          } catch {
-            // Agent might be initializing
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Failed to subscribe to new agents:", err);
-    }
-  }, [agencyId, hasFetched, processEvent, subscribeToAgent]);
+  // No longer needed - agency WS automatically receives all agent events
+  const subscribeToNewAgents = useCallback(() => {
+    // No-op - agency WS handles all agents automatically
+  }, []);
 
   return {
     metrics,
     isLoading,
     hasFetched,
-    refresh: fetchAndSubscribe,
+    refresh: fetchHistoricalMetrics,
     subscribeToNewAgents,
   };
 }

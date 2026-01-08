@@ -13,13 +13,19 @@ import type {
   AgentEnv,
   CfCtx,
 } from "../types";
-import { Agent, type AgentContext } from "agents";
+import { Agent, type AgentContext, getAgentByName } from "agents";
 import { type AgentEvent, AgentEventType } from "../events";
 import { Store } from "./store";
 import { PersistedObject } from "../persisted";
 import { AgentFileSystem } from "../fs";
 import { ModelPlanBuilder } from "../plan";
 import { DEFAULT_MAX_ITERATIONS, MAX_TOOLS_PER_TICK } from "../config";
+
+/** Event relayed from agent to agency */
+export type AgencyRelayEvent = AgentEvent & {
+  agentId: string;
+  agentType: string;
+};
 
 export type Info = {
   threadId: string;
@@ -35,6 +41,10 @@ export abstract class HubAgent<
 > extends Agent<Env> {
   protected _tools: Record<string, Tool<any>> = {};
   private _fs: AgentFileSystem | null = null;
+  
+  /** WebSocket connection to Agency for event relay during active runs */
+  private _agencyWs: WebSocket | null = null;
+  private _agencyWsConnecting = false;
 
   // State
   readonly info: Info;
@@ -226,6 +236,8 @@ export abstract class HubAgent<
         )
       ) {
         runState.status = "running";
+        // Connect to Agency WebSocket for event relay during the run
+        await this.connectToAgency();
         this.emit(AgentEventType.RUN_STARTED, {});
         await this.ensureScheduled();
       }
@@ -307,6 +319,8 @@ export abstract class HubAgent<
           }
 
           this.emit(AgentEventType.AGENT_COMPLETED, { result: reply });
+          // Disconnect from Agency WebSocket - run is done
+          this.disconnectFromAgency();
           return;
         }
 
@@ -327,6 +341,8 @@ export abstract class HubAgent<
         error: this.runState.reason,
         stack: error instanceof Error ? error.stack : undefined,
       });
+      // Disconnect from Agency WebSocket - run errored
+      this.disconnectFromAgency();
     }
   }
 
@@ -342,6 +358,8 @@ export abstract class HubAgent<
         this.runState.status = "canceled";
         this.runState.reason = "user";
         this.emit(AgentEventType.RUN_CANCELED, {});
+        // Disconnect from Agency WebSocket - run canceled
+        this.disconnectFromAgency();
       }
       return Response.json({ ok: true });
     }
@@ -491,6 +509,91 @@ export abstract class HubAgent<
         console.error(`Plugin ${p.name} onEvent error:`, e);
       }
     }
+    // Broadcast to direct WebSocket subscribers (UI clients connected to this agent)
     this.broadcast(JSON.stringify(event));
+    // Relay to Agency via WebSocket (if connected)
+    this.relayEventToAgency(event);
+  }
+
+  /**
+   * Connect to the Agency via WebSocket for event relay.
+   * Called when a run starts. The Agency stays awake while agents have active runs.
+   */
+  protected async connectToAgency(): Promise<void> {
+    const agencyId = this.info.agencyId;
+    if (!agencyId || this._agencyWs || this._agencyWsConnecting) return;
+
+    this._agencyWsConnecting = true;
+    try {
+      const agencyStub = await getAgentByName(this.exports.Agency, agencyId);
+      
+      // Make a WebSocket upgrade request to the Agency with agent identification in headers
+      const resp = await agencyStub.fetch("http://do/internal/agent-ws", {
+        headers: {
+          "Upgrade": "websocket",
+          "X-Agent-Id": this.info.threadId,
+          "X-Agent-Type": this.info.agentType,
+        },
+      });
+
+      const ws = resp.webSocket;
+      if (!ws) {
+        console.error("[Agent→Agency WS] No WebSocket in response");
+        this._agencyWsConnecting = false;
+        return;
+      }
+
+      // Accept the WebSocket connection
+      ws.accept();
+      this._agencyWs = ws;
+      this._agencyWsConnecting = false;
+
+      // Handle close
+      ws.addEventListener("close", () => {
+        this._agencyWs = null;
+      });
+
+      ws.addEventListener("error", () => {
+        this._agencyWs = null;
+      });
+    } catch (e) {
+      console.error("[Agent→Agency WS] Failed to connect:", e);
+      this._agencyWsConnecting = false;
+    }
+  }
+
+  /**
+   * Disconnect from the Agency WebSocket.
+   * Called when a run completes, errors, or is canceled.
+   */
+  protected disconnectFromAgency(): void {
+    if (this._agencyWs) {
+      try {
+        this._agencyWs.close(1000, "run_ended");
+      } catch {
+        // Ignore close errors
+      }
+      this._agencyWs = null;
+    }
+  }
+
+  /**
+   * Relay an event to the Agency via WebSocket.
+   */
+  private relayEventToAgency(event: AgentEvent & { seq?: number }): void {
+    if (!this._agencyWs) return;
+
+    const relayEvent: AgencyRelayEvent = {
+      ...event,
+      agentId: this.info.threadId,
+      agentType: this.info.agentType,
+    };
+
+    try {
+      this._agencyWs.send(JSON.stringify(relayEvent));
+    } catch (e) {
+      // WebSocket might have closed, ignore
+      console.debug("[Agent→Agency WS] Send failed:", e);
+    }
   }
 }

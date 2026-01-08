@@ -564,7 +564,6 @@ function SettingsRoute({
     addMcpServer,
     removeMcpServer,
     retryMcpServer,
-    refreshMcpServers,
   } = useAgency(agencyId);
   const { agencies } = useAgencies();
   const { plugins, tools } = usePlugins();
@@ -634,7 +633,6 @@ function SettingsRoute({
           onAddMcpServer={addMcpServer}
           onRemoveMcpServer={removeMcpServer}
           onRetryMcpServer={retryMcpServer}
-          onRefreshMcpServers={refreshMcpServers}
         />
       </div>
 
@@ -669,8 +667,8 @@ function HomeRoute({
 }) {
   const { agencies } = useAgencies();
   const { agents, blueprints, spawnAgent, getOrCreateMind, sendMessageToAgent } = useAgency(agencyId);
-  const { items: activityItems, addUserMessage, refresh: refreshActivity, subscribeToAgent } = useActivityFeed(agencyId);
-  const { metrics, subscribeToNewAgents } = useAgencyMetrics(agencyId);
+  const { items: activityItems, addUserMessage, subscribeToAgent } = useActivityFeed(agencyId);
+  const { metrics } = useAgencyMetrics(agencyId);
   const [, navigate] = useLocation();
 
   const agency = agencies.find((a) => a.id === agencyId);
@@ -717,13 +715,12 @@ function HomeRoute({
     async (target: string, message: string) => {
       // Find or create the target agent
       let targetAgentId: string;
-      let isNewAgent = false;
+      let agentType = target;
 
       if (target === "_agency-mind") {
         // Get or create the agency mind
         targetAgentId = await getOrCreateMind();
-        // Check if this is a newly created mind
-        isNewAgent = !agents.find((a) => a.id === targetAgentId);
+        agentType = "_agency-mind";
       } else {
         // Find existing agent
         const agent = agents.find((a) => a.id === target);
@@ -732,25 +729,20 @@ function HomeRoute({
           return;
         }
         targetAgentId = agent.id;
+        agentType = agent.agentType;
       }
 
-      // If we created a new agent, subscribe to it for real-time updates
-      if (isNewAgent) {
-        subscribeToAgent(targetAgentId);
-        subscribeToNewAgents();
-      }
+      // Register agent type for activity feed display
+      subscribeToAgent(targetAgentId, agentType);
 
       // Add optimistic update to activity feed
       addUserMessage(target, message, targetAgentId);
 
       // Actually send the message to the agent
+      // Response will come via agency WebSocket - no polling needed
       await sendMessageToAgent(targetAgentId, message);
-
-      // Refresh activity feed to pick up any immediate responses
-      // (WebSocket will handle real-time updates after this)
-      setTimeout(() => refreshActivity(), 1000);
     },
-    [agents, getOrCreateMind, addUserMessage, sendMessageToAgent, subscribeToAgent, subscribeToNewAgents, refreshActivity]
+    [agents, getOrCreateMind, addUserMessage, sendMessageToAgent, subscribeToAgent]
   );
 
   // Handle creating new agent from blueprint
@@ -760,22 +752,20 @@ function HomeRoute({
       const agent = await spawnAgent(blueprintName);
 
       if (message) {
-        // Subscribe to the new agent's WebSocket for real-time updates
-        subscribeToAgent(agent.id);
-        subscribeToNewAgents();
+        // Register agent type for activity feed display
+        subscribeToAgent(agent.id, blueprintName);
 
         // Send message and stay in command center
         addUserMessage(blueprintName, message, agent.id);
+        
+        // Send the message - response will come via agency WebSocket
         await sendMessageToAgent(agent.id, message);
-
-        // Refresh activity feed to pick up any immediate responses
-        setTimeout(() => refreshActivity(), 1000);
       } else {
         // Navigate to agent page when no initial message
         navigate(`/${agencyId}/agent/${agent.id}`);
       }
     },
-    [agencyId, spawnAgent, navigate, addUserMessage, sendMessageToAgent, subscribeToAgent, subscribeToNewAgents, refreshActivity]
+    [agencyId, spawnAgent, navigate, addUserMessage, sendMessageToAgent, subscribeToAgent]
   );
 
   return (

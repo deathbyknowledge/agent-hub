@@ -393,6 +393,11 @@ const handleFilesystem = async (req: IRequest, { ctx }: RequestContext) => {
 };
 
 
+const handleAgencyWebSocket = async (req: IRequest, { ctx }: RequestContext) => {
+  const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
+  return agencyStub.fetch(req);
+};
+
 const handleAgentRequest = async (req: IRequest, { ctx }: RequestContext) => {
   const hubAgentStub = await getAgentByName(ctx.exports.HubAgent, req.params.agentId);
   const agentPath = req.params.path || "";
@@ -478,6 +483,9 @@ export const createHandler = (opts: HandlerOptions = {}) => {
   // Filesystem (greedy param for path)
   router.all("/agency/:agencyId/fs/:path+", handleFilesystem);
   router.all("/agency/:agencyId/fs", handleFilesystem);
+
+  // Agency WebSocket (for UI event subscriptions)
+  router.get("/agency/:agencyId/ws", handleAgencyWebSocket);
 
   // Agent (greedy param for agent routes)
   router.all("/agency/:agencyId/agent/:agentId/:path+", handleAgentRequest);

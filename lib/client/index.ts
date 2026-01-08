@@ -324,6 +324,18 @@ export type WebSocketEvent = AgentEvent & {
   seq: number;
 };
 
+/** Event relayed from agents through the Agency */
+export type AgencyWebSocketEvent = AgentEvent & {
+  seq: number;
+  agentId: string;
+  agentType: string;
+};
+
+/** Subscription message sent to Agency WebSocket */
+export type AgencySubscriptionMessage = 
+  | { type: "subscribe"; agentIds?: string[] }
+  | { type: "unsubscribe" };
+
 export interface WebSocketOptions {
   /** Called when an event is received */
   onEvent?: (event: WebSocketEvent) => void;
@@ -341,6 +353,29 @@ export interface AgentWebSocket {
   ws: WebSocket;
   send: (message: unknown) => void;
   close: () => void;
+}
+
+export interface AgencyWebSocketOptions {
+  /** Called when an agent event is received */
+  onEvent?: (event: AgencyWebSocketEvent) => void;
+  /** Called when the connection is opened */
+  onOpen?: () => void;
+  /** Called when the connection is closed */
+  onClose?: (event: CloseEvent) => void;
+  /** Called on error */
+  onError?: (error: Event) => void;
+  /** Custom protocols */
+  protocols?: string | string[];
+}
+
+export interface AgencyWebSocket {
+  ws: WebSocket;
+  send: (message: unknown) => void;
+  close: () => void;
+  /** Subscribe to events from specific agents. If agentIds is omitted, receives all events. */
+  subscribe: (agentIds?: string[]) => void;
+  /** Unsubscribe from filtering - receive all events */
+  unsubscribe: () => void;
 }
 
 export interface AgentHubClientOptions {
@@ -780,6 +815,62 @@ export class AgencyClient {
 
   async deleteAgency(): Promise<OkResponse> {
     return this.request<OkResponse>("DELETE", "/destroy");
+  }
+
+  /**
+   * Connect to the agency-level WebSocket for real-time agent events.
+   * This single connection receives events from all agents in the agency.
+   * 
+   * @example
+   * ```ts
+   * const connection = agency.connect({
+   *   onEvent: (event) => {
+   *     console.log(`Event from ${event.agentId}:`, event.type);
+   *   },
+   * });
+   * 
+   * // Subscribe to specific agents only
+   * connection.subscribe(["agent-1", "agent-2"]);
+   * 
+   * // Unsubscribe to receive all events
+   * connection.unsubscribe();
+   * ```
+   */
+  connect(options: AgencyWebSocketOptions = {}): AgencyWebSocket {
+    const secret = (this.headers as Record<string, string>)["X-SECRET"];
+    const secretParam = secret ? `?key=${encodeURIComponent(secret)}` : "";
+    const wsUrl = `${this.path}/ws`
+      .replace(/^http/, "ws")
+      .replace(/^wss:\/\/localhost/, "ws://localhost") + secretParam;
+    const ws = new WebSocket(wsUrl, options.protocols);
+
+    ws.onopen = () => options.onOpen?.();
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data as string) as AgencyWebSocketEvent;
+        options.onEvent?.(data);
+      } catch {
+        // Non-JSON message
+      }
+    };
+
+    ws.onclose = (event) => options.onClose?.(event);
+    ws.onerror = (event) => options.onError?.(event);
+
+    return {
+      ws,
+      send: (message: unknown) => ws.send(JSON.stringify(message)),
+      close: () => ws.close(),
+      subscribe: (agentIds?: string[]) => {
+        const msg: AgencySubscriptionMessage = { type: "subscribe", agentIds };
+        ws.send(JSON.stringify(msg));
+      },
+      unsubscribe: () => {
+        const msg: AgencySubscriptionMessage = { type: "unsubscribe" };
+        ws.send(JSON.stringify(msg));
+      },
+    };
   }
 
   get id(): string {

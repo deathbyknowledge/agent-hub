@@ -58,12 +58,11 @@ interface SettingsViewProps {
   writeFile?: (path: string, content: string) => Promise<unknown>;
   deleteFile?: (path: string) => Promise<unknown>;
   onDeleteAgency?: () => void;
-  // MCP Servers
+  // MCP Servers (updates received live via agency WebSocket)
   mcpServers?: McpServerConfig[];
   onAddMcpServer?: (request: AddMcpServerRequest) => Promise<McpServerConfig>;
   onRemoveMcpServer?: (serverId: string) => Promise<unknown>;
   onRetryMcpServer?: (serverId: string) => Promise<McpServerConfig>;
-  onRefreshMcpServers?: () => Promise<unknown>;
 }
 
 // Format relative time
@@ -1096,18 +1095,17 @@ function McpStatusBadge({ status }: { status: McpServerConfig["status"] }) {
 }
 
 // MCP Servers Editor component
+// Note: MCP server state updates are received live via agency WebSocket (cf_agent_mcp_servers events)
 function McpServersEditor({
   servers,
   onAdd,
   onRemove,
   onRetry,
-  onRefresh,
 }: {
   servers: McpServerConfig[];
   onAdd: (request: AddMcpServerRequest) => Promise<McpServerConfig>;
   onRemove: (serverId: string) => Promise<unknown>;
   onRetry: (serverId: string) => Promise<McpServerConfig>;
-  onRefresh: () => Promise<unknown>;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
@@ -1129,21 +1127,9 @@ function McpServersEditor({
       });
 
       // If server requires OAuth, open the auth URL in a popup
+      // State updates will come via WebSocket when OAuth completes
       if (result.status === "authenticating" && result.authUrl) {
-        const popup = window.open(
-          result.authUrl,
-          "mcp-oauth",
-          "width=600,height=700,popup=yes"
-        );
-        if (popup) {
-          // Poll for popup close, then refresh
-          const interval = setInterval(() => {
-            if (popup.closed) {
-              clearInterval(interval);
-              onRefresh();
-            }
-          }, 500);
-        }
+        window.open(result.authUrl, "mcp-oauth", "width=600,height=700,popup=yes");
       }
 
       setNewName("");
@@ -1160,21 +1146,9 @@ function McpServersEditor({
   const handleRetry = async (serverId: string) => {
     try {
       const result = await onRetry(serverId);
-      // Handle OAuth if needed
+      // Handle OAuth if needed - state updates come via WebSocket
       if (result.status === "authenticating" && result.authUrl) {
-        const popup = window.open(
-          result.authUrl,
-          "mcp-oauth",
-          "width=600,height=700,popup=yes"
-        );
-        if (popup) {
-          const interval = setInterval(() => {
-            if (popup.closed) {
-              clearInterval(interval);
-              onRefresh();
-            }
-          }, 500);
-        }
+        window.open(result.authUrl, "mcp-oauth", "width=600,height=700,popup=yes");
       }
     } catch (err) {
       console.error("Failed to retry MCP server:", err);
@@ -1360,7 +1334,6 @@ export function SettingsView({
   onAddMcpServer,
   onRemoveMcpServer,
   onRetryMcpServer,
-  onRefreshMcpServers,
 }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("blueprints");
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -1542,24 +1515,16 @@ export function SettingsView({
             <span className="text-[11px] uppercase tracking-wider text-white">
               MCP Servers
             </span>
+            <span className="text-[9px] text-white/30 ml-2">live updates</span>
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<span className="text-xs">[↻]</span>}
-            onClick={() => onRefreshMcpServers?.()}
-          >
-            Refresh
-          </Button>
         </LayerCardFooter>
         <LayerCardContent>
-          {onAddMcpServer && onRemoveMcpServer && onRetryMcpServer && onRefreshMcpServers ? (
+          {onAddMcpServer && onRemoveMcpServer && onRetryMcpServer ? (
             <McpServersEditor
               servers={mcpServers}
               onAdd={onAddMcpServer}
               onRemove={onRemoveMcpServer}
               onRetry={onRetryMcpServer}
-              onRefresh={onRefreshMcpServers}
             />
           ) : (
             <p className="text-sm text-neutral-400 py-4 text-center">

@@ -1,4 +1,4 @@
-import { Agent, getAgentByName, type AgentContext, type MCPServersState } from "agents";
+import { Agent, getAgentByName, type AgentContext, type MCPServersState, type Connection } from "agents";
 import { Router, type IRequest } from "itty-router";
 import { parseCronExpression } from "cron-schedule";
 import type {
@@ -9,6 +9,7 @@ import type {
   CfCtx,
 } from "./types";
 import { PersistedObject } from "./persisted";
+import type { AgencyRelayEvent } from "./agent";
 
 // ============================================================
 // Schedule Types
@@ -563,6 +564,78 @@ export class Agency extends Agent<AgentEnv> {
       return Response.json(JSON.parse(rows[0].data));
     }
     return new Response(null, { status: 404 });
+  }
+
+  /**
+   * Broadcast an agent event to all subscribed UI WebSocket clients.
+   * Excludes agent connections (they only send, not receive).
+   */
+  private broadcastAgentEvent(event: AgencyRelayEvent): void {
+    const eventStr = JSON.stringify(event);
+    
+    for (const conn of this.getConnections()) {
+      try {
+        const state = conn.state as { agentIds?: string[]; isAgent?: boolean } | undefined;
+        
+        // Skip agent connections - they're senders, not receivers
+        if (state?.isAgent) continue;
+        
+        // If no filter set, send all events
+        // If filter set, only send events matching the filter
+        if (!state?.agentIds || state.agentIds.includes(event.agentId)) {
+          conn.send(eventStr);
+        }
+      } catch {
+        // Connection might have closed, ignore errors
+      }
+    }
+  }
+
+  // ============================================================
+  // WebSocket Connection Handlers
+  // ============================================================
+
+  /**
+   * Handle new WebSocket connections.
+   * Identifies agent connections from request headers.
+   */
+  onConnect(connection: Connection, ctx: { request: Request }): void {
+    const agentId = ctx.request.headers.get("X-Agent-Id");
+    const agentType = ctx.request.headers.get("X-Agent-Type");
+    
+    if (agentId) {
+      connection.setState({ isAgent: true, agentId, agentType });
+    }
+  }
+
+  /**
+   * Handle incoming WebSocket messages.
+   * - UI clients: subscription management (subscribe/unsubscribe)
+   * - Agents: event relay
+   */
+  onMessage(connection: Connection, message: string | ArrayBuffer): void {
+    if (typeof message !== "string") return;
+    
+    try {
+      const data = JSON.parse(message) as { 
+        type: string; 
+        agentIds?: string[];
+        agentId?: string;
+      };
+      
+      if (data.type === "subscribe") {
+        // UI client: Subscribe to specific agents
+        connection.setState({ ...connection.state, agentIds: data.agentIds });
+      } else if (data.type === "unsubscribe") {
+        // UI client: Clear subscription filter (receive all events)
+        connection.setState({ ...connection.state, agentIds: undefined });
+      } else if (data.agentId && data.type) {
+        // Agent event relay - broadcast to UI subscribers
+        this.broadcastAgentEvent(data as AgencyRelayEvent);
+      }
+    } catch {
+      // Invalid JSON, ignore
+    }
   }
 
   // ============================================================
