@@ -54,15 +54,6 @@ export const hitl: AgentPlugin = {
       return { ok: true };
     },
 
-    async cancel(ctx) {
-      const runState = ctx.agent.runState;
-      if (runState && runState.status !== "completed") {
-        runState.status = "canceled";
-        runState.reason = "user";
-        ctx.agent.emit(AgentEventType.RUN_CANCELED, {});
-      }
-      return { ok: true };
-    },
   },
 
   async onModelResult(ctx, res) {

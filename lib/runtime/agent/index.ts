@@ -336,6 +336,16 @@ export abstract class HubAgent<
       payload: object;
     }>();
 
+    // Core actions available to all agents
+    if (type === "cancel") {
+      if (this.runState.status !== "completed") {
+        this.runState.status = "canceled";
+        this.runState.reason = "user";
+        this.emit(AgentEventType.RUN_CANCELED, {});
+      }
+      return Response.json({ ok: true });
+    }
+
     for (const plugin of this.plugins) {
       if (plugin.actions?.[type]) {
         const result = await plugin.actions[type](this.pluginContext, payload);
