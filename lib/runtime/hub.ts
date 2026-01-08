@@ -13,9 +13,10 @@ import type {
 } from "./types";
 import { createHandler, type HandlerOptions } from "./worker";
 
-// MCP tool info from Agency (matches MCPServersState.tools shape)
-interface McpToolInfo {
+// MCP tool info from Agency (enriched with serverName for capability matching)
+export interface McpToolInfo {
   serverId: string;
+  serverName: string;
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
@@ -90,10 +91,10 @@ function createMcpProxyTool(toolInfo: McpToolInfo, agencyId: string): Tool<Recor
  * Filter MCP tools based on capability patterns.
  * Patterns:
  *   - "mcp:*" → all MCP tools from all servers
- *   - "mcp:servername" → all tools from a specific server
- *   - "mcp:servername:toolname" → specific tool from a server
+ *   - "mcp:server" → all tools from a specific server (by ID or name)
+ *   - "mcp:server:toolname" → specific tool from a server (by ID or name)
  */
-function filterMcpToolsByCapabilities(
+export function filterMcpToolsByCapabilities(
   tools: McpToolInfo[],
   capabilities: string[]
 ): McpToolInfo[] {
@@ -116,10 +117,10 @@ function filterMcpToolsByCapabilities(
         }
       }
     } else if (parts.length === 2) {
-      // mcp:servername → all tools from that server
-      const serverName = parts[1];
+      // mcp:server → all tools from that server (matches ID or name)
+      const serverIdOrName = parts[1];
       for (const tool of tools) {
-        if (tool.serverId === serverName) {
+        if (tool.serverId === serverIdOrName || tool.serverName === serverIdOrName) {
           const key = `${tool.serverId}:${tool.name}`;
           if (!seen.has(key)) {
             seen.add(key);
@@ -128,11 +129,11 @@ function filterMcpToolsByCapabilities(
         }
       }
     } else if (parts.length >= 3) {
-      // mcp:servername:toolname → specific tool
-      const serverName = parts[1];
+      // mcp:server:toolname → specific tool (matches ID or name)
+      const serverIdOrName = parts[1];
       const toolName = parts.slice(2).join(":"); // Handle colons in tool name
       for (const tool of tools) {
-        if (tool.serverId === serverName && tool.name === toolName) {
+        if ((tool.serverId === serverIdOrName || tool.serverName === serverIdOrName) && tool.name === toolName) {
           const key = `${tool.serverId}:${tool.name}`;
           if (!seen.has(key)) {
             seen.add(key);

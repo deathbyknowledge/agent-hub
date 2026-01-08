@@ -60,8 +60,8 @@ function countMcpTools(ctx: PluginContext): number {
  * capabilities: [
  *   "planning",
  *   "mcp:*",           // All MCP tools from all servers
- *   "mcp:github",      // All tools from the 'github' server
- *   "mcp:slack:chat",  // Specific tool from a specific server
+ *   "mcp:github",      // All tools from server by name OR id
+ *   "mcp:slack:chat",  // Specific tool from server (by name or id)
  * ]
  * ```
  * 

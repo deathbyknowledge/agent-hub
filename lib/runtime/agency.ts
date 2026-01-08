@@ -516,14 +516,18 @@ export class Agency extends Agent<AgentEnv> {
   private handleListMcpTools(): Response {
     const mcpState = this.getMcpServers();
     
-    // Filter to only include tools from ready servers
-    const readyServerIds = new Set(
-      Object.entries(mcpState.servers)
-        .filter(([_, s]) => s.state === "ready")
-        .map(([id]) => id)
-    );
+    // Build a map of serverId -> serverName for ready servers
+    const serverIdToName = new Map<string, string>();
+    for (const [id, server] of Object.entries(mcpState.servers)) {
+      if (server.state === "ready") {
+        serverIdToName.set(id, server.name);
+      }
+    }
 
-    const tools = mcpState.tools.filter(t => readyServerIds.has(t.serverId));
+    // Enrich tools with serverName for capability matching by name
+    const tools = mcpState.tools
+      .filter(t => serverIdToName.has(t.serverId))
+      .map(t => ({ ...t, serverName: serverIdToName.get(t.serverId)! }));
     
     return Response.json({ tools });
   }
