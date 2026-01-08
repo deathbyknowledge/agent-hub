@@ -52,20 +52,67 @@ export interface CloudflareConfig {
   [key: string]: unknown;
 }
 
+/**
+ * Configuration options for the agents-hub Vite plugin.
+ *
+ * @example
+ * ```ts
+ * hub({
+ *   srcDir: "./hub",
+ *   outFile: "./_generated.ts",
+ *   defaultModel: "gpt-4o",
+ *   sandbox: true,
+ *   cloudflare: { name: "my-hub" },
+ * })
+ * ```
+ */
 export interface AgentsPluginOptions {
-  srcDir?: string;
-  outFile?: string;
-  defaultModel?: string;
   /**
-   * Enable sandbox (container) support.
-   * When true, adds Sandbox DO binding and container config.
+   * Directory containing agents, tools, and plugins subdirectories.
+   * The plugin scans `srcDir/agents`, `srcDir/tools`, and `srcDir/plugins`.
+   * @default "./hub"
+   */
+  srcDir?: string;
+
+  /**
+   * Output path for the generated entrypoint file.
+   * This file exports `HubAgent`, `Agency`, and the request handler.
+   * @default "./_generated.ts"
+   */
+  outFile?: string;
+
+  /**
+   * Default LLM model for agents that don't specify one.
+   * Can be overridden per-blueprint or per-agency via vars.
+   * @default "gpt-4o"
+   */
+  defaultModel?: string;
+
+  /**
+   * Enable sandbox (container) support for isolated code execution.
+   * When true, adds Sandbox Durable Object binding and container config.
+   * Requires Cloudflare Containers feature.
+   * @default false
    */
   sandbox?: boolean;
+
   /**
    * Cloudflare plugin configuration.
-   * - If undefined: uses default cloudflare config
-   * - If null: disables cloudflare plugin (codegen only)
-   * - If object: merges with required defaults
+   * - `undefined`: Uses default Cloudflare config (recommended)
+   * - `null`: Disables Cloudflare plugin entirely (codegen only mode)
+   * - `object`: Merges with required defaults (DO bindings, R2, migrations)
+   *
+   * @example
+   * ```ts
+   * // Custom domain and name
+   * cloudflare: {
+   *   name: "my-agent-hub",
+   *   routes: [{ pattern: "agents.example.com/*", zone_name: "example.com" }],
+   * }
+   *
+   * // Codegen only (no Cloudflare plugin)
+   * cloudflare: null
+   * ```
    */
   cloudflare?: CloudflareConfig | null;
 }

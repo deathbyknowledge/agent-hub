@@ -1,45 +1,143 @@
-# AgentHub
-AgentHub is the next step of agentic software. It abstracts the agentic runtime so developers don't have to think about LLM providers, tool calling loops, or deployments at all.  
+# Agent Hub
+Agent Hub is the next step of agentic software. It abstracts the agentic runtime so developers don't have to think about LLM providers, tool calling loops, or deployments at all.  
 Instead, they can focus on what matters: the prompts, the tools and the orchestration. If you're fancy you might call it "context management", but really, that's what agents are.
 
-It's entirely built on Cloudflare's Worker's platform (using the [Agents SDK](https://github.com/cloudflare/agents))!, allowing 1-click deployments. 
+It's entirely built on Cloudflare's Worker's platform (using the [Agents SDK](https://github.com/cloudflare/agents)), allowing 1-click deployments. 
 
-It follows this architecture:
-- **AgentHub Runtime**: The serverless runtime where each Agent has its own [compute and storage](https://developers.cloudflare.com/agents/concepts/agent-class/#what-is-the-agent). Each AgentCloud is multi-tenant, by using the concept of **Agencies**. An **Agency** holds the configuration for all Agents in it, and those Agents can communicate with each other. It exposes an HTTP API ready to use.
-- **AgentHub Client**: An HTTP/WS client you can use from any application to use and manage your Agencies and Agents. It's up to you and how you architecture your applications to decide how to use it. I show some examples below.
-- **AgentHub UI**: A web UI where you can access and manage all the features of your Agencies and Agents. It's a static application that uses the **Runtime** HTTP API. You might want to write your own UI or not use any at all! It all depends on _how_ you're using your agents.
+## Architecture
+![engine](https://github.com/user-attachments/assets/4f5809e5-ed8c-40b8-bc35-dc9b45ba5053)
 
-## Getting started
-The base implementation includes a few tools, blueprints and plugins but you can edit or remove any of them and add the ones you like. To get up and running:
+
+- **AgentHub Runtime**: The serverless runtime where each Agent has its own [compute and storage](https://developers.cloudflare.com/agents/concepts/agent-class/#what-is-the-agent). Multi-tenant via **Agencies** - each Agency holds configuration for its Agents, which can communicate with each other. Exposes a full [HTTP API](docs/reference/http-api.md).
+- **AgentHub Client**: An HTTP/WS client library for any application. See [lib/README.md](lib/README.md) for usage.
+- **AgentHub UI**: A web UI for managing Agencies and Agents. It's a static app using the Runtime API - build your own or skip it entirely.
+
+## Features
+
+- **Serverless agents** - Each agent has isolated compute and persistent storage
+- **Multi-tenant** - Agencies provide configuration isolation
+- **Tool execution** - Define tools with Zod schemas, automatic validation
+- **Plugin system** - Lifecycle hooks for customizing agent behavior ([guide](docs/guides/plugins.md))
+- **Capability-based** - Tag-based tool/plugin selection per blueprint
+- **Scheduling** - Cron, interval, and one-time scheduled agent runs
+- **R2 filesystem** - Per-agent file storage backed by Cloudflare R2
+- **MCP support** - Connect to Model Context Protocol servers
+- **Human-in-the-loop** - Pause for approval on sensitive tool calls
+- **Real-time events** - WebSocket streaming of agent events
+
+## Getting Started
+
+The base implementation includes example tools, blueprints, and plugins. To get up and running:
+
 ```sh
 npm i
 npm run dev
 ```
 
-This will spin up a vite server with the runtime and UI. As you add new files or update the existing in `hub/tools`, `hub/blueprints`, or `hub/plugins`, the changes will be picked up automatically.
+This spins up a Vite server with the runtime and UI. Changes to `hub/tools`, `hub/agents`, or `hub/plugins` are picked up automatically.
 
-Set `LLM_API_KEY` and `LLM_API_BASE` in `.dev.vars` for global provider keys or set the same variables in your Agency settings page to override them for a given Agency you create.
+### Configuration
+
+Create `.dev.vars` with your LLM provider credentials:
+
+```
+LLM_API_KEY=sk-your-key
+LLM_API_BASE=https://api.openai.com/v1
+```
+
+Or set these per-Agency in the UI settings page.
 
 
 ## Concepts
-There are three main concepts:
-1. Tools
-2. Blueprints
-3. Plugins
 
 ### Tools
-Tools are just the function definitions that you want your agents to be able to use. We have a very similar API to the [AI SDK](https://ai-sdk.dev/docs/reference/ai-sdk-core/tool) so it should be straightforward to re-use any of your existing tools.  
-The one difference is that we include an extra parameter in the tool callback, a `context` object. This context includes the `agent` instance, which has access to an R2-backed file system, agency/agent level variables, etc. Have a look at our example tools in `hub/tools` to see how to use it.
 
-Mind you, the tools will **not** be added to all your agents, only those that specifically register them in their _blueprint_. Perfect segue.
+Tools are function definitions your agents can use. The API is similar to the [AI SDK](https://ai-sdk.dev/docs/reference/ai-sdk-core/tool), with an additional `context` parameter providing access to the agent instance:
 
-### Blueprint
-Blueprints are just a JSON definition for an agent template. You can define the prompt, model, register tools and plugins, etc. Then, you can create agent conversations using a blueprint which will inherit all its configuration.
+```typescript
+// hub/tools/greet.ts
+import { tool } from "agents-hub";
+import { z } from "zod";
 
-Since they are _just_ JSON, they are completely serializable, meaning you can add/edit them at runtime without having to re-deploy your runtime. Very easy to iterate.
+export const greetTool = tool({
+  name: "greet",
+  description: "Greet a user by name",
+  parameters: z.object({
+    name: z.string().describe("The name to greet"),
+  }),
+  execute: async ({ name }, ctx) => {
+    // ctx.agent gives access to filesystem, vars, sqlite, etc.
+    return `Hello, ${name}!`;
+  },
+});
+```
+
+Tools are only available to agents that register them via `capabilities` in their blueprint.
+
+### Blueprints
+
+Blueprints are JSON definitions for agent templates - prompt, model, capabilities, and vars:
+
+```typescript
+// hub/agents/assistant.ts
+import type { AgentBlueprint } from "agents-hub";
+
+export default {
+  name: "assistant",
+  description: "A helpful assistant",
+  prompt: "You are a helpful assistant. Be concise.",
+  capabilities: ["@default", "greet"],  // @tag or tool/plugin name
+  model: "gpt-4o",
+  vars: { MAX_ITERATIONS: 10 },
+} satisfies AgentBlueprint;
+```
+
+Since blueprints are serializable, you can create/edit them at runtime via the API without redeploying.
 
 ### Plugins
-Plugins are an evolution from LangChain's [middleware](https://reference.langchain.com/python/langchain/middleware/) concept. They allow for very fine-grained context management while also providing flexibility for extending your runtime's capabilities.
 
-You can take a look at the plugins in `hub/plugins` to see examples of how to build your own. I recommend `subagents` and `fs`.
+Plugins extend agent behavior with lifecycle hooks. They can modify prompts, intercept tool calls, contribute state, and expose actions:
+
+```typescript
+// hub/plugins/my-plugin.ts
+import type { AgentPlugin } from "agents-hub";
+
+export const myPlugin: AgentPlugin = {
+  name: "my-plugin",
+  tags: ["default"],
+
+  async beforeModel(ctx, plan) {
+    plan.addSystemPrompt("Additional context...");
+  },
+
+  async onToolResult(ctx, call, result) {
+    console.log(`Tool ${call.name} returned:`, result);
+  },
+};
+```
+
+See the [Plugin Guide](docs/guides/plugins.md) for all available hooks and examples.
+
+## Deployment
+
+```sh
+npm run build
+npx wrangler deploy
+```
+
+Set secrets:
+```sh
+npx wrangler secret put LLM_API_KEY
+npx wrangler secret put LLM_API_BASE
+npx wrangler secret put SECRET  # optional: API authentication
+```
+
+See the [Deployment Guide](docs/guides/deployment.md) for full instructions.
+
+## Documentation
+
+- [HTTP API Reference](docs/reference/http-api.md) - Complete REST API documentation
+- [Plugin Guide](docs/guides/plugins.md) - Writing custom plugins
+- [Deployment Guide](docs/guides/deployment.md) - Production deployment
+- [Library README](lib/README.md) - Client library and exports
 
