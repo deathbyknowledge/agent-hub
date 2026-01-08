@@ -20,5 +20,8 @@
     "tsc": "tsc --noEmit && npm run tsc -w agents-hub",
     "docs": "typedoc",
     "test": "npm run test -w agents-hub"
+  },
+  "overrides": {
+    "zod": "~3.25.76"
   }
 }

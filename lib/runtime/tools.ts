@@ -1,10 +1,15 @@
-import { type ZodType } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { ToolContext, ToolJsonSchema, Tool } from "./types";
 
 export type ToolResult = string | object | null;
 
-function isZodSchema(value: unknown): value is ZodType {
+/** Structural type for Zod schemas (works with both v3 and v4) */
+interface ZodSchema<T = unknown> {
+  _def: unknown;
+  parse: (data: unknown) => T;
+}
+
+function isZodSchema(value: unknown): value is ZodSchema {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -31,7 +36,7 @@ function isZodSchema(value: unknown): value is ZodType {
  * });
  * ```
  */
-export function tool<TSchema extends ZodType | ToolJsonSchema>(config: {
+export function tool<TSchema extends ZodSchema | ToolJsonSchema>(config: {
   name: string;
   description?: string;
   inputSchema: TSchema;
@@ -39,13 +44,14 @@ export function tool<TSchema extends ZodType | ToolJsonSchema>(config: {
   /** Intrinsic tags for this tool. Merged with tags provided to `addTool()`. */
   tags?: string[];
   execute: (
-    input: TSchema extends ZodType<infer T> ? T : unknown,
+    input: TSchema extends ZodSchema<infer T> ? T : unknown,
     ctx: ToolContext
   ) => Promise<ToolResult>;
-}): Tool<TSchema extends ZodType<infer T> ? T : unknown> {
+}): Tool<TSchema extends ZodSchema<infer T> ? T : unknown> {
   let jsonSchema: ToolJsonSchema;
   if (isZodSchema(config.inputSchema)) {
-    jsonSchema = zodToJsonSchema(config.inputSchema, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jsonSchema = (zodToJsonSchema as any)(config.inputSchema, {
       $refStrategy: "none",
       target: "openApi3"
     }) as ToolJsonSchema;
