@@ -27,7 +27,40 @@ It's entirely built on Cloudflare's Worker's platform (using the [Agents SDK](ht
 
 ## Getting Started
 
-The base implementation includes example tools, blueprints, and plugins. To get up and running:
+The fastest way to get started is with the CLI:
+
+```sh
+npx agents-hub init my-hub
+cd my-hub
+```
+
+Configure your LLM provider in `.dev.vars`:
+
+```
+LLM_API_KEY=sk-your-key
+LLM_API_BASE=https://api.openai.com/v1
+```
+
+Start the development server:
+
+```sh
+npm run dev
+```
+
+Open http://localhost:5173 to see your hub running.
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `npx agents-hub init <name>` | Create a new project |
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run deploy` | Deploy to Cloudflare |
+
+### Developing in this Repository
+
+If you're contributing to agents-hub itself:
 
 ```sh
 npm i
@@ -36,16 +69,7 @@ npm run dev
 
 This spins up a Vite server with the runtime and UI. Changes to `hub/tools`, `hub/agents`, or `hub/plugins` are picked up automatically.
 
-### Configuration
-
-Create `.dev.vars` with your LLM provider credentials:
-
-```
-LLM_API_KEY=sk-your-key
-LLM_API_BASE=https://api.openai.com/v1
-```
-
-Or set these per-Agency in the UI settings page.
+You can also set LLM credentials per-Agency in the UI settings page.
 
 
 ## Concepts
@@ -62,7 +86,7 @@ import { z } from "zod";
 export const greetTool = tool({
   name: "greet",
   description: "Greet a user by name",
-  parameters: z.object({
+  inputSchema: z.object({
     name: z.string().describe("The name to greet"),
   }),
   execute: async ({ name }, ctx) => {

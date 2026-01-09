@@ -16,15 +16,54 @@ Built on Cloudflare's [Agents SDK](https://github.com/cloudflare/agents) and [Du
 - **MCP support** - Connect to Model Context Protocol servers
 - **HTTP + WebSocket API** - Full REST API with real-time event streaming
 
-## Installation
-
-```bash
-npm install agents-hub
-```
-
 ## Quick Start
 
-### 1. Define tools
+Create a new project with a single command:
+
+```bash
+npx agents-hub init my-hub
+cd my-hub
+```
+
+Configure your LLM provider in `.dev.vars`:
+
+```
+LLM_API_KEY=sk-your-key
+LLM_API_BASE=https://api.openai.com/v1
+```
+
+Start developing:
+
+```bash
+npm run dev
+```
+
+Open http://localhost:5173 to see your hub running.
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `npx agents-hub init <name>` | Create a new project |
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run deploy` | Deploy to Cloudflare |
+
+## Project Structure
+
+```
+my-hub/
+├── hub/
+│   ├── agents/      # Agent blueprints
+│   ├── tools/       # Tool definitions
+│   └── plugins/     # Custom plugins
+├── .dev.vars        # Local LLM credentials
+└── package.json
+```
+
+## Defining Agents
+
+### Tools
 
 ```typescript
 // hub/tools/greet.ts
@@ -34,7 +73,7 @@ import { z } from "zod";
 export const greetTool = tool({
   name: "greet",
   description: "Greet a user by name",
-  parameters: z.object({
+  inputSchema: z.object({
     name: z.string().describe("The name to greet"),
   }),
   execute: async ({ name }) => {
@@ -43,7 +82,7 @@ export const greetTool = tool({
 });
 ```
 
-### 2. Define agent blueprints
+### Blueprints
 
 ```typescript
 // hub/agents/assistant.ts
@@ -57,10 +96,11 @@ export default {
 } satisfies AgentBlueprint;
 ```
 
-### 3. Configure Vite
+## Advanced Configuration
+
+For more control, create a `vite.config.ts`:
 
 ```typescript
-// vite.config.ts
 import { defineConfig } from "vite";
 import hub from "agents-hub/vite";
 
@@ -68,7 +108,6 @@ export default defineConfig({
   plugins: [
     hub({
       srcDir: "./hub",
-      outFile: "./_generated.ts",
       defaultModel: "gpt-4o",
     }),
   ],
@@ -76,13 +115,6 @@ export default defineConfig({
 ```
 
 The plugin handles Cloudflare configuration automatically. Pass `cloudflare: null` to disable it (codegen only).
-
-### 4. Deploy
-
-```bash
-npm run build
-npx wrangler deploy
-```
 
 ## Exports
 
