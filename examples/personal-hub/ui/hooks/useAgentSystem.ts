@@ -394,7 +394,7 @@ export function useAgency(agencyId: string | null) {
                 id,
                 name: s.name || id,
                 url: s.server_url || "",
-                status: (s.state || "connecting") as McpServerConfig["state"],
+                status: (s.state || "connecting") as McpServerConfig["status"],
                 error: s.error,
                 authUrl: s.auth_url,
               };
