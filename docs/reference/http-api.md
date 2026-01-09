@@ -259,14 +259,89 @@ Accept: text/event-stream
 
 Returns a Server-Sent Events stream of agent events.
 
-### WebSocket Connection
+### Agent WebSocket Connection
 
 ```
 GET /agency/:agencyId/agent/:agentId
 Upgrade: websocket
 ```
 
-Establishes a WebSocket connection for real-time bidirectional communication.
+Establishes a WebSocket connection directly to a specific agent for real-time events.
+
+**Events received:**
+All agent events are broadcast to connected clients (see [Agent Events](#agent-events) below).
+
+---
+
+## Agency WebSocket
+
+Subscribe to events from multiple agents through a single connection.
+
+### Connect
+
+```
+GET /agency/:agencyId/ws
+Upgrade: websocket
+```
+
+Establishes a WebSocket connection to the agency for aggregated agent events.
+
+### Subscribe to Agents
+
+Send a message to filter which agents' events you receive:
+
+```json
+{ "type": "subscribe", "agentIds": ["agent-id-1", "agent-id-2"] }
+```
+
+### Unsubscribe
+
+Remove the filter to receive events from all agents:
+
+```json
+{ "type": "unsubscribe" }
+```
+
+### Events Received
+
+Events are relayed from agents with additional metadata:
+
+```json
+{
+  "type": "assistant.message",
+  "agentId": "abc123",
+  "agentType": "assistant",
+  "content": "Hello!"
+}
+```
+
+All standard agent events include `agentId` and `agentType` fields when received through the agency WebSocket.
+
+---
+
+## Agent Events
+
+Events broadcast over WebSocket connections (both agent and agency):
+
+| Event Type | Description |
+|------------|-------------|
+| `thread.created` | New thread/conversation created |
+| `request.accepted` | Request accepted (with idempotency key) |
+| `run.started` | Agent run has started |
+| `run.tick` | Run step completed |
+| `run.paused` | Run paused (hitl, error, exhausted, subagent) |
+| `run.resumed` | Run resumed after pause |
+| `run.canceled` | Run was canceled |
+| `agent.started` | Agent processing started |
+| `agent.completed` | Agent completed successfully |
+| `agent.error` | Agent encountered an error |
+| `model.started` | LLM request started |
+| `model.delta` | Streaming token received |
+| `model.completed` | LLM request completed |
+| `assistant.message` | Assistant message (content and/or tool calls) |
+| `tool.started` | Tool execution started |
+| `tool.output` | Tool returned output |
+| `tool.error` | Tool execution failed |
 
 ---
 
