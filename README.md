@@ -1,17 +1,17 @@
-# Agent Hub
-Agent Hub is the next step of agentic software. It abstracts the agentic runtime so developers don't have to think about LLM providers, tool calling loops, or deployments at all.  
-Instead, they can focus on what matters: the prompts, the tools and the orchestration. If you're fancy you might call it "context management", but really, that's what agents are.
+# Agents Hub
+Agent Hub offers a fully-managed distributed cloud execution environment for agents. It abstracts the infrastructure and runtime to free users from re-implementing the same primitives every time (plus handling Cloudflare's Developer platform quirks).  
+This reduces the interface developers have to think about to just **prompts and tools** while allowing extensibility of the runtime with **plugins**.
 
 It's entirely built on Cloudflare's Worker's platform (using the [Agents SDK](https://github.com/cloudflare/agents)), allowing 1-click deployments. 
 
 ## Architecture
 ![engine](https://github.com/user-attachments/assets/4f5809e5-ed8c-40b8-bc35-dc9b45ba5053)
 
+_Take a look at [this](README.md#FullPicture) to see how the engine is integrated into the rest of the hub._
 
-- **AgentHub Runtime**: The serverless runtime where each Agent has its own [compute and storage](https://developers.cloudflare.com/agents/concepts/agent-class/#what-is-the-agent). Multi-tenant via **Agencies** - each Agency holds configuration for its Agents, which can communicate with each other. Exposes a full [HTTP API](docs/reference/http-api.md).
-- **AgentHub Client**: An HTTP/WS client library for any application. See [lib/README.md](lib/README.md) for usage.
-- **AgentHub UI**: A web UI for managing Agencies and Agents. It's a static app using the Runtime API - build your own or skip it entirely.
-
+- **Runtime**: The serverless runtime where each Agent has its own [compute and storage](https://developers.cloudflare.com/agents/concepts/agent-class/#what-is-the-agent). Multi-tenant via **Agencies** - each Agency holds configuration for its Agents, which can communicate with each other. Exposes a full [HTTP API](docs/reference/http-api.md). See [lib/README.md](lib/README.md) for usage.
+- **Client**: An HTTP/WS client library for any application. See [lib/README.md](lib/README.md) for usage.
+- **Example UI**: A web UI for managing Agencies and Agents. It's a static app using the Runtime API. I use it as my personal hub but you're free to use it. Feel free to build your own or skip the UI entirely.
 ## Features
 
 - **Serverless agents** - Each agent has isolated compute and persistent storage
@@ -37,6 +37,7 @@ cd my-hub
 Configure your LLM provider in `.dev.vars`:
 
 ```
+# You can always skip these but you'll have to set them manually for each Agency OR Blueprint.
 LLM_API_KEY=sk-your-key
 LLM_API_BASE=https://api.openai.com/v1
 ```
@@ -165,3 +166,5 @@ See the [Deployment Guide](docs/guides/deployment.md) for full instructions.
 - [Deployment Guide](docs/guides/deployment.md) - Production deployment
 - [Library README](lib/README.md) - Client library and exports
 
+## Full Picture
+![birds-view](https://github.com/user-attachments/assets/6064beb0-ad2b-4a2f-b488-bf22061bf3d5)
