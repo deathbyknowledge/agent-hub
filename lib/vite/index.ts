@@ -244,16 +244,13 @@ function generateCode(
     const absPath = path.join(srcDir, mod.relativePath);
     const importPath =
       "./" + path.relative(outDir, absPath).replace(/\.tsx?$/, "");
-    const toolExports = mod.exports.filter(
-      (exp) =>
-        exp.toLowerCase().endsWith("tool") || exp.toLowerCase().includes("tool")
-    );
-
-    if (toolExports.length > 0) {
+    
+    // Import all exports from tool files - they're all assumed to be tools
+    if (mod.exports.length > 0) {
       imports.push(
-        `import { ${toolExports.join(", ")} } from "${importPath}";`
+        `import { ${mod.exports.join(", ")} } from "${importPath}";`
       );
-      for (const exp of toolExports) {
+      for (const exp of mod.exports) {
         const tags =
           mod.inferredTags.length > 0 ? mod.inferredTags : ["default"];
         toolRegistrations.push(`  .addTool(${exp}, ${JSON.stringify(tags)})`);

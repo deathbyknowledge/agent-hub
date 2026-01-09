@@ -1099,6 +1099,8 @@ export function useActivityFeed(agencyId: string | null) {
   const [isLoading, setIsLoading] = useState(false);
   // Track agent types for display
   const agentTypesRef = useRef<Map<string, string>>(new Map());
+  // Track message count per agent for stable IDs
+  const msgCountRef = useRef<Map<string, number>>(new Map());
 
   // Fetch all agents and their states (initial load only)
   const fetchActivity = useCallback(async () => {
@@ -1114,10 +1116,11 @@ export function useActivityFeed(agencyId: string | null) {
 
       const allItems: ActivityItem[] = [];
 
-      // Build agent type lookup
+      // Build agent type lookup and reset message counters
       for (const agent of agents) {
         agentTypesRef.current.set(agent.id, agent.agentType);
       }
+      msgCountRef.current.clear();
 
       // Fetch state for each agent
       for (const agent of agents) {
@@ -1127,6 +1130,7 @@ export function useActivityFeed(agencyId: string | null) {
 
           // Convert messages to activity items
           if (state?.messages) {
+            let assistantCount = 0;
             for (let i = 0; i < state.messages.length; i++) {
               const msg = state.messages[i];
               const ts = msg.ts || new Date().toISOString();
@@ -1145,8 +1149,9 @@ export function useActivityFeed(agencyId: string | null) {
               } else if (msg.role === "assistant") {
                 const content = (msg as { content?: string }).content;
                 if (content) {
+                  assistantCount++;
                   allItems.push({
-                    id: `${agent.id}-msg-${i}`,
+                    id: `${agent.id}-assistant-${assistantCount}`,
                     timestamp: ts,
                     type: "message",
                     from: agent.agentType,
@@ -1158,6 +1163,8 @@ export function useActivityFeed(agencyId: string | null) {
                 }
               }
             }
+            // Track assistant message count for this agent
+            msgCountRef.current.set(agent.id, assistantCount);
           }
 
           // Add current run status if running
@@ -1219,40 +1226,34 @@ export function useActivityFeed(agencyId: string | null) {
           status: "running",
         },
       ]);
-    } else if (event.type === "model.completed") {
-      // A model response was generated - fetch latest state for this agent
-      // to get the new message
-      const client = getClient().agency(agencyId!);
-      client.agent(event.agentId).getState().then(({ state }) => {
-        if (!state?.messages?.length) return;
-        
-        const lastMsg = state.messages[state.messages.length - 1];
-        if (lastMsg.role !== "assistant") return;
-        
-        const content = (lastMsg as { content?: string }).content;
-        if (!content) return;
+    } else if (event.type === "assistant.message") {
+      // Assistant message contains content directly - no need to fetch state
+      const data = event.data as { content?: string; toolCalls?: unknown[] };
+      const content = data.content;
+      if (!content) return; // Skip if no text content (e.g., only tool calls)
 
-        setItems((prev) => {
-          // Check if we already have this message
-          const msgId = `${event.agentId}-msg-${state.messages.length - 1}`;
-          if (prev.some((item) => item.id === msgId)) return prev;
+      // Use a counter for stable message IDs per agent
+      const count = (msgCountRef.current.get(event.agentId) || 0) + 1;
+      msgCountRef.current.set(event.agentId, count);
 
-          const newItem: ActivityItem = {
-            id: msgId,
-            timestamp: lastMsg.ts || event.ts,
-            type: "message",
-            from: agentType,
-            content,
-            agentId: event.agentId,
-            agentType,
-            status: "done",
-          };
-          return [...prev, newItem].sort(
-            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-          );
-        });
-      }).catch(() => {
-        // Ignore errors - agent might be gone
+      setItems((prev) => {
+        const msgId = `${event.agentId}-assistant-${count}`;
+        // Prevent duplicates
+        if (prev.some((item) => item.id === msgId)) return prev;
+
+        const newItem: ActivityItem = {
+          id: msgId,
+          timestamp: event.ts,
+          type: "message",
+          from: agentType,
+          content,
+          agentId: event.agentId,
+          agentType,
+          status: "done",
+        };
+        return [...prev, newItem].sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
       });
     }
   }, [agencyId]);
