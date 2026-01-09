@@ -17,6 +17,7 @@ export enum AgentEventType {
   MODEL_STARTED = "model.started",
   MODEL_DELTA = "model.delta",
   MODEL_COMPLETED = "model.completed",
+  ASSISTANT_MESSAGE = "assistant.message",
 
   PLUGIN_BEFORE_MODEL = "plugin.before_model",
   PLUGIN_AFTER_MODEL = "plugin.after_model",
@@ -66,6 +67,13 @@ export type AgentEventData =
       data: { usage?: { inputTokens: number; outputTokens: number } };
     }
   | {
+      type: AgentEventType.ASSISTANT_MESSAGE;
+      data: {
+        content?: string;
+        toolCalls?: Array<{ id: string; name: string; args: unknown }>;
+      };
+    }
+  | {
       type: AgentEventType.PLUGIN_BEFORE_MODEL;
       data: { pluginName: string };
     }
@@ -83,5 +91,5 @@ export type AgentEventData =
     }
   | {
       type: AgentEventType.TOOL_ERROR;
-      data: { toolName: string; error: string };
+      data: { toolName: string; toolCallId: string; error: string };
     };

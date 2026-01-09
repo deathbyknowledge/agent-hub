@@ -301,6 +301,16 @@ export abstract class HubAgent<
         if ("toolCalls" in res.message) toolCalls = res.message.toolCalls;
         if ("content" in res.message) reply = res.message.content;
 
+        // Emit assistant message event so UI can update incrementally
+        this.emit(AgentEventType.ASSISTANT_MESSAGE, {
+          content: reply || undefined,
+          toolCalls: toolCalls.length > 0 ? toolCalls.map(tc => ({
+            id: tc.id,
+            name: tc.name,
+            args: tc.args,
+          })) : undefined,
+        });
+
         if (!toolCalls.length) {
           this.runState.status = "completed";
 
@@ -458,6 +468,7 @@ export abstract class HubAgent<
           const { error, call } = r;
           this.emit(AgentEventType.TOOL_ERROR, {
             toolName: call.name,
+            toolCallId: call.id,
             error: String(error instanceof Error ? error.message : error),
           });
           await Promise.all(

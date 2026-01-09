@@ -18,6 +18,7 @@
   ],
   "scripts": {
     "tsc": "tsc --noEmit && npm run tsc -w agents-hub",
+    "build": "npm run build -w agents-hub",
     "docs": "typedoc",
     "test": "npm run test -w agents-hub"
   },

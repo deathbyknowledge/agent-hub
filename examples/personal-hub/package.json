@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "SANDBOX=1 vite",
     "build": "SANDBOX=1 vite build",
-    "deploy": "SANDBOX=1 npm run build && npm run deploy:upload && npm run deploy:activate",
+    "deploy": "SANDBOX=1 npm run build && wrangler deploy",
     "deploy:upload": "wrangler versions upload -c dist/agents_hub/wrangler.json",
     "deploy:activate": "wrangler versions deploy $(wrangler versions list --name agents-hub --json 2>/dev/null | node -e \"const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(d[d.length-1]?.id);\")@100% --yes -c dist/agents_hub/wrangler.json",
     "preview": "SANDBOX=1 vite preview",

@@ -62,7 +62,6 @@ export default {
 ```typescript
 // vite.config.ts
 import { defineConfig } from "vite";
-import { cloudflare } from "@cloudflare/vite-plugin";
 import hub from "agents-hub/vite";
 
 export default defineConfig({
@@ -72,10 +71,11 @@ export default defineConfig({
       outFile: "./_generated.ts",
       defaultModel: "gpt-4o",
     }),
-    cloudflare(),
   ],
 });
 ```
+
+The plugin handles Cloudflare configuration automatically. Pass `cloudflare: null` to disable it (codegen only).
 
 ### 4. Deploy
 
@@ -145,7 +145,7 @@ export const myPlugin: AgentPlugin = {
 
   async beforeModel(ctx, plan) {
     // Modify the LLM request before it's sent
-    plan.appendSystem("Additional context...");
+    plan.addSystemPrompt("Additional context...");
   },
 
   async onToolResult(ctx, call, result) {
@@ -166,6 +166,12 @@ export const myPlugin: AgentPlugin = {
 | `hitl` | Human-in-the-loop approval for tool calls |
 | `logger` | Event logging |
 | `planning` | Todo list management via `write_todos` tool |
+
+## Documentation
+
+- [HTTP API Reference](../docs/reference/http-api.md) - Complete REST API documentation
+- [Plugin Guide](../docs/guides/plugins.md) - Writing custom plugins
+- [Deployment Guide](../docs/guides/deployment.md) - Production deployment
 
 ## Requirements
 

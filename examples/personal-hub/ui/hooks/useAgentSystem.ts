@@ -385,18 +385,18 @@ export function useAgency(agencyId: string | null) {
             ([id, server]: [string, unknown]) => {
               const s = server as {
                 name?: string;
-                url?: string;
-                status?: string;
+                server_url?: string;
+                state?: string;
                 error?: string;
-                authUrl?: string;
+                auth_url?: string;
               };
               return {
                 id,
                 name: s.name || id,
-                url: s.url || "",
-                status: (s.status || "connecting") as McpServerConfig["status"],
+                url: s.server_url || "",
+                status: (s.state || "connecting") as McpServerConfig["state"],
                 error: s.error,
-                authUrl: s.authUrl,
+                authUrl: s.auth_url,
               };
             }
           );
@@ -835,8 +835,6 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
           ...prev,
           run: { ...prev.run, status: "completed" } as RunState,
         }));
-        // Fetch full state to get final messages
-        fetchState();
       } else if (event.type === "agent.error") {
         setHookState((prev) => ({
           ...prev,
@@ -897,11 +895,100 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
       }
     }
 
-    // For model.completed, refresh state to get new messages
-    if (event.type === "model.completed" && event.agentId === agentId) {
-      fetchState();
+    // Handle assistant.message - add message incrementally (no fetch needed)
+    if (event.type === "assistant.message" && event.agentId === agentId) {
+      const data = event.data as {
+        content?: string;
+        toolCalls?: Array<{ id: string; name: string; args: unknown }>;
+      };
+      
+      setHookState((prev) => {
+        if (!prev.state) return prev;
+        
+        // Build the new assistant message
+        const newMessage: ChatMessage = data.toolCalls?.length
+          ? {
+              role: "assistant" as const,
+              toolCalls: data.toolCalls.map(tc => ({
+                id: tc.id,
+                name: tc.name,
+                args: tc.args,
+              })),
+              ts: event.ts,
+            }
+          : {
+              role: "assistant" as const,
+              content: data.content || "",
+              ts: event.ts,
+            };
+        
+        return {
+          ...prev,
+          state: {
+            ...prev.state,
+            messages: [...(prev.state.messages || []), newMessage],
+          },
+        };
+      });
     }
-  }, [agentId, fetchState]);
+
+    // Handle tool.output - add tool result message incrementally
+    if (event.type === "tool.output" && event.agentId === agentId) {
+      const data = event.data as {
+        toolCallId: string;
+        output: unknown;
+      };
+      
+      setHookState((prev) => {
+        if (!prev.state) return prev;
+        
+        const toolMessage: ChatMessage = {
+          role: "tool" as const,
+          toolCallId: data.toolCallId,
+          content: typeof data.output === "string" 
+            ? data.output 
+            : JSON.stringify(data.output),
+          ts: event.ts,
+        };
+        
+        return {
+          ...prev,
+          state: {
+            ...prev.state,
+            messages: [...(prev.state.messages || []), toolMessage],
+          },
+        };
+      });
+    }
+
+    // Handle tool.error - add error result message incrementally
+    if (event.type === "tool.error" && event.agentId === agentId) {
+      const data = event.data as {
+        toolCallId: string;
+        toolName: string;
+        error: string;
+      };
+      
+      setHookState((prev) => {
+        if (!prev.state) return prev;
+        
+        const toolMessage: ChatMessage = {
+          role: "tool" as const,
+          toolCallId: data.toolCallId,
+          content: `Error: ${data.error}`,
+          ts: event.ts,
+        };
+        
+        return {
+          ...prev,
+          state: {
+            ...prev.state,
+            messages: [...(prev.state.messages || []), toolMessage],
+          },
+        };
+      });
+    }
+  }, [agentId]);
 
   // Subscribe to agency WebSocket
   useEffect(() => {

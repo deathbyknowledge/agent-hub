@@ -1,6 +1,6 @@
 {
   "name": "agents-hub",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A serverless agentic runtime for Cloudflare Workers",
   "keywords": [
     "cloudflare",
