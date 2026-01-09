@@ -177,6 +177,162 @@ function AgencyCreateModal({
   );
 }
 
+// Agency select/create modal - shown when no agency is selected
+function AgencySelectModal({
+  agencies,
+  onSelect,
+  onCreate,
+}: {
+  agencies: { id: string; name?: string }[];
+  onSelect: (id: string) => void;
+  onCreate: (name: string) => void;
+}) {
+  const [mode, setMode] = useState<"select" | "create">(agencies.length > 0 ? "select" : "create");
+  const [newName, setNewName] = useState("");
+
+  const handleCreate = () => {
+    if (newName.trim()) {
+      onCreate(newName.trim());
+    }
+  };
+
+  return (
+    <div className="h-screen flex items-center justify-center bg-black p-4">
+      <div className="max-w-md w-full border border-white overflow-hidden">
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-white">
+          <div className="text-center">
+            <div className="text-[#00ff00] text-4xl mb-3 font-mono">█</div>
+            <h1 className="text-xs uppercase tracking-widest text-white mb-1">
+              AGENT_HUB
+            </h1>
+            <p className="text-[10px] uppercase tracking-wider text-white/40">
+              {agencies.length === 0
+                ? "INITIALIZE YOUR FIRST AGENCY"
+                : "SELECT OR CREATE AGENCY"}
+            </p>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-4">
+          {agencies.length === 0 ? (
+            // No agencies - show create form with explanation
+            <div>
+              <div className="mb-4 p-3 border border-white/20">
+                <p className="text-[10px] uppercase tracking-wider text-white/60 leading-relaxed">
+                  AN AGENCY IS YOUR WORKSPACE FOR AI AGENTS. CREATE ONE TO GET STARTED WITH SPAWNING AND MANAGING AGENTS.
+                </p>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleCreate();
+                }}
+              >
+                <label className="block text-[10px] uppercase tracking-wider text-white/50 mb-2">
+                  AGENCY_NAME:
+                </label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="MY_AGENCY"
+                  autoFocus
+                  className="w-full px-3 py-2 border border-white/50 bg-black text-white text-xs uppercase tracking-wider placeholder:text-white/30 focus:outline-none focus:border-white"
+                />
+                <button
+                  type="submit"
+                  disabled={!newName.trim()}
+                  className="w-full mt-4 px-4 py-2 text-[11px] uppercase tracking-widest bg-white text-black border border-white hover:bg-black hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  INITIALIZE AGENCY
+                </button>
+              </form>
+            </div>
+          ) : mode === "select" ? (
+            // Has agencies - show selection list
+            <div>
+              <div className="mb-3 text-[10px] uppercase tracking-wider text-white/40">
+                AVAILABLE AGENCIES ({agencies.length})
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto mb-4">
+                {agencies.map((agency) => (
+                  <button
+                    key={agency.id}
+                    onClick={() => onSelect(agency.id)}
+                    className="w-full px-3 py-2 text-left border border-white/30 hover:border-white hover:bg-white/5 transition-colors group"
+                  >
+                    <span className="text-[11px] uppercase tracking-wider text-white group-hover:text-white">
+                      {agency.name || agency.id}
+                    </span>
+                    <span className="text-[9px] text-white/30 font-mono ml-2">
+                      {agency.id.slice(0, 8)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="border-t border-white/20 pt-3">
+                <button
+                  onClick={() => setMode("create")}
+                  className="w-full px-3 py-2 text-[11px] uppercase tracking-wider text-white/50 border border-white/30 hover:border-white hover:text-white transition-colors"
+                >
+                  + CREATE NEW AGENCY
+                </button>
+              </div>
+            </div>
+          ) : (
+            // Create new agency form
+            <div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleCreate();
+                }}
+              >
+                <label className="block text-[10px] uppercase tracking-wider text-white/50 mb-2">
+                  AGENCY_NAME:
+                </label>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="ENTER IDENTIFIER..."
+                  autoFocus
+                  className="w-full px-3 py-2 border border-white/50 bg-black text-white text-xs uppercase tracking-wider placeholder:text-white/30 focus:outline-none focus:border-white"
+                />
+                <div className="flex gap-2 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setMode("select")}
+                    className="flex-1 px-3 py-2 text-[11px] uppercase tracking-wider text-white/50 border border-white/30 hover:border-white hover:text-white transition-colors"
+                  >
+                    BACK
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!newName.trim()}
+                    className="flex-1 px-3 py-2 text-[11px] uppercase tracking-wider bg-white text-black border border-white hover:bg-black hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    CREATE
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-2 border-t border-white/20 text-center">
+          <span className="text-[10px] text-white/20 font-mono">
+            SYS.BUILD: v0.1 | STATUS: READY
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Auth unlock form component
 function AuthUnlockForm({
   onUnlock,
@@ -784,46 +940,6 @@ function HomeRoute({
 }
 
 // ============================================================================
-// Empty State (no agency selected)
-// ============================================================================
-
-function EmptyState({
-  onMenuClick,
-}: {
-  onMenuClick?: () => void;
-}) {
-  return (
-    <div className="flex-1 flex items-center justify-center relative bg-black">
-      {/* Mobile menu button */}
-      {onMenuClick && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onMenuClick();
-          }}
-          className="md:hidden fixed top-4 left-4 p-2 text-white/50 hover:text-white transition-colors z-10"
-          aria-label="Open menu"
-        >
-          <span className="text-xs">[=]</span>
-        </button>
-      )}
-      <div className="text-center max-w-md px-4 border border-white/20 p-8">
-        <div className="text-[#00ff00] text-3xl mb-4 font-mono">▓</div>
-        <h2 className="text-xs uppercase tracking-widest text-white mb-3">
-          SYSTEM INITIALIZED
-        </h2>
-        <p className="text-[10px] uppercase tracking-wider text-white/40 mb-4">
-          SELECT AGENCY FROM CONTROL PANEL OR INITIALIZE NEW INSTANCE
-        </p>
-        <div className="text-[10px] text-white/20 font-mono">
-          STATUS: AWAITING_SELECTION
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
 // Main Content Router
 // ============================================================================
 
@@ -831,7 +947,7 @@ function MainContent({
   agencyId,
   onMenuClick,
 }: {
-  agencyId: string | null;
+  agencyId: string;
   onMenuClick: () => void;
 }) {
   // Match routes
@@ -839,10 +955,6 @@ function MainContent({
   const [matchAgentTab, paramsAgentTab] = useRoute("/:agencyId/agent/:agentId/:tab");
   const [matchSettings] = useRoute("/:agencyId/settings");
   const [matchHome] = useRoute("/:agencyId");
-
-  if (!agencyId) {
-    return <EmptyState onMenuClick={onMenuClick} />;
-  }
 
   if (matchSettings) {
     return <SettingsRoute agencyId={agencyId} onMenuClick={onMenuClick} />;
@@ -870,16 +982,12 @@ function MainContent({
   }
 
   // Default to home/dashboard view
-  if (matchHome) {
-    return (
-      <HomeRoute
-        agencyId={agencyId}
-        onMenuClick={onMenuClick}
-      />
-    );
-  }
-
-  return <EmptyState onMenuClick={onMenuClick} />;
+  return (
+    <HomeRoute
+      agencyId={agencyId}
+      onMenuClick={onMenuClick}
+    />
+  );
 }
 
 // ============================================================================
@@ -1032,12 +1140,37 @@ export default function App() {
     }
   };
 
+  // Auto-select agency if only one exists, or navigate away from invalid agency
+  useEffect(() => {
+    if (!agenciesFetched || isLocked || isUnauthorized) return;
+
+    // If no agency selected and exactly one exists, auto-select it
+    if (!agencyId && agencies.length === 1) {
+      navigate(`/${agencies[0].id}`);
+    }
+  }, [agenciesFetched, isLocked, isUnauthorized, agencyId, agencies, navigate]);
+
   if (!agenciesFetched) {
     return <AuthLoadingScreen />;
   }
 
   if (isLocked || isUnauthorized) {
     return <AuthUnlockForm onUnlock={handleUnlock} error={authError} />;
+  }
+
+  // No agency selected - show agency select/create modal
+  // Skip if exactly one agency (will auto-navigate via useEffect)
+  if (!agencyId && agencies.length !== 1) {
+    return (
+      <AgencySelectModal
+        agencies={agencies}
+        onSelect={(id) => navigate(`/${id}`)}
+        onCreate={async (name) => {
+          const agency = await createAgency(name);
+          navigate(`/${agency.id}`);
+        }}
+      />
+    );
   }
 
   return (
@@ -1082,10 +1215,12 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <MainContent
-          agencyId={agencyId}
-          onMenuClick={() => setIsMobileMenuOpen(true)}
-        />
+        {agencyId && (
+          <MainContent
+            agencyId={agencyId}
+            onMenuClick={() => setIsMobileMenuOpen(true)}
+          />
+        )}
       </div>
 
       {/* Agency Mind Panel */}

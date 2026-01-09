@@ -118,8 +118,22 @@ function Dashboard({ metrics }: { metrics: DashboardMetrics }) {
           <AsciiSparkline data={runs.hourlyData} />
         </StatBox>
 
-        <StatBox label="SUCCESS" value={<Percentage value={runs.successRate} />} compact>
-          <AsciiBar value={runs.successRate} max={100} width={8} />
+        <StatBox
+          label="SUCCESS"
+          value={
+            runs.today === 0 && runs.week === 0 ? (
+              <span className="text-white/30">—</span>
+            ) : (
+              <Percentage value={runs.successRate} />
+            )
+          }
+          compact
+        >
+          {runs.today === 0 && runs.week === 0 ? (
+            <span className="text-[9px] text-white/30">NO RUNS</span>
+          ) : (
+            <AsciiBar value={runs.successRate} max={100} width={8} />
+          )}
         </StatBox>
 
         <StatBox
@@ -560,6 +574,11 @@ function CommandInput({
               </span>
               <span className="text-[11px] uppercase tracking-wider truncate">
                 {target.label}
+                {target.type === "agent" && target.id && (
+                  <span className="text-white/40 ml-1 font-mono text-[9px]">
+                    {target.id.slice(0, 6)}
+                  </span>
+                )}
               </span>
             </button>
           ))}
