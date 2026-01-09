@@ -1,0 +1,40 @@
+{
+  "name": "prime-intellect-hub",
+  "description": "PRIME HUB - Agent Infrastructure for PrimeIntellect",
+  "type": "module",
+  "version": "0.0.1",
+  "license": "MIT",
+  "author": "Steve James <sjames@cloudflare.com>",
+  "scripts": {
+    "dev": "SANDBOX=1 vite",
+    "build": "SANDBOX=1 vite build",
+    "deploy": "SANDBOX=1 npm run build && wrangler deploy",
+    "deploy:upload": "wrangler versions upload -c dist/agents_hub/wrangler.json",
+    "deploy:activate": "wrangler versions deploy $(wrangler versions list --name agents-hub --json 2>/dev/null | node -e \"const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(d[d.length-1]?.id);\")@100% --yes -c dist/agents_hub/wrangler.json",
+    "preview": "SANDBOX=1 vite preview",
+    "tsc": "npx tsc --noEmit",
+    "docs": "typedoc"
+  },
+  "dependencies": {
+    "@cloudflare/sandbox": "^0.6.7",
+    "@tanstack/react-query": "^5.90.12",
+    "agent-hub": "^0.0.1",
+    "agents": "^0.3.3",
+    "clsx": "^2.1.1",
+    "hnsw": "^1.0.3",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.4.0",
+    "wouter": "^3.8.1"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.19.0",
+    "@cloudflare/workers-types": "^4.20251221.0",
+    "@types/node": "^25.0.3",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^19.2.1",
+    "typedoc": "^0.28.15",
+    "vite": "^7.3.0"
+  }
+}

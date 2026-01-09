@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <!-- Progressive Web App support -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#000000" />
+    
+    <!-- iOS Safari -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    
+    <!-- Android Chrome -->
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: light)" />
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <title>PRIME_HUB // Agent Infrastructure</title>
+    <style>
+      /* Berkeley Mono - Industrial Monospace */
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: local('TX-02-772M-52VM08KK'), local('BerkeleyMono-Regular'),
+             url('https://fonts.deathbyknowledge.com/BerkeleyMono-Regular.woff2') format('woff2');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: local('TX-02-7B2M-52VM08KK'), local('BerkeleyMono-Bold'),
+             url('https://fonts.deathbyknowledge.com/BerkeleyMono-Bold.woff2') format('woff2');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: local('Berkeley Mono Oblique'), local('BerkeleyMono-Oblique'),
+             url('https://fonts.deathbyknowledge.com/BerkeleyMono-Oblique.woff2') format('woff2');
+        font-weight: 400;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Berkeley Mono';
+        src: local('Berkeley Mono Bold Oblique'), local('BerkeleyMono-Bold-Oblique'),
+             url('https://fonts.deathbyknowledge.com/BerkeleyMono-Bold-Oblique.woff2') format('woff2');
+        font-weight: 700;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      /* ============================================
+         INDUSTRIAL RETRO-COMPUTING DESIGN SYSTEM
+         "Data > Decoration"
+         ============================================ */
+      
+      :root {
+        /* Core palette - brutal contrast */
+        --color-bg: #000000;
+        --color-fg: #ffffff;
+        --color-border: #ffffff;
+        --color-dim: #666666;
+        --color-accent: #00ff00; /* Terminal green */
+        --color-warning: #ffaa00; /* Amber */
+        --color-error: #ff0000;
+        --color-running: #00aaff;
+        
+        /* Grid unit */
+        --grid: 8px;
+      }
+      
+      * {
+        -webkit-tap-highlight-color: transparent;
+        box-sizing: border-box;
+      }
+      
+      html {
+        height: 100%;
+        height: -webkit-fill-available;
+        overflow: hidden;
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        height: -webkit-fill-available;
+        overflow: hidden;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        overscroll-behavior-y: none;
+        -webkit-user-select: text;
+        user-select: text;
+        
+        /* Industrial defaults */
+        font-family: 'Berkeley Mono', monospace;
+        background: var(--color-bg);
+        color: var(--color-fg);
+        font-size: 13px;
+        line-height: 1.5;
+        letter-spacing: 0.02em;
+      }
+      
+      #root {
+        height: 100%;
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
+        overflow: hidden;
+      }
+      
+      /* Allow text selection in input fields */
+      input, textarea {
+        -webkit-user-select: text;
+        user-select: text;
+        font-family: inherit;
+      }
+      
+      /* Kill all rounded corners globally */
+      * {
+        border-radius: 0 !important;
+      }
+      
+      /* Selections */
+      ::selection {
+        background: #000;
+        color: #fff;
+      }
+      ::-moz-selection {
+        background: #000;
+        color: #fff;
+      }
+
+      /* Industrial scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: var(--color-bg);
+        border-left: 1px solid var(--color-border);
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--color-dim);
+        border: 1px solid var(--color-border);
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--color-fg);
+      }
+      
+      /* Scanline texture - CRT monitor effect */
+      body::after {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: repeating-linear-gradient(
+          0deg,
+          rgba(0, 0, 0, 0.03),
+          rgba(0, 0, 0, 0.03) 1px,
+          transparent 1px,
+          transparent 2px
+        );
+        pointer-events: none;
+        z-index: 9999;
+      }
+      
+      /* Industrial stepped blink - no smooth fade */
+      @keyframes blink-hard {
+        0%, 49% { opacity: 1; }
+        50%, 100% { opacity: 0; }
+      }
+      
+      .blink-hard {
+        animation: blink-hard 1s steps(2) infinite;
+      }
+      
+      /* Override default focus styles for brutalist aesthetic */
+      input:focus, textarea:focus, select:focus, button:focus {
+        outline: none !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+      }
+      
+      input:focus, textarea:focus, select:focus {
+        border-color: #fff !important;
+      }
+      
+      /* Ensure all clickable elements show pointer cursor */
+      button, [role="button"], a, select, label[for], .cursor-pointer {
+        cursor: pointer;
+      }
+      
+      /* Style datetime-local inputs for brutalist aesthetic */
+      input[type="datetime-local"],
+      input[type="date"],
+      input[type="time"] {
+        background: #000 !important;
+        color: #fff !important;
+        border: 1px solid #fff !important;
+        padding: 8px 12px !important;
+        font-family: inherit !important;
+        color-scheme: dark;
+      }
+      
+      input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+      input[type="date"]::-webkit-calendar-picker-indicator,
+      input[type="time"]::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/ui/App.tsx"></script>
+  </body>
+</html>
