@@ -7,7 +7,7 @@ It's entirely built on Cloudflare's Worker's platform (using the [Agents SDK](ht
 ## Architecture
 ![engine](https://github.com/user-attachments/assets/4f5809e5-ed8c-40b8-bc35-dc9b45ba5053)
 
-_Take a look at [this](README.md#FullPicture) to see how the engine is integrated into the rest of the hub._
+_Take a look at [this](https://github.com/deathbyknowledge/agent-hub#full-picture) to see how the engine is integrated into the rest of the hub._
 
 - **Runtime**: The serverless runtime where each Agent has its own [compute and storage](https://developers.cloudflare.com/agents/concepts/agent-class/#what-is-the-agent). Multi-tenant via **Agencies** - each Agency holds configuration for its Agents, which can communicate with each other. Exposes a full [HTTP API](docs/reference/http-api.md). See [lib/README.md](lib/README.md) for usage.
 - **Client**: An HTTP/WS client library for any application. See [lib/README.md](lib/README.md) for usage.
