@@ -385,6 +385,23 @@ export abstract class HubAgent<
 
   getState(_req: Request) {
     const { threadId, agencyId, agentType, request, createdAt } = this.info;
+    
+    // Handle uninitialized agent (not yet registered)
+    if (!agentType) {
+      return Response.json({
+        state: {
+          messages: [],
+          threadId,
+          agentType: null,
+          model: null,
+          tools: [],
+          thread: { id: threadId, request, createdAt, agentType: null, agencyId },
+        },
+        run: this.runState,
+        error: "Agent not yet initialized (missing agentType)",
+      });
+    }
+    
     const { model, messages } = this;
     const tools = Object.values(this.tools).map((tool) => tool.meta);
     let state: AgentState = {
