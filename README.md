@@ -1,4 +1,7 @@
 # Agents Hub
+
+> **Alpha Software**: This project is in active development. Bugs and breaking changes are expected. Contributions are welcome!
+
 Agent Hub offers a fully-managed distributed cloud execution environment for agents. It abstracts the infrastructure and runtime to free users from re-implementing the same primitives every time (plus handling Cloudflare's Developer platform quirks).  
 This reduces the interface developers have to think about to just **prompts and tools** while allowing extensibility of the runtime with **plugins**.
 
