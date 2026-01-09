@@ -2,6 +2,7 @@
  * agents-hub CLI
  *
  * Commands:
+ *   init    Create a new project
  *   dev     Start development server
  *   build   Build for production
  *   deploy  Build and deploy to Cloudflare
@@ -10,8 +11,22 @@
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const VERSION = "0.0.5";
+// Read version from package.json at runtime
+function getVersion(): string {
+  try {
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    // Go up from dist/cli to package root (dist/cli -> dist -> package root)
+    const pkgPath = path.resolve(__dirname, "..", "..", "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+    return pkg.version;
+  } catch {
+    return "0.0.0";
+  }
+}
+
+const VERSION = getVersion();
 
 const HELP = `
 agents-hub v${VERSION}
