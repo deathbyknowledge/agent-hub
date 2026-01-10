@@ -258,7 +258,7 @@ function generateCode(
       );
       for (const exp of mod.exports) {
         const tags =
-          mod.inferredTags.length > 0 ? mod.inferredTags : ["default"];
+          mod.inferredTags.length > 0 ? mod.inferredTags : [];
         toolRegistrations.push(`  .addTool(${exp}, ${JSON.stringify(tags)})`);
       }
     }
