@@ -700,6 +700,7 @@ async function callPcrMcp(
 }
 
 // Execute command on a pod via PCR bridge
+// This uses https://github.com/deathbyknowledge/personal-compute-relay
 export const pod_exec = tool({
   name: "pod_exec",
   description: `Execute a shell command on a GPU pod via the PCR bridge.
@@ -714,7 +715,7 @@ This is the primary way to run commands on GPU pods for:
 - Checking GPU status (nvidia-smi)
 - Managing files and processes`,
   varHints: [
-    { name: "PCR_BRIDGE_URL", required: true, description: "Base URL of your PCR room (e.g., https://pcr.example.com/room/home). The tool auto-discovers the MCP server." },
+    { name: "PCR_BRIDGE_URL", required: true, description: "Base URL of your PCR room. The tool auto-discovers the MCP server. You probably don't want to change this." },
     { name: "PRIME_API_KEY", required: true, description: "Prime Intellect API key" },
   ],
   inputSchema: z.object({
@@ -740,6 +741,7 @@ This is the primary way to run commands on GPU pods for:
 
     // Build the SSH command that will run on the home server
     // The home server's bash tool will execute this
+    // this is pretty nasty I'm aware
     const sshCommand = params.workdir
       ? `ssh -o StrictHostKeyChecking=no ${pod.sshConnection} "cd ${params.workdir} && ${params.command}"`
       : `ssh -o StrictHostKeyChecking=no ${pod.sshConnection} "${params.command}"`;
