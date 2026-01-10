@@ -115,6 +115,12 @@ export interface AgentsPluginOptions {
    * ```
    */
   cloudflare?: CloudflareConfig | null;
+
+  /**
+   * R2 bucket name for agent filesystem storage.
+   * @default "agents-hub-fs"
+   */
+  bucket?: string;
 }
 
 const TS_EXTENSIONS = [".ts", ".tsx"];
@@ -325,6 +331,7 @@ function buildCloudflareConfig(
   userConfig: CloudflareConfig | undefined,
   outFile: string,
   sandbox: boolean,
+  bucket: string,
 ): Record<string, unknown> {
   const mainFile = path.basename(outFile);
 
@@ -339,7 +346,7 @@ function buildCloudflareConfig(
     r2_buckets: [
       {
         binding: "FS",
-        bucket_name: "agents-hub-fs",
+        bucket_name: bucket,
       },
     ],
     main: mainFile,
@@ -524,7 +531,8 @@ export default function agentsPlugin(
   }
 
   // Build cloudflare config and return combined plugins
-  const cfConfig = buildCloudflareConfig(options.cloudflare, outFile, sandbox);
+  const bucket = options.bucket || "agents-hub-fs";
+  const cfConfig = buildCloudflareConfig(options.cloudflare, outFile, sandbox, bucket);
   const cfPlugins = cloudflare({ config: cfConfig });
   const plugins = Array.isArray(cfPlugins) ? cfPlugins : [cfPlugins];
 
