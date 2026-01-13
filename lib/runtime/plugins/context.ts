@@ -247,8 +247,8 @@ export const context: AgentPlugin = {
         const recentMessages = store.getMessagesAfter(checkpointEndSeq);
         plan.setMessages([
           {
-            role: "assistant",
-            content: `[Conversation Summary]\n${checkpoint.summary}`,
+            role: "user",
+            content: `[Previous Conversation Summary]\n${checkpoint.summary}\n\n---\nContinue from where we left off.`,
           },
           ...recentMessages.filter((m: ChatMessage) => m.role !== "system"),
         ]);
@@ -349,10 +349,11 @@ export const context: AgentPlugin = {
     });
 
     // Set messages for this request: summary + recent messages
+    // Use "user" role for summary since many LLMs don't allow starting with "assistant"
     plan.setMessages([
       {
-        role: "assistant",
-        content: `[Conversation Summary]\n${summary}`,
+        role: "user",
+        content: `[Previous Conversation Summary]\n${summary}\n\n---\nContinue from where we left off.`,
       },
       ...toKeep.filter((m: ChatMessage) => m.role !== "system"),
     ]);
