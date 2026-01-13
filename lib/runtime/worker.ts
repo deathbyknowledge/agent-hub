@@ -105,20 +105,24 @@ const getPlugins = (req: IRequest, { opts }: RequestContext) => {
 
 const listAgencies = async (req: IRequest, { env }: RequestContext) => {
   const agencies = [];
+  // List all .agency.json files - they're stored with encoded agency IDs as prefixes
   const list = await env.FS.list({ delimiter: "/" });
   for (const prefix of list.delimitedPrefixes) {
-    const agencyName = prefix.replace(/\/$/, "");
-    const metaObj = await env.FS.get(`${agencyName}/.agency.json`);
+    const encodedName = prefix.replace(/\/$/, "");
+    const metaObj = await env.FS.get(`${encodedName}/.agency.json`);
     if (metaObj) {
       try {
         const meta = await metaObj.json();
         agencies.push(meta);
       } catch {
-        // Corrupted or empty .agency.json - use defaults
-        agencies.push({ id: agencyName, name: agencyName });
+        // Corrupted or empty .agency.json - decode the name for display
+        const decodedName = decodeURIComponent(encodedName);
+        agencies.push({ id: decodedName, name: decodedName });
       }
     } else {
-      agencies.push({ id: agencyName, name: agencyName });
+      // No .agency.json but prefix exists - decode the name for display
+      const decodedName = decodeURIComponent(encodedName);
+      agencies.push({ id: decodedName, name: decodedName });
     }
   }
   return Response.json({ agencies });
@@ -132,14 +136,17 @@ const createAgency = async (req: IRequest, { env }: RequestContext) => {
     return new Response("Agency name is required", { status: 400 });
   }
 
-  if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+  // Allow alphanumeric, dashes, underscores, and slashes (for owner/repo pattern)
+  if (!/^[a-zA-Z0-9_\-\/]+$/.test(name)) {
     return new Response(
-      "Agency name must be alphanumeric with dashes/underscores only",
+      "Agency name must be alphanumeric with dashes, underscores, or slashes",
       { status: 400 }
     );
   }
 
-  const existing = await env.FS.head(`${name}/.agency.json`);
+  // Encode the name for R2 path to handle slashes
+  const encodedName = encodeURIComponent(name);
+  const existing = await env.FS.head(`${encodedName}/.agency.json`);
   if (existing) {
     return new Response(`Agency '${name}' already exists`, { status: 409 });
   }
@@ -149,7 +156,7 @@ const createAgency = async (req: IRequest, { env }: RequestContext) => {
     name: name,
     createdAt: new Date().toISOString(),
   };
-  await env.FS.put(`${name}/.agency.json`, JSON.stringify(meta));
+  await env.FS.put(`${encodedName}/.agency.json`, JSON.stringify(meta));
 
   return Response.json(meta, { status: 201 });
 };

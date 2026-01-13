@@ -155,6 +155,39 @@ export class Agency extends Agent<AgentEnv> {
       this._cachedAgencyName = stored;
     } else {
       this.persistName(this.name);
+      // Register this agency in R2 so it appears in listAgencies
+      this.ensureRegisteredInR2(this.name);
+    }
+  }
+
+  /**
+   * Ensure this agency is registered in R2 with a .agency.json file.
+   * This allows the agency to appear in listAgencies even if it was
+   * created implicitly (via direct DO access rather than POST /agencies).
+   */
+  private async ensureRegisteredInR2(agencyId: string): Promise<void> {
+    try {
+      const bucket = this.env.FS;
+      if (!bucket) return;
+
+      // Encode the agency ID for R2 path (handles slashes in owner/repo)
+      const encodedId = encodeURIComponent(agencyId);
+      const metaPath = `${encodedId}/.agency.json`;
+
+      // Check if already registered
+      const existing = await bucket.head(metaPath);
+      if (existing) return;
+
+      // Create the agency metadata file
+      const meta = {
+        id: agencyId,
+        name: agencyId,
+        createdAt: new Date().toISOString(),
+      };
+      await bucket.put(metaPath, JSON.stringify(meta));
+    } catch (e) {
+      // Log but don't fail - registration is best-effort
+      console.error("[Agency] Failed to register in R2:", e);
     }
   }
 
@@ -240,6 +273,11 @@ export class Agency extends Agent<AgentEnv> {
     throw new Error(
       "Agency name not found - DO never accessed via getAgentByName?"
     );
+  }
+
+  /** Get the URL-encoded agency name for use in R2 paths */
+  private get encodedAgencyName(): string {
+    return encodeURIComponent(this.agencyName);
   }
 
   private persistName(name: string): void {
@@ -1282,7 +1320,7 @@ export class Agency extends Agent<AgentEnv> {
 
     const bucket = this.env.FS;
     if (bucket) {
-      await this.deletePrefix(bucket, `${this.agencyName}/`);
+      await this.deletePrefix(bucket, `${this.encodedAgencyName}/`);
     }
 
     await this.destroy();
@@ -1319,8 +1357,8 @@ export class Agency extends Agent<AgentEnv> {
 
     const bucket = this.env.FS;
     if (bucket) {
-      await this.deletePrefix(bucket, `${this.agencyName}/agents/${agentId}/`);
-      await bucket.delete(`${this.agencyName}/agents/${agentId}`).catch(() => {});
+      await this.deletePrefix(bucket, `${this.encodedAgencyName}/agents/${agentId}/`);
+      await bucket.delete(`${this.encodedAgencyName}/agents/${agentId}`).catch(() => {});
     }
 
     this.sql`
@@ -1406,8 +1444,9 @@ export class Agency extends Agent<AgentEnv> {
       });
     }
 
-    // Build R2 key: /{agencyId}/{fsPath}
-    const r2Prefix = this.agencyName + "/";
+    // Build R2 key: /{encodedAgencyId}/{fsPath}
+    // Use encoded agency name to handle slashes in agency IDs (e.g., owner/repo)
+    const r2Prefix = this.encodedAgencyName + "/";
     const r2Key = r2Prefix + fsPath;
 
     switch (req.method) {
