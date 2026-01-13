@@ -161,6 +161,33 @@ async function getAgencyStub(agencyId: string, ctx: CfCtx): Promise<DurableObjec
   return getAgentByName(ctx.exports.Agency, decodedId);
 }
 
+/** Check if an agency exists (has been explicitly created via POST /agencies) */
+async function agencyExists(agencyId: string, env: HandlerEnv): Promise<boolean> {
+  if (!env.FS) return true; // No R2 bucket = skip check
+  const metaObj = await env.FS.head(`${agencyId}/.agency.json`);
+  return metaObj !== null;
+}
+
+/** 
+ * Require agency to exist before proceeding. Returns 404 Response if not found.
+ * Use in route handlers: const error = await requireAgency(...); if (error) return error;
+ */
+async function requireAgency(agencyId: string, env: HandlerEnv): Promise<Response | null> {
+  const decodedId = decodeURIComponent(agencyId);
+  const exists = await agencyExists(decodedId, env);
+  if (!exists) {
+    return new Response(
+      JSON.stringify({ 
+        error: "Agency not found",
+        message: `Agency '${decodedId}' does not exist. Create it first with POST /agencies`,
+        agencyId: decodedId,
+      }),
+      { status: 404, headers: { "content-type": "application/json" } }
+    );
+  }
+  return null;
+}
+
 const deleteAgency = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(new Request("http://do/destroy", { method: "DELETE" }));
@@ -192,12 +219,18 @@ const deleteBlueprint = async (req: IRequest, { ctx }: RequestContext) => {
   );
 };
 
-const listAgents = async (req: IRequest, { ctx }: RequestContext) => {
+const listAgents = async (req: IRequest, { ctx, env }: RequestContext) => {
+  const notFound = await requireAgency(req.params.agencyId, env);
+  if (notFound) return notFound;
+  
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(new Request("http://do/agents"));
 };
 
-const createAgent = async (req: IRequest, { ctx }: RequestContext) => {
+const createAgent = async (req: IRequest, { ctx, env }: RequestContext) => {
+  const notFound = await requireAgency(req.params.agencyId, env);
+  if (notFound) return notFound;
+  
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   const body = await req.json<Record<string, unknown>>();
   body.requestContext = buildRequestContext(req);
@@ -295,12 +328,18 @@ const getScheduleRuns = async (req: IRequest, { ctx }: RequestContext) => {
 
 // --- Vars ---
 
-const getVars = async (req: IRequest, { ctx }: RequestContext) => {
+const getVars = async (req: IRequest, { ctx, env }: RequestContext) => {
+  const notFound = await requireAgency(req.params.agencyId, env);
+  if (notFound) return notFound;
+  
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(new Request("http://do/vars"));
 };
 
-const setVars = async (req: IRequest, { ctx }: RequestContext) => {
+const setVars = async (req: IRequest, { ctx, env }: RequestContext) => {
+  const notFound = await requireAgency(req.params.agencyId, env);
+  if (notFound) return notFound;
+  
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
     new Request("http://do/vars", {
@@ -311,12 +350,18 @@ const setVars = async (req: IRequest, { ctx }: RequestContext) => {
   );
 };
 
-const getVar = async (req: IRequest, { ctx }: RequestContext) => {
+const getVar = async (req: IRequest, { ctx, env }: RequestContext) => {
+  const notFound = await requireAgency(req.params.agencyId, env);
+  if (notFound) return notFound;
+  
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(new Request(`http://do/vars/${req.params.varKey}`));
 };
 
-const setVar = async (req: IRequest, { ctx }: RequestContext) => {
+const setVar = async (req: IRequest, { ctx, env }: RequestContext) => {
+  const notFound = await requireAgency(req.params.agencyId, env);
+  if (notFound) return notFound;
+  
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
     new Request(`http://do/vars/${req.params.varKey}`, {
