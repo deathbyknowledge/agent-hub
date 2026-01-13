@@ -731,9 +731,10 @@ export class Agency extends Agent<AgentEnv> {
       requestContext?: ThreadRequestContext;
       input?: Record<string, unknown>;
       relatedAgentId?: string;
+      id?: string;
     };
 
-    return this.spawnAgent(body.agentType, body.requestContext, body.input, body.relatedAgentId);
+    return this.spawnAgent(body.agentType, body.requestContext, body.input, body.relatedAgentId, body.id);
   }
 
   private async handleDeleteAgent(agentId: string): Promise<Response> {
@@ -868,10 +869,51 @@ export class Agency extends Agent<AgentEnv> {
     agentType: string,
     requestContext?: ThreadRequestContext,
     input?: Record<string, unknown>,
-    relatedAgentId?: string
+    relatedAgentId?: string,
+    providedId?: string
   ): Promise<Response> {
-    const id = crypto.randomUUID();
+    const id = providedId || crypto.randomUUID();
     const createdAt = Date.now();
+    
+    // Check if agent with this ID already exists
+    if (providedId) {
+      const existing = this.sql<{ id: string }>`
+        SELECT id FROM agents WHERE id = ${providedId}
+      `;
+      if (existing.length > 0) {
+        // Agent exists - invoke it instead of creating
+        const stub = await getAgentByName(this.exports.HubAgent, providedId);
+        
+        if (input) {
+          const userMessage =
+            typeof input.message === "string"
+              ? input.message
+              : JSON.stringify(input);
+
+          await stub.fetch(
+            new Request("http://do/invoke", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                messages: [{ role: "user", content: userMessage }],
+              }),
+            })
+          );
+        }
+        
+        // Return existing agent info
+        const meta = this.sql<{ metadata: string; created_at: number }>`
+          SELECT metadata, created_at FROM agents WHERE id = ${providedId}
+        `[0];
+        
+        return Response.json({
+          id: providedId,
+          createdAt: new Date(meta.created_at).toISOString(),
+          agentType,
+          resumed: true,
+        }, { status: 200 });
+      }
+    }
 
     const meta = {
       request: requestContext,

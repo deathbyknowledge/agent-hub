@@ -310,6 +310,8 @@ export interface SpawnAgentRequest {
   agentType: string;
   relatedAgentId?: string;
   input?: Record<string, unknown>;
+  /** Optional custom ID for the agent. If an agent with this ID exists, it will be resumed instead of created. */
+  id?: string;
 }
 
 export interface InvokeRequest {
@@ -497,7 +499,7 @@ export class AgencyClient {
   ) {}
 
   private get path(): string {
-    return `${this.baseUrl}/agency/${this.agencyId}`;
+    return `${this.baseUrl}/agency/${encodeURIComponent(this.agencyId)}`;
   }
 
   private async request<T>(

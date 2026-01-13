@@ -156,7 +156,9 @@ const createAgency = async (req: IRequest, { env }: RequestContext) => {
 
 
 async function getAgencyStub(agencyId: string, ctx: CfCtx): Promise<DurableObjectStub<Agency>> {
-  return getAgentByName(ctx.exports.Agency, agencyId);
+  // Decode in case the agency ID contains slashes (e.g., "owner/repo")
+  const decodedId = decodeURIComponent(agencyId);
+  return getAgentByName(ctx.exports.Agency, decodedId);
 }
 
 const deleteAgency = async (req: IRequest, { ctx }: RequestContext) => {
