@@ -170,6 +170,10 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
+class NonRetryableError extends Error {
+  readonly retryable = false;
+}
+
 /**
  * Creates a provider for OpenAI-compatible chat completions APIs.
  * Works with OpenAI, OpenRouter, Azure OpenAI, and other compatible endpoints.
@@ -212,7 +216,9 @@ export function makeChatCompletions(
             }
 
             const errTxt = await res.text().catch(() => "");
-            throw new Error(`Chat completions error ${res.status}: ${errTxt}`);
+            throw new NonRetryableError(
+              `Chat completions error ${res.status}: ${errTxt}`
+            );
           }
 
           const json = (await res.json()) as {
@@ -232,7 +238,11 @@ export function makeChatCompletions(
             throw error;
           }
 
-          if (retry && attempt < retry.maxRetries) {
+          if (
+            retry &&
+            attempt < retry.maxRetries &&
+            !(error instanceof NonRetryableError)
+          ) {
             await sleep(computeDelayMs(attempt, retry, null), signal);
             continue;
           }
