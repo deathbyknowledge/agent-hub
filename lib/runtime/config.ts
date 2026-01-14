@@ -84,7 +84,7 @@ export const DEFAULT_LLM_RETRY_JITTER_RATIO = 0.2;
  * @default "429,500,502,503,504"
  */
 export const VAR_LLM_RETRY_STATUS_CODES = "LLM_RETRY_STATUS_CODES";
-export const DEFAULT_LLM_RETRY_STATUS_CODES = [429, 500, 502, 503, 504];
+export const DEFAULT_LLM_RETRY_STATUS_CODES = [429, 500, 502, 503, 504, 520];
 
 // ============================================================
 // Agent Loop Configuration
