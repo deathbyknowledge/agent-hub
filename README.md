@@ -43,6 +43,11 @@ Configure your LLM provider in `.dev.vars`:
 # You can always skip these but you'll have to set them manually for each Agency OR Blueprint.
 LLM_API_KEY=sk-your-key
 LLM_API_BASE=https://api.openai.com/v1
+LLM_RETRY_MAX=2
+LLM_RETRY_BACKOFF_MS=500
+LLM_RETRY_MAX_BACKOFF_MS=8000
+LLM_RETRY_JITTER_RATIO=0.2
+LLM_RETRY_STATUS_CODES=429,500,502,503,504,520
 ```
 
 Start the development server:
