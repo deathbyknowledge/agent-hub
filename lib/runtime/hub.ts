@@ -3,6 +3,14 @@ import { HubAgent } from "./agent";
 import { Agency, type McpToolCallRequest, type McpToolCallResponse } from "./agency";
 import { AgentEventType } from "./events";
 import { makeChatCompletions, type Provider } from "./providers";
+import {
+  DEFAULT_LLM_RETRY_BACKOFF_MS,
+  DEFAULT_LLM_RETRY_JITTER_RATIO,
+  DEFAULT_LLM_RETRY_MAX,
+  DEFAULT_LLM_RETRY_MAX_BACKOFF_MS,
+  DEFAULT_LLM_RETRY_STATUS_CODES,
+  DEFAULT_LLM_API_BASE,
+} from "./config";
 import type {
   Tool,
   AgentPlugin,
@@ -12,6 +20,37 @@ import type {
   ToolContext,
 } from "./types";
 import { createHandler, type HandlerOptions } from "./worker";
+
+function readNumberVar(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length > 0 && Number.isFinite(Number(trimmed))) {
+      return Number(trimmed);
+    }
+  }
+  return fallback;
+}
+
+function readStatusCodesVar(
+  value: unknown,
+  fallback: number[]
+): number[] {
+  if (Array.isArray(value)) {
+    const codes = value
+      .map((v) => readNumberVar(v, NaN))
+      .filter((v) => Number.isFinite(v));
+    if (codes.length > 0) return codes;
+  }
+  if (typeof value === "string") {
+    const codes = value
+      .split(",")
+      .map((v) => readNumberVar(v, NaN))
+      .filter((v) => Number.isFinite(v));
+    if (codes.length > 0) return codes;
+  }
+  return fallback;
+}
 
 // MCP tool info from Agency (enriched with serverName for capability matching)
 export interface McpToolInfo {
@@ -496,11 +535,39 @@ export class AgentHub {
           const apiKey =
             (this.vars.LLM_API_KEY as string) ?? this.env.LLM_API_KEY;
           const apiBase =
-            (this.vars.LLM_API_BASE as string) ?? this.env.LLM_API_BASE;
+            (this.vars.LLM_API_BASE as string) ??
+            this.env.LLM_API_BASE ??
+            DEFAULT_LLM_API_BASE;
           if (!apiKey)
             throw new Error("Neither LLM_API_KEY nor custom provider set");
 
-          baseProvider = makeChatCompletions(apiKey, apiBase);
+          const retry = {
+            maxRetries: readNumberVar(
+              this.vars.LLM_RETRY_MAX ?? this.env.LLM_RETRY_MAX,
+              DEFAULT_LLM_RETRY_MAX
+            ),
+            backoffMs: readNumberVar(
+              this.vars.LLM_RETRY_BACKOFF_MS ?? this.env.LLM_RETRY_BACKOFF_MS,
+              DEFAULT_LLM_RETRY_BACKOFF_MS
+            ),
+            maxBackoffMs: readNumberVar(
+              this.vars.LLM_RETRY_MAX_BACKOFF_MS ??
+                this.env.LLM_RETRY_MAX_BACKOFF_MS,
+              DEFAULT_LLM_RETRY_MAX_BACKOFF_MS
+            ),
+            jitterRatio: readNumberVar(
+              this.vars.LLM_RETRY_JITTER_RATIO ??
+                this.env.LLM_RETRY_JITTER_RATIO,
+              DEFAULT_LLM_RETRY_JITTER_RATIO
+            ),
+            retryableStatusCodes: readStatusCodesVar(
+              this.vars.LLM_RETRY_STATUS_CODES ??
+                this.env.LLM_RETRY_STATUS_CODES,
+              DEFAULT_LLM_RETRY_STATUS_CODES
+            ),
+          };
+
+          baseProvider = makeChatCompletions(apiKey, apiBase, { retry });
         }
 
         return {
