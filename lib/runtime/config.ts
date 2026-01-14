@@ -40,6 +40,52 @@ export const DEFAULT_LLM_API_BASE = "https://api.openai.com/v1";
  */
 export const VAR_DEFAULT_MODEL = "DEFAULT_MODEL";
 
+/**
+ * Maximum number of retries for LLM requests.
+ *
+ * @var LLM_RETRY_MAX
+ * @default 2
+ * @example 0 disables retries
+ */
+export const VAR_LLM_RETRY_MAX = "LLM_RETRY_MAX";
+export const DEFAULT_LLM_RETRY_MAX = 2;
+
+/**
+ * Base backoff delay in milliseconds for LLM retries.
+ *
+ * @var LLM_RETRY_BACKOFF_MS
+ * @default 500
+ */
+export const VAR_LLM_RETRY_BACKOFF_MS = "LLM_RETRY_BACKOFF_MS";
+export const DEFAULT_LLM_RETRY_BACKOFF_MS = 500;
+
+/**
+ * Maximum backoff delay in milliseconds for LLM retries.
+ *
+ * @var LLM_RETRY_MAX_BACKOFF_MS
+ * @default 8000
+ */
+export const VAR_LLM_RETRY_MAX_BACKOFF_MS = "LLM_RETRY_MAX_BACKOFF_MS";
+export const DEFAULT_LLM_RETRY_MAX_BACKOFF_MS = 8000;
+
+/**
+ * Jitter ratio applied to LLM retry backoff delays.
+ *
+ * @var LLM_RETRY_JITTER_RATIO
+ * @default 0.2
+ */
+export const VAR_LLM_RETRY_JITTER_RATIO = "LLM_RETRY_JITTER_RATIO";
+export const DEFAULT_LLM_RETRY_JITTER_RATIO = 0.2;
+
+/**
+ * Comma-separated list of HTTP status codes eligible for retry.
+ *
+ * @var LLM_RETRY_STATUS_CODES
+ * @default "429,500,502,503,504"
+ */
+export const VAR_LLM_RETRY_STATUS_CODES = "LLM_RETRY_STATUS_CODES";
+export const DEFAULT_LLM_RETRY_STATUS_CODES = [429, 500, 502, 503, 504, 520];
+
 // ============================================================
 // Agent Loop Configuration
 // ============================================================

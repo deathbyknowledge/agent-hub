@@ -161,6 +161,11 @@ export interface AgentEnv {
   AGENCY: DurableObjectNamespace<Agency>;
   LLM_API_KEY?: string;
   LLM_API_BASE?: string;
+  LLM_RETRY_MAX?: string | number;
+  LLM_RETRY_BACKOFF_MS?: string | number;
+  LLM_RETRY_MAX_BACKOFF_MS?: string | number;
+  LLM_RETRY_JITTER_RATIO?: string | number;
+  LLM_RETRY_STATUS_CODES?: string;
   FS?: R2Bucket;
   SANDBOX?: DurableObjectNamespace;
 }

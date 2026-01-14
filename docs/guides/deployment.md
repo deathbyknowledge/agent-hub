@@ -40,6 +40,11 @@ npx wrangler secret put SECRET
 |----------|----------|-------------|
 | `LLM_API_KEY` | Yes | API key for your LLM provider |
 | `LLM_API_BASE` | Yes | Base URL for the LLM API |
+| `LLM_RETRY_MAX` | No | Max retry attempts for LLM requests (default 2) |
+| `LLM_RETRY_BACKOFF_MS` | No | Base backoff delay in ms (default 500) |
+| `LLM_RETRY_MAX_BACKOFF_MS` | No | Max backoff delay in ms (default 8000) |
+| `LLM_RETRY_JITTER_RATIO` | No | Jitter ratio applied to backoff (default 0.2) |
+| `LLM_RETRY_STATUS_CODES` | No | Comma-separated retryable HTTP status codes |
 | `SECRET` | No | Secret for API authentication |
 
 ### Local Development
@@ -49,6 +54,11 @@ For local development, create `.dev.vars`:
 ```bash
 LLM_API_KEY=sk-your-key
 LLM_API_BASE=https://api.openai.com/v1
+LLM_RETRY_MAX=2
+LLM_RETRY_BACKOFF_MS=500
+LLM_RETRY_MAX_BACKOFF_MS=8000
+LLM_RETRY_JITTER_RATIO=0.2
+LLM_RETRY_STATUS_CODES=429,500,502,503,504,520
 SECRET=dev-secret
 ```
 
