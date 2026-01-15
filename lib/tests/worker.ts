@@ -1,6 +1,21 @@
 import { AgentHub, type AgentBlueprint, plugins } from "../runtime";
 import { tool, z } from "../runtime/tools";
 import { TestProvider } from "../runtime/providers/test";
+import { getAgentByName as _getAgentByName } from "agents";
+
+/**
+ * Type-safe wrapper for getAgentByName that works with our test env.
+ * The agents SDK expects branded DurableObjectNamespace types, but vitest
+ * provides unbranded ones. This helper casts appropriately.
+ */
+export async function getAgentByName(
+  ns: DurableObjectNamespace,
+  name: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return _getAgentByName(ns as any, name);
+}
 
 /**
  * Shared TestProvider instance for all tests.

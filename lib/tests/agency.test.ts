@@ -1,7 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it, beforeEach } from "vitest";
-import { getAgentByName } from "agents";
-import type { Env } from "./worker";
+import { getAgentByName, type Env } from "./worker";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv extends Env {}

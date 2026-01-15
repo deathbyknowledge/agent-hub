@@ -144,7 +144,7 @@ const AGENCY_NAME_KEY = "_agency_name";
 export class Agency extends Agent<AgentEnv> {
   private _cachedAgencyName: string | null = null;
   /** Agency-level vars inherited by all spawned agents */
-  readonly vars: Record<string, unknown>;
+  readonly vars!: Record<string, unknown>;
   private _router: ReturnType<typeof Router<IRequest>> | null = null;
   // Shuts off agents SDK default implementation, too noisy
   observability = undefined;
@@ -251,8 +251,6 @@ export class Agency extends Agent<AgentEnv> {
     this.ctx.storage.kv.put(AGENCY_NAME_KEY, name);
   }
 
-  /**
-   * Emit an event to Analytics Engine.
   constructor(ctx: AgentContext, env: AgentEnv) {
     super(ctx, env);
 
@@ -1684,6 +1682,3 @@ function rowToRun(row: ScheduleRunRow): ScheduleRun {
     retryCount: row.retry_count,
   };
 }
-
-// Note: MCP server storage is handled by the SDK's this.addMcpServer() / this.getMcpServers()
-// No SQL row types needed.

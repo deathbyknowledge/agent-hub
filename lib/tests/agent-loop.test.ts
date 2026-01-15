@@ -1,8 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it, beforeEach } from "vitest";
-import { getAgentByName } from "agents";
-import { testProvider } from "./worker";
-import type { Env } from "./worker";
+import { testProvider, getAgentByName, type Env } from "./worker";
 
 declare module "cloudflare:test" {
   interface ProvidedEnv extends Env {}
@@ -380,15 +378,15 @@ describe("Agent Loop Integration", () => {
       // Assert: Should have key lifecycle events
       const eventTypes = events.map((e) => e.type);
 
-      // Event types are lowercase like "run.started"
-      expect(eventTypes).toContain("run.started");
-      expect(eventTypes).toContain("run.tick");
-      expect(eventTypes).toContain("model.started");
-      expect(eventTypes).toContain("model.completed");
-      expect(eventTypes).toContain("tool.started");
-      expect(eventTypes).toContain("tool.output");
-      expect(eventTypes).toContain("assistant.message");
-      expect(eventTypes).toContain("agent.completed");
+      // Event types follow OTel GenAI semantic conventions
+      expect(eventTypes).toContain("gen_ai.agent.invoked");
+      expect(eventTypes).toContain("gen_ai.agent.step");
+      expect(eventTypes).toContain("gen_ai.chat.start");
+      expect(eventTypes).toContain("gen_ai.chat.finish");
+      expect(eventTypes).toContain("gen_ai.tool.start");
+      expect(eventTypes).toContain("gen_ai.tool.finish");
+      expect(eventTypes).toContain("gen_ai.content.message");
+      expect(eventTypes).toContain("gen_ai.agent.completed");
     });
   });
 
