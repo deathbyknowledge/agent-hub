@@ -253,62 +253,6 @@ export class Agency extends Agent<AgentEnv> {
 
   /**
    * Emit an event to Analytics Engine.
-   * Unified method for all events (agent events and agency-level events).
-   * Safe to call even if METRICS binding is not configured.
-   * 
-   * Schema:
-   *   blob1: agencyId
-   *   blob2: agentId (or "_agency" for agency-level events)
-   *   blob3: agentType (or "_agency" for agency-level events)
-   *   blob4: eventType
-   *   doubles: event-specific numeric data
-   *   indexes: [agencyId]
-   */
-  private emitToWAE(
-    eventType: string,
-    agentId: string,
-    agentType: string,
-    data?: Record<string, unknown>
-  ): void {
-    const metrics = this.env.METRICS;
-    if (!metrics) return;
-
-    try {
-      // Extract numeric values from event data
-      const doubles: number[] = [];
-      
-      if (data) {
-        // Token usage from model.completed
-        if (eventType === "model.completed") {
-          const usage = data.usage as { inputTokens?: number; outputTokens?: number } | undefined;
-          if (usage) {
-            doubles.push(usage.inputTokens || 0);
-            doubles.push(usage.outputTokens || 0);
-          }
-        }
-        
-        // Step number from run.tick
-        if (eventType === "run.tick" && typeof data.step === "number") {
-          doubles.push(data.step);
-        }
-
-        // Duration from schedule events
-        if (typeof data.durationMs === "number") {
-          doubles.push(data.durationMs);
-        }
-      }
-
-      metrics.writeDataPoint({
-        blobs: [this.agencyName, agentId, agentType, eventType],
-        doubles,
-        indexes: [this.agencyName],
-      });
-    } catch (err) {
-      // Don't let metrics failures break the main flow
-      console.warn("[Agency] Failed to emit to WAE:", err);
-    }
-  }
-
   constructor(ctx: AgentContext, env: AgentEnv) {
     super(ctx, env);
 
@@ -628,27 +572,10 @@ export class Agency extends Agent<AgentEnv> {
   }
 
   /**
-   * Emit an agent event to Analytics Engine.
-   * Captures all events flowing through the agency for metrics/analytics.
-   */
-  private emitAgentEventToWAE(event: AgencyRelayEvent): void {
-    this.emitToWAE(
-      event.type,
-      event.agentId,
-      event.agentType,
-      event.data as Record<string, unknown>
-    );
-  }
-
-  /**
    * Broadcast an agent event to all subscribed UI WebSocket clients.
    * Excludes agent connections (they only send, not receive).
-   * Also emits to Analytics Engine for metrics collection.
    */
   private broadcastAgentEvent(event: AgencyRelayEvent): void {
-    // Emit to Analytics Engine
-    this.emitAgentEventToWAE(event);
-
     // Broadcast to UI WebSocket subscribers
     const eventStr = JSON.stringify(event);
     
@@ -1055,9 +982,6 @@ export class Agency extends Agent<AgentEnv> {
       );
     }
 
-    // Emit spawn event to WAE
-    this.emitToWAE("agent.spawned", id, agentType);
-
     return Response.json(initPayload, { status: 201 });
   }
 
@@ -1317,11 +1241,6 @@ export class Agency extends Agent<AgentEnv> {
         WHERE id = ${runId}
       `;
 
-      // Emit schedule run event to WAE
-      this.emitToWAE("schedule.completed", schedule.id, schedule.agentType, {
-        durationMs: Date.now() - startTime,
-      });
-
       return this.getRunById(runId)!;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -1333,12 +1252,6 @@ export class Agency extends Agent<AgentEnv> {
           error = ${errorMsg}
         WHERE id = ${runId}
       `;
-
-      // Emit schedule run event to WAE
-      this.emitToWAE("schedule.failed", schedule.id, schedule.agentType, {
-        durationMs: Date.now() - startTime,
-        error: errorMsg,
-      });
 
       // TODO: Implement retry logic based on schedule.maxRetries
       console.error(`Schedule ${schedule.id} execution failed:`, errorMsg);
@@ -1428,10 +1341,6 @@ export class Agency extends Agent<AgentEnv> {
     `;
     this.sql`DELETE FROM agents WHERE id = ${agentId}`;
 
-    // Emit delete event to WAE
-    if (agentType) {
-      this.emitToWAE("agent.deleted", agentId, agentType);
-    }
   }
 
   private async deletePrefix(bucket: AgentEnv["FS"], prefix: string): Promise<void> {
