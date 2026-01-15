@@ -141,12 +141,6 @@ function validateSchedule(req: CreateScheduleRequest): string | null {
 
 const AGENCY_NAME_KEY = "_agency_name";
 
-// Metric event types for Analytics Engine
-type MetricEvent = 
-  | { type: "agent_spawn"; agentType: string }
-  | { type: "agent_delete"; agentType: string }
-  | { type: "schedule_run"; scheduleId: string; agentType: string; status: "completed" | "failed"; durationMs: number };
-
 export class Agency extends Agent<AgentEnv> {
   private _cachedAgencyName: string | null = null;
   /** Agency-level vars inherited by all spawned agents */
@@ -258,40 +252,60 @@ export class Agency extends Agent<AgentEnv> {
   }
 
   /**
-   * Emit a metric event to Analytics Engine.
+   * Emit an event to Analytics Engine.
+   * Unified method for all events (agent events and agency-level events).
    * Safe to call even if METRICS binding is not configured.
+   * 
+   * Schema:
+   *   blob1: agencyId
+   *   blob2: agentId (or "_agency" for agency-level events)
+   *   blob3: agentType (or "_agency" for agency-level events)
+   *   blob4: eventType
+   *   doubles: event-specific numeric data
+   *   indexes: [agencyId]
    */
-  private emitMetric(event: MetricEvent): void {
+  private emitToWAE(
+    eventType: string,
+    agentId: string,
+    agentType: string,
+    data?: Record<string, unknown>
+  ): void {
     const metrics = this.env.METRICS;
     if (!metrics) return;
 
     try {
-      switch (event.type) {
-        case "agent_spawn":
-          metrics.writeDataPoint({
-            blobs: [this.agencyName, event.agentType, "spawn"],
-            doubles: [1],
-            indexes: [this.agencyName],
-          });
-          break;
-        case "agent_delete":
-          metrics.writeDataPoint({
-            blobs: [this.agencyName, event.agentType, "delete"],
-            doubles: [1],
-            indexes: [this.agencyName],
-          });
-          break;
-        case "schedule_run":
-          metrics.writeDataPoint({
-            blobs: [this.agencyName, event.scheduleId, event.agentType, event.status],
-            doubles: [event.durationMs],
-            indexes: [this.agencyName],
-          });
-          break;
+      // Extract numeric values from event data
+      const doubles: number[] = [];
+      
+      if (data) {
+        // Token usage from model.completed
+        if (eventType === "model.completed") {
+          const usage = data.usage as { inputTokens?: number; outputTokens?: number } | undefined;
+          if (usage) {
+            doubles.push(usage.inputTokens || 0);
+            doubles.push(usage.outputTokens || 0);
+          }
+        }
+        
+        // Step number from run.tick
+        if (eventType === "run.tick" && typeof data.step === "number") {
+          doubles.push(data.step);
+        }
+
+        // Duration from schedule events
+        if (typeof data.durationMs === "number") {
+          doubles.push(data.durationMs);
+        }
       }
+
+      metrics.writeDataPoint({
+        blobs: [this.agencyName, agentId, agentType, eventType],
+        doubles,
+        indexes: [this.agencyName],
+      });
     } catch (err) {
       // Don't let metrics failures break the main flow
-      console.warn("[Agency] Failed to emit metric:", err);
+      console.warn("[Agency] Failed to emit to WAE:", err);
     }
   }
 
@@ -614,10 +628,28 @@ export class Agency extends Agent<AgentEnv> {
   }
 
   /**
+   * Emit an agent event to Analytics Engine.
+   * Captures all events flowing through the agency for metrics/analytics.
+   */
+  private emitAgentEventToWAE(event: AgencyRelayEvent): void {
+    this.emitToWAE(
+      event.type,
+      event.agentId,
+      event.agentType,
+      event.data as Record<string, unknown>
+    );
+  }
+
+  /**
    * Broadcast an agent event to all subscribed UI WebSocket clients.
    * Excludes agent connections (they only send, not receive).
+   * Also emits to Analytics Engine for metrics collection.
    */
   private broadcastAgentEvent(event: AgencyRelayEvent): void {
+    // Emit to Analytics Engine
+    this.emitAgentEventToWAE(event);
+
+    // Broadcast to UI WebSocket subscribers
     const eventStr = JSON.stringify(event);
     
     for (const conn of this.getConnections()) {
@@ -1023,8 +1055,8 @@ export class Agency extends Agent<AgentEnv> {
       );
     }
 
-    // Emit spawn metric
-    this.emitMetric({ type: "agent_spawn", agentType });
+    // Emit spawn event to WAE
+    this.emitToWAE("agent.spawned", id, agentType);
 
     return Response.json(initPayload, { status: 201 });
   }
@@ -1285,12 +1317,8 @@ export class Agency extends Agent<AgentEnv> {
         WHERE id = ${runId}
       `;
 
-      // Emit schedule run metric
-      this.emitMetric({
-        type: "schedule_run",
-        scheduleId: schedule.id,
-        agentType: schedule.agentType,
-        status: "completed",
+      // Emit schedule run event to WAE
+      this.emitToWAE("schedule.completed", schedule.id, schedule.agentType, {
         durationMs: Date.now() - startTime,
       });
 
@@ -1306,13 +1334,10 @@ export class Agency extends Agent<AgentEnv> {
         WHERE id = ${runId}
       `;
 
-      // Emit schedule run metric for failure
-      this.emitMetric({
-        type: "schedule_run",
-        scheduleId: schedule.id,
-        agentType: schedule.agentType,
-        status: "failed",
+      // Emit schedule run event to WAE
+      this.emitToWAE("schedule.failed", schedule.id, schedule.agentType, {
         durationMs: Date.now() - startTime,
+        error: errorMsg,
       });
 
       // TODO: Implement retry logic based on schedule.maxRetries
@@ -1403,9 +1428,9 @@ export class Agency extends Agent<AgentEnv> {
     `;
     this.sql`DELETE FROM agents WHERE id = ${agentId}`;
 
-    // Emit delete metric
+    // Emit delete event to WAE
     if (agentType) {
-      this.emitMetric({ type: "agent_delete", agentType });
+      this.emitToWAE("agent.deleted", agentId, agentType);
     }
   }
 

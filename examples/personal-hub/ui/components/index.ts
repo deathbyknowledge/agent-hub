@@ -9,6 +9,7 @@ export { TopHeader } from "./TopHeader";
 export { TabBar, type OpenTab } from "./TabBar";
 export { CommandPalette } from "./CommandPalette";
 export { AgentPanel } from "./AgentPanel";
+export { BottomPanel } from "./BottomPanel";
 
 // View components
 export { ChatView } from "./ChatView";

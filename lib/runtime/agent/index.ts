@@ -238,7 +238,7 @@ export abstract class HubAgent<
         runState.status = "running";
         // Connect to Agency WebSocket for event relay during the run
         await this.connectToAgency();
-        this.emit(AgentEventType.RUN_STARTED, {});
+        this.emit(AgentEventType.AGENT_INVOKED, {});
         await this.ensureScheduled();
       }
 
@@ -264,13 +264,13 @@ export abstract class HubAgent<
         this.runState.status = "error";
         this.runState.reason = `Maximum iterations exceeded (${iterationLimit})`;
         this.emit(AgentEventType.AGENT_ERROR, {
-          error: this.runState.reason,
-          step: this.runState.step,
+          "error.type": "max_iterations_exceeded",
+          "error.message": this.runState.reason,
         });
         return;
       }
 
-      this.emit(AgentEventType.RUN_TICK, {
+      this.emit(AgentEventType.AGENT_STEP, {
         step: this.runState.step,
       });
       this.runState.step += 1;
@@ -302,12 +302,12 @@ export abstract class HubAgent<
         if ("content" in res.message) reply = res.message.content;
 
         // Emit assistant message event so UI can update incrementally
-        this.emit(AgentEventType.ASSISTANT_MESSAGE, {
-          content: reply || undefined,
-          toolCalls: toolCalls.length > 0 ? toolCalls.map(tc => ({
+        this.emit(AgentEventType.CONTENT_MESSAGE, {
+          "gen_ai.content.text": reply || undefined,
+          "gen_ai.content.tool_calls": toolCalls.length > 0 ? toolCalls.map(tc => ({
             id: tc.id,
             name: tc.name,
-            args: tc.args,
+            arguments: tc.args,
           })) : undefined,
         });
 
@@ -351,8 +351,9 @@ export abstract class HubAgent<
         error instanceof Error ? error.message : error
       );
       this.emit(AgentEventType.AGENT_ERROR, {
-        error: this.runState.reason,
-        stack: error instanceof Error ? error.stack : undefined,
+        "error.type": "runtime_error",
+        "error.message": this.runState.reason,
+        "error.stack": error instanceof Error ? error.stack : undefined,
       });
       // Disconnect from Agency WebSocket - run errored
       this.disconnectFromAgency();
@@ -370,7 +371,7 @@ export abstract class HubAgent<
       if (this.runState.status !== "completed") {
         this.runState.status = "canceled";
         this.runState.reason = "user";
-        this.emit(AgentEventType.RUN_CANCELED, {});
+        this.emit(AgentEventType.AGENT_CANCELED, {});
         // Disconnect from Agency WebSocket - run canceled
         this.disconnectFromAgency();
       }
@@ -453,9 +454,10 @@ export abstract class HubAgent<
     const tools = this.tools;
     const toolResults = await Promise.all(
       toolBatch.map(async (call) => {
-        this.emit(AgentEventType.TOOL_STARTED, {
-          toolName: call.name,
-          args: call.args,
+        this.emit(AgentEventType.TOOL_START, {
+          "gen_ai.tool.name": call.name,
+          "gen_ai.tool.call.id": call.id,
+          "gen_ai.tool.arguments": call.args,
         });
         try {
           if (!tools[call.name]) {
@@ -470,10 +472,10 @@ export abstract class HubAgent<
 
           if (out === null) return { call, out };
 
-          this.emit(AgentEventType.TOOL_OUTPUT, {
-            toolName: call.name,
-            toolCallId: call.id,
-            output: out,
+          this.emit(AgentEventType.TOOL_FINISH, {
+            "gen_ai.tool.name": call.name,
+            "gen_ai.tool.call.id": call.id,
+            "gen_ai.tool.response": out,
           });
           return { call, out };
         } catch (e: unknown) {
@@ -487,9 +489,10 @@ export abstract class HubAgent<
         if ("error" in r && r.error) {
           const { error, call } = r;
           this.emit(AgentEventType.TOOL_ERROR, {
-            toolName: call.name,
-            toolCallId: call.id,
-            error: String(error instanceof Error ? error.message : error),
+            "gen_ai.tool.name": call.name,
+            "gen_ai.tool.call.id": call.id,
+            "error.type": "tool_execution_error",
+            "error.message": String(error instanceof Error ? error.message : error),
           });
           await Promise.all(
             this.plugins.map((p) =>

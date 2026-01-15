@@ -1,7 +1,38 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect } from "react";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
 import { formatTime, type Message, type ToolCall } from "./shared";
+
+// ASCII spinner frames
+const SPINNER_FRAMES = ["|", "/", "—", "\\"];
+
+function useAsciiSpinner(interval = 100) {
+  const [frame, setFrame] = useState(0);
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setFrame((f) => (f + 1) % SPINNER_FRAMES.length);
+    }, interval);
+    return () => clearInterval(timer);
+  }, [interval]);
+  
+  return SPINNER_FRAMES[frame];
+}
+
+// Thinking indicator shown while agent is processing
+function ThinkingIndicator() {
+  const spinner = useAsciiSpinner(120);
+  
+  return (
+    <div className="flex gap-3 mb-4">
+      <span className="shrink-0 text-[10px] font-mono pt-2 text-white">[AI]</span>
+      <div className="flex items-center gap-2 px-3 py-2 border border-[#00aaff]/50 text-[#00aaff]">
+        <span className="font-mono text-sm w-3">{spinner}</span>
+        <span className="text-[11px] uppercase tracking-wider">THINKING</span>
+      </div>
+    </div>
+  );
+}
 
 interface ChatViewProps {
   messages: Message[];
@@ -9,6 +40,8 @@ interface ChatViewProps {
   onStop?: () => void;
   isLoading?: boolean;
   placeholder?: string;
+  /** Unique ID for scroll position memory (e.g., agentId) */
+  scrollKey?: string;
 }
 
 function ReasoningBlock({ reasoning }: { reasoning: string }) {
@@ -174,21 +207,84 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   );
 }
 
+// Store scroll positions per scrollKey
+const scrollPositions = new Map<string, number>();
+
 export function ChatView({
   messages,
   onSendMessage,
   onStop,
   isLoading = false,
-  placeholder = "ENTER COMMAND..."
+  placeholder = "ENTER COMMAND...",
+  scrollKey,
 }: ChatViewProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  // Track which scrollKey we last processed
+  const processedScrollKeyRef = useRef<string | undefined>(undefined);
+  const prevMessagesLengthRef = useRef(messages.length);
+  const prevIsLoadingRef = useRef(isLoading);
+  // Ignore initial data load after tab switch
+  const ignoreNextChangeRef = useRef(true);
 
-  // Auto-scroll to bottom on new messages
+  // Save scroll position on scroll
+  const handleScroll = () => {
+    if (!scrollKey || !messagesContainerRef.current) return;
+    scrollPositions.set(scrollKey, messagesContainerRef.current.scrollTop);
+  };
+
+  // Single combined effect for scroll management
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const isNewTab = processedScrollKeyRef.current !== scrollKey;
+    
+    if (isNewTab) {
+      // New tab - restore scroll, ignore next data load
+      processedScrollKeyRef.current = scrollKey;
+      prevMessagesLengthRef.current = messages.length;
+      prevIsLoadingRef.current = isLoading;
+      ignoreNextChangeRef.current = true;
+      
+      if (scrollKey) {
+        const savedPosition = scrollPositions.get(scrollKey);
+        if (savedPosition !== undefined) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (messagesContainerRef.current) {
+                messagesContainerRef.current.scrollTop = savedPosition;
+              }
+            });
+          });
+        }
+      }
+      return;
+    }
+    
+    // Same tab - check if this is initial data load to ignore
+    const messagesChanged = messages.length !== prevMessagesLengthRef.current;
+    const loadingChanged = isLoading !== prevIsLoadingRef.current;
+    
+    if (ignoreNextChangeRef.current && (messagesChanged || loadingChanged)) {
+      // Initial data load after tab switch - ignore and clear flag
+      ignoreNextChangeRef.current = false;
+      prevMessagesLengthRef.current = messages.length;
+      prevIsLoadingRef.current = isLoading;
+      return;
+    }
+    
+    // Real new messages or loading start
+    const hasNewMessages = messages.length > prevMessagesLengthRef.current;
+    const loadingJustStarted = isLoading && !prevIsLoadingRef.current;
+    
+    prevMessagesLengthRef.current = messages.length;
+    prevIsLoadingRef.current = isLoading;
+    
+    if (hasNewMessages || loadingJustStarted) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [scrollKey, messages.length, isLoading]);
 
   const handleSubmit = () => {
     if (!input.trim() || isLoading) return;
@@ -206,7 +302,11 @@ export function ChatView({
   return (
     <div className="flex flex-col h-full bg-black">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+      <div 
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-3 sm:p-4"
+      >
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center max-w-sm border border-white/20 p-6">
@@ -227,6 +327,7 @@ export function ChatView({
             {messages.map((msg) => (
               <MessageBubble key={msg.id} message={msg} />
             ))}
+            {isLoading && <ThinkingIndicator />}
             <div ref={messagesEndRef} />
           </>
         )}
@@ -262,7 +363,7 @@ export function ChatView({
 
           {isLoading && onStop ? (
             <Button variant="danger" onClick={onStop} icon={<span className="blink-hard">■</span>} size="sm">
-              <span className="hidden sm:inline">ABORT</span>
+              ABORT
             </Button>
           ) : (
             <Button
@@ -275,12 +376,6 @@ export function ChatView({
             </Button>
           )}
         </div>
-        {isLoading && (
-          <div className="mt-2 flex items-center gap-2 text-[10px] text-[#00aaff] uppercase tracking-wider">
-            <span className="inline-block w-1.5 h-1.5 bg-[#00aaff] animate-pulse" />
-            PROCESSING...
-          </div>
-        )}
       </div>
     </div>
   );

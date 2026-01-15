@@ -1,27 +1,14 @@
+/**
+ * ContentHeader - Agent header with status and actions
+ * 
+ * Simplified version without tabs - just shows agent info, status, and action menu.
+ */
 import { useState, useRef, useEffect } from "react";
-import { Link } from "wouter";
 import { cn } from "../lib/utils";
-
-export type TabId = "chat" | "trace" | "files" | "todos";
-
-interface Tab {
-  id: TabId;
-  label: string;
-  icon: React.ReactNode;
-}
-
-const TABS: Tab[] = [
-  { id: "chat", label: "CHAT", icon: <span className="text-[10px]">[&gt;]</span> },
-  { id: "trace", label: "TRACE", icon: <span className="text-[10px]">[~]</span> },
-  { id: "files", label: "FILES", icon: <span className="text-[10px]">[/]</span> },
-  { id: "todos", label: "TASKS", icon: <span className="text-[10px]">[*]</span> }
-];
 
 interface ContentHeaderProps {
   threadName: string;
   threadId: string;
-  agencyId: string;
-  activeTab: TabId;
   status?: "running" | "paused" | "done" | "error" | "idle";
   onRestart?: () => void;
   onStop?: () => void;
@@ -29,7 +16,7 @@ interface ContentHeaderProps {
   onMenuClick?: () => void;
 }
 
-const STATUS_LABELS: Record<string, { label: string; color: string; borderColor: string }> = {
+const STATUS_CONFIG: Record<string, { label: string; color: string; borderColor: string }> = {
   running: { label: "RUNNING", color: "text-[#00aaff]", borderColor: "border-[#00aaff]" },
   paused: { label: "PAUSED", color: "text-[#ffaa00]", borderColor: "border-[#ffaa00]" },
   done: { label: "COMPLETE", color: "text-[#00ff00]", borderColor: "border-[#00ff00]" },
@@ -40,8 +27,6 @@ const STATUS_LABELS: Record<string, { label: string; color: string; borderColor:
 export function ContentHeader({
   threadName,
   threadId,
-  agencyId,
-  activeTab,
   status = "idle",
   onRestart,
   onStop,
@@ -52,9 +37,7 @@ export function ContentHeader({
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   
-  // Build base path for tab links
-  const basePath = `/${agencyId}/agent/${threadId}`;
-  const statusInfo = STATUS_LABELS[status];
+  const statusInfo = STATUS_CONFIG[status];
   const isRunning = status === "running";
   
   const copyId = async () => {
@@ -77,7 +60,7 @@ export function ContentHeader({
   }, [showMenu]);
 
   return (
-    <div className="px-3 py-2 flex items-center gap-3 border-b-2 border-white bg-black min-h-[44px]">
+    <div className="px-3 py-2 flex items-center gap-3 border-b border-white/30 bg-black shrink-0">
       {/* Mobile menu button */}
       {onMenuClick && (
         <button
@@ -126,61 +109,48 @@ export function ContentHeader({
         </div>
       </div>
 
-      {/* Tabs and actions */}
+      {/* Actions menu */}
       <div className="flex items-center gap-1 shrink-0">
-        <div className="flex items-center overflow-x-auto [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {TABS.map((tab) => (
-            <Link
-              key={tab.id}
-              href={tab.id === "chat" ? basePath : `${basePath}/${tab.id}`}
-              className={cn(
-                "flex items-center gap-1 px-2 py-1 text-[10px] uppercase tracking-wider transition-colors whitespace-nowrap border-r border-white/20 last:border-r-0",
-                activeTab === tab.id
-                  ? "bg-white text-black"
-                  : "text-white/50 hover:text-white hover:bg-white/10"
-              )}
-            >
-              {tab.icon}
-              <span className="hidden sm:inline">{tab.label}</span>
-            </Link>
-          ))}
-        </div>
-        
-        {/* Actions dropdown */}
-        <div className="relative ml-1" ref={menuRef}>
+        {/* Quick stop button when running */}
+        {isRunning && onStop && (
+          <button
+            onClick={onStop}
+            className="px-2 py-1 text-[10px] uppercase tracking-wider text-[#ff0000] border border-[#ff0000]/50 hover:bg-[#ff0000]/10 transition-colors"
+          >
+            [■] STOP
+          </button>
+        )}
+
+        {/* Dropdown menu */}
+        <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowMenu(!showMenu)}
-            className="p-1 text-white/50 hover:text-white hover:bg-white/10 transition-colors border border-white/20"
+            className="p-1.5 text-white/50 hover:text-white hover:bg-white/10 transition-colors border border-white/20"
           >
             <span className="text-[10px] leading-none">⋮</span>
           </button>
           
           {showMenu && (
             <div className="absolute right-0 top-full mt-1 w-44 bg-black border border-white py-1 z-50">
-              {isRunning && onStop ? (
-                <button
-                  onClick={() => { onStop(); setShowMenu(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wider text-[#ff0000] hover:bg-[#ff0000]/10"
-                >
-                  [■] TERMINATE
-                </button>
-              ) : !isRunning && onRestart ? (
+              {!isRunning && onRestart && (
                 <button
                   onClick={() => { onRestart(); setShowMenu(false); }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wider text-[#00ff00] hover:bg-[#00ff00]/10"
                 >
                   [▶] RESTART
                 </button>
-              ) : !onDelete ? (
-                <div className="px-3 py-1.5 text-[11px] uppercase tracking-wider text-white/30">
-                  // NO ACTIONS
-                </div>
-              ) : null}
+              )}
+              {isRunning && onStop && (
+                <button
+                  onClick={() => { onStop(); setShowMenu(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wider text-[#ff0000] hover:bg-[#ff0000]/10"
+                >
+                  [■] TERMINATE
+                </button>
+              )}
               {onDelete && (
                 <>
-                  {(isRunning && onStop) || (!isRunning && onRestart) ? (
-                    <div className="border-t border-white/20 my-1" />
-                  ) : null}
+                  {(onRestart || onStop) && <div className="border-t border-white/20 my-1" />}
                   <button
                     onClick={() => { onDelete(); setShowMenu(false); }}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] uppercase tracking-wider text-[#ff0000] hover:bg-[#ff0000]/10"
@@ -189,6 +159,11 @@ export function ContentHeader({
                   </button>
                 </>
               )}
+              {!onRestart && !onStop && !onDelete && (
+                <div className="px-3 py-1.5 text-[11px] uppercase tracking-wider text-white/30">
+                  // NO ACTIONS
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -196,3 +171,6 @@ export function ContentHeader({
     </div>
   );
 }
+
+// Keep TabId export for backwards compatibility during transition
+export type TabId = "chat" | "trace" | "files" | "todos";

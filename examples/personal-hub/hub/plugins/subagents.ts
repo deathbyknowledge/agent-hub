@@ -98,7 +98,7 @@ export const subagents: AgentPlugin = {
       if (Number(remaining[0]?.c ?? 0) === 0) {
         ctx.agent.runState.status = "running";
         ctx.agent.runState.reason = undefined;
-        ctx.agent.emit(AgentEventType.RUN_RESUMED, {});
+        ctx.agent.emit(AgentEventType.AGENT_RESUMED, {});
         await ctx.agent.ensureScheduled();
       }
 
@@ -252,7 +252,7 @@ export const subagents: AgentPlugin = {
         if (runState && runState.status === "running") {
           runState.status = "paused";
           runState.reason = "subagent";
-          ctx.agent.emit(AgentEventType.RUN_PAUSED, {
+          ctx.agent.emit(AgentEventType.AGENT_PAUSED, {
             reason: "subagent",
           });
         }
@@ -324,7 +324,7 @@ The agentId is returned in the result object of the task tool (e.g., {"agentId":
         if (runState && runState.status === "running") {
           runState.status = "paused";
           runState.reason = "subagent";
-          ctx.agent.emit(AgentEventType.RUN_PAUSED, { reason: "subagent" });
+          ctx.agent.emit(AgentEventType.AGENT_PAUSED, { reason: "subagent" });
         }
 
         return null; // Result comes via subagent_result action

@@ -1,11 +1,10 @@
 import { useState, useMemo, useEffect, useCallback, StrictMode } from "react";
-import { useLocation, useRoute } from "wouter";
+import { useLocation } from "wouter";
 import {
   ContentHeader,
   ChatView,
   TraceView,
   FilesView,
-  TodosView,
   SettingsView,
   ConfirmModal,
   ErrorBoundary,
@@ -15,9 +14,8 @@ import {
   TabBar,
   CommandPalette,
   AgentPanel,
-  type TabId,
+  BottomPanel,
   type Message,
-  type Todo,
   type OpenTab,
 } from "./components";
 import {
@@ -485,17 +483,15 @@ function EventDetailModal({
 }
 
 // ============================================================================
-// Agent View Component (handles /:agencyId/agent/:agentId/:tab?)
+// Agent View Component - Chat-first layout with collapsible bottom panel
 // ============================================================================
 
 function AgentView({
   agencyId,
   agentId,
-  tab = "chat",
 }: {
   agencyId: string;
   agentId: string;
-  tab?: string;
 }) {
   const {
     agents,
@@ -524,9 +520,6 @@ function AgentView({
   } | null>(null);
   const [showDeleteAgent, setShowDeleteAgent] = useState(false);
 
-  const activeTab = (
-    ["chat", "trace", "files", "todos"].includes(tab) ? tab : "chat"
-  ) as TabId;
   const selectedAgent = agents.find((a) => a.id === agentId);
 
   // Get messages from agent state
@@ -542,28 +535,6 @@ function AgentView({
     if (runState.status === "error") return "error" as const;
     return "idle" as const;
   }, [runState]);
-
-  // Derive todos from agent state
-  const todos = useMemo((): Todo[] => {
-    const stateTodos = (
-      agentState as {
-        todos?: Array<{ content: string; status: string }>;
-      } | null
-    )?.todos;
-    if (!stateTodos) return [];
-    return stateTodos.map((t, i) => ({
-      id: `todo-${i}`,
-      title: t.content,
-      status:
-        t.status === "completed"
-          ? "done"
-          : t.status === "in_progress"
-            ? "in_progress"
-            : "pending",
-      priority: "medium" as const,
-      createdAt: new Date().toISOString(),
-    }));
-  }, [agentState]);
 
   const handleSendMessage = async (content: string) => {
     try {
@@ -586,44 +557,6 @@ function AgentView({
     }
   };
 
-  // Render content based on active tab
-  const renderContent = () => {
-    switch (activeTab) {
-      case "chat":
-        return (
-          <ChatView
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            onStop={cancel}
-            isLoading={agentLoading}
-          />
-        );
-      case "trace":
-        return (
-          <TraceView
-            events={events}
-            threads={agents}
-            onEventClick={(event, label, type) =>
-              setSelectedEvent({ event, label, type })
-            }
-          />
-        );
-      case "files":
-        return (
-          <FilesView
-            listDirectory={listDirectory}
-            readFile={readFile}
-            allowUpload={false}
-            headerLabel="Files"
-          />
-        );
-      case "todos":
-        return <TodosView todos={todos} />;
-      default:
-        return null;
-    }
-  };
-
   if (!selectedAgent) {
     if (agencyLoading) {
       return (
@@ -639,18 +572,59 @@ function AgentView({
     );
   }
 
+  // Trace view content for bottom panel
+  const traceContent = (
+    <TraceView
+      events={events}
+      threads={agents}
+      onEventClick={(event, label, type) =>
+        setSelectedEvent({ event, label, type })
+      }
+    />
+  );
+
+  // Files view content for bottom panel
+  const filesContent = (
+    <FilesView
+      listDirectory={listDirectory}
+      readFile={readFile}
+      allowUpload={false}
+      headerLabel="Files"
+    />
+  );
+
   return (
     <>
+      {/* Header */}
       <ContentHeader
         threadName={selectedAgent.agentType}
         threadId={selectedAgent.id}
-        agencyId={agencyId}
-        activeTab={activeTab}
         status={status}
         onStop={cancel}
         onDelete={() => setShowDeleteAgent(true)}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">{renderContent()}</div>
+
+      {/* Main content area - chat takes priority */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* Chat view - always visible, takes remaining space */}
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <ChatView
+            messages={messages}
+            onSendMessage={handleSendMessage}
+            onStop={cancel}
+            isLoading={status === "running"}
+            scrollKey={agentId}
+          />
+        </div>
+
+        {/* Bottom panel - collapsible trace/files */}
+        <BottomPanel
+          traceContent={traceContent}
+          filesContent={filesContent}
+          defaultExpanded={false}
+          defaultTab="trace"
+        />
+      </div>
 
       {/* Event detail modal */}
       {selectedEvent && (

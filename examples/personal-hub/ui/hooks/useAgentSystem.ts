@@ -975,32 +975,32 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
 
     // Update run state based on event type
     if (event.agentId === agentId) {
-      if (event.type === "run.started") {
+      if (event.type === "gen_ai.agent.invoked") {
         setHookState((prev) => ({
           ...prev,
           run: { ...prev.run, status: "running", step: 0 } as RunState,
         }));
-      } else if (event.type === "agent.completed") {
+      } else if (event.type === "gen_ai.agent.completed") {
         setHookState((prev) => ({
           ...prev,
           run: { ...prev.run, status: "completed" } as RunState,
         }));
-      } else if (event.type === "agent.error") {
+      } else if (event.type === "gen_ai.agent.error") {
         setHookState((prev) => ({
           ...prev,
           run: { 
             ...prev.run, 
             status: "error",
-            reason: (event.data as { error?: string })?.error,
+            reason: (event.data as { "error.message"?: string })?.["error.message"],
           } as RunState,
         }));
-      } else if (event.type === "run.tick") {
+      } else if (event.type === "gen_ai.agent.step") {
         const step = (event.data as { step?: number })?.step ?? 0;
         setHookState((prev) => ({
           ...prev,
           run: { ...prev.run, status: "running", step } as RunState,
         }));
-      } else if (event.type === "run.paused") {
+      } else if (event.type === "gen_ai.agent.paused") {
         setHookState((prev) => ({
           ...prev,
           run: { 
@@ -1009,12 +1009,12 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
             reason: (event.data as { reason?: string })?.reason,
           } as RunState,
         }));
-      } else if (event.type === "run.resumed") {
+      } else if (event.type === "gen_ai.agent.resumed") {
         setHookState((prev) => ({
           ...prev,
           run: { ...prev.run, status: "running" } as RunState,
         }));
-      } else if (event.type === "run.canceled") {
+      } else if (event.type === "gen_ai.agent.canceled") {
         setHookState((prev) => ({
           ...prev,
           run: { ...prev.run, status: "canceled" } as RunState,
@@ -1045,30 +1045,31 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
       }
     }
 
-    // Handle assistant.message - add message incrementally (no fetch needed)
-    if (event.type === "assistant.message" && event.agentId === agentId) {
+    // Handle gen_ai.content.message - add message incrementally (no fetch needed)
+    if (event.type === "gen_ai.content.message" && event.agentId === agentId) {
       const data = event.data as {
-        content?: string;
-        toolCalls?: Array<{ id: string; name: string; args: unknown }>;
+        "gen_ai.content.text"?: string;
+        "gen_ai.content.tool_calls"?: Array<{ id: string; name: string; arguments: unknown }>;
       };
       
       setHookState((prev) => {
         if (!prev.state) return prev;
         
         // Build the new assistant message
-        const newMessage: ChatMessage = data.toolCalls?.length
+        const toolCalls = data["gen_ai.content.tool_calls"];
+        const newMessage: ChatMessage = toolCalls?.length
           ? {
               role: "assistant" as const,
-              toolCalls: data.toolCalls.map(tc => ({
+              toolCalls: toolCalls.map((tc: { id: string; name: string; arguments: unknown }) => ({
                 id: tc.id,
                 name: tc.name,
-                args: tc.args,
+                args: tc.arguments,
               })),
               ts: event.ts,
             }
           : {
               role: "assistant" as const,
-              content: data.content || "",
+              content: data["gen_ai.content.text"] || "",
               ts: event.ts,
             };
         
@@ -1082,22 +1083,23 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
       });
     }
 
-    // Handle tool.output - add tool result message incrementally
-    if (event.type === "tool.output" && event.agentId === agentId) {
+    // Handle gen_ai.tool.finish - add tool result message incrementally
+    if (event.type === "gen_ai.tool.finish" && event.agentId === agentId) {
       const data = event.data as {
-        toolCallId: string;
-        output: unknown;
+        "gen_ai.tool.call.id": string;
+        "gen_ai.tool.response"?: unknown;
       };
       
       setHookState((prev) => {
         if (!prev.state) return prev;
         
+        const output = data["gen_ai.tool.response"];
         const toolMessage: ChatMessage = {
           role: "tool" as const,
-          toolCallId: data.toolCallId,
-          content: typeof data.output === "string" 
-            ? data.output 
-            : JSON.stringify(data.output),
+          toolCallId: data["gen_ai.tool.call.id"],
+          content: typeof output === "string" 
+            ? output 
+            : JSON.stringify(output),
           ts: event.ts,
         };
         
@@ -1111,12 +1113,12 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
       });
     }
 
-    // Handle tool.error - add error result message incrementally
-    if (event.type === "tool.error" && event.agentId === agentId) {
+    // Handle gen_ai.tool.error - add error result message incrementally
+    if (event.type === "gen_ai.tool.error" && event.agentId === agentId) {
       const data = event.data as {
-        toolCallId: string;
-        toolName: string;
-        error: string;
+        "gen_ai.tool.call.id": string;
+        "gen_ai.tool.name": string;
+        "error.message"?: string;
       };
       
       setHookState((prev) => {
@@ -1124,8 +1126,8 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
         
         const toolMessage: ChatMessage = {
           role: "tool" as const,
-          toolCallId: data.toolCallId,
-          content: `Error: ${data.error}`,
+          toolCallId: data["gen_ai.tool.call.id"],
+          content: `Error: ${data["error.message"] || "Unknown error"}`,
           ts: event.ts,
         };
         
