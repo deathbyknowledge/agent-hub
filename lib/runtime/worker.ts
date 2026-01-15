@@ -439,6 +439,10 @@ const handleFilesystem = async (req: IRequest, { ctx }: RequestContext) => {
   );
 };
 
+const getMetrics = async (req: IRequest, { ctx }: RequestContext) => {
+  const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
+  return agencyStub.fetch(new Request("http://do/metrics"));
+};
 
 const handleAgencyWebSocket = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
@@ -530,6 +534,9 @@ export const createHandler = (opts: HandlerOptions = {}) => {
   // Filesystem (greedy param for path)
   router.all("/agency/:agencyId/fs/:path+", handleFilesystem);
   router.all("/agency/:agencyId/fs", handleFilesystem);
+
+  // Metrics
+  router.get("/agency/:agencyId/metrics", getMetrics);
 
   // Agency WebSocket (for UI event subscriptions)
   router.get("/agency/:agencyId/ws", handleAgencyWebSocket);

@@ -144,7 +144,7 @@ const AGENCY_NAME_KEY = "_agency_name";
 export class Agency extends Agent<AgentEnv> {
   private _cachedAgencyName: string | null = null;
   /** Agency-level vars inherited by all spawned agents */
-  readonly vars: Record<string, unknown>;
+  readonly vars!: Record<string, unknown>;
   private _router: ReturnType<typeof Router<IRequest>> | null = null;
   // Shuts off agents SDK default implementation, too noisy
   observability = undefined;
@@ -216,6 +216,9 @@ export class Agency extends Agent<AgentEnv> {
     // Filesystem
     router.all("/fs/:path+", (req: IRequest) => this.handleFilesystem(req, req.params.path || ""));
     router.all("/fs", (req: IRequest) => this.handleFilesystem(req, ""));
+
+    // Metrics
+    router.get("/metrics", () => this.handleGetMetrics());
 
     // Internal
     router.get("/internal/blueprint/:name", (req: IRequest) => this.handleGetInternalBlueprint(req.params.name));
@@ -571,6 +574,7 @@ export class Agency extends Agent<AgentEnv> {
    * Excludes agent connections (they only send, not receive).
    */
   private broadcastAgentEvent(event: AgencyRelayEvent): void {
+    // Broadcast to UI WebSocket subscribers
     const eventStr = JSON.stringify(event);
     
     for (const conn of this.getConnections()) {
@@ -1199,6 +1203,7 @@ export class Agency extends Agent<AgentEnv> {
   ): Promise<ScheduleRun> {
     const runId = crypto.randomUUID();
     const now = new Date().toISOString();
+    const startTime = Date.now();
 
     // Create run record
     this.sql`
@@ -1308,6 +1313,12 @@ export class Agency extends Agent<AgentEnv> {
   }
 
   private async deleteAgentResources(agentId: string): Promise<void> {
+    // Get agent type for metrics before deleting
+    const agentRows = this.sql<{ type: string }>`
+      SELECT type FROM agents WHERE id = ${agentId}
+    `;
+    const agentType = agentRows[0]?.type;
+
     try {
       const stub = await getAgentByName(this.exports.HubAgent, agentId);
       await stub.fetch(
@@ -1327,6 +1338,7 @@ export class Agency extends Agent<AgentEnv> {
       UPDATE schedule_runs SET agent_id = NULL WHERE agent_id = ${agentId}
     `;
     this.sql`DELETE FROM agents WHERE id = ${agentId}`;
+
   }
 
   private async deletePrefix(bucket: AgentEnv["FS"], prefix: string): Promise<void> {
@@ -1523,6 +1535,78 @@ export class Agency extends Agent<AgentEnv> {
       path: "/" + fsPath,
     });
   }
+
+  // ============================================================
+  // Metrics Handlers
+  // ============================================================
+
+  /**
+   * Get aggregated metrics for this agency.
+   * Returns counts and stats computed from local state (schedules, agents).
+   * 
+   * Note: For full Analytics Engine queries, use the SQL API directly with
+   * ACCOUNT_ID and API_TOKEN. This endpoint provides basic real-time counts.
+   */
+  private handleGetMetrics(): Response {
+    // Get agent counts
+    const agentCounts = this.sql<{ total: number }>`
+      SELECT COUNT(*) as total FROM agents
+    `;
+    const totalAgents = agentCounts[0]?.total ?? 0;
+
+    // Get agent type breakdown
+    const agentsByType = this.sql<{ type: string; count: number }>`
+      SELECT type, COUNT(*) as count FROM agents GROUP BY type
+    `;
+
+    // Get schedule counts
+    const scheduleCounts = this.sql<{ status: string; count: number }>`
+      SELECT status, COUNT(*) as count FROM agent_schedules GROUP BY status
+    `;
+    const schedulesByStatus: Record<string, number> = {};
+    for (const row of scheduleCounts) {
+      schedulesByStatus[row.status] = row.count;
+    }
+
+    // Get recent schedule runs (last 24h)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const recentRuns = this.sql<{ status: string; count: number }>`
+      SELECT status, COUNT(*) as count 
+      FROM schedule_runs 
+      WHERE scheduled_at >= ${oneDayAgo}
+      GROUP BY status
+    `;
+    const runsByStatus: Record<string, number> = {};
+    let totalRuns = 0;
+    for (const row of recentRuns) {
+      runsByStatus[row.status] = row.count;
+      totalRuns += row.count;
+    }
+
+    // Calculate success rate
+    const completedRuns = runsByStatus["completed"] ?? 0;
+    const successRate = totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 100;
+
+    return Response.json({
+      agents: {
+        total: totalAgents,
+        byType: Object.fromEntries(agentsByType.map(r => [r.type, r.count])),
+      },
+      schedules: {
+        total: Object.values(schedulesByStatus).reduce((a, b) => a + b, 0),
+        active: schedulesByStatus["active"] ?? 0,
+        paused: schedulesByStatus["paused"] ?? 0,
+        disabled: schedulesByStatus["disabled"] ?? 0,
+      },
+      runs: {
+        today: totalRuns,
+        completed: completedRuns,
+        failed: runsByStatus["failed"] ?? 0,
+        successRate,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
 }
 
 // ============================================================
@@ -1598,6 +1682,3 @@ function rowToRun(row: ScheduleRunRow): ScheduleRun {
     retryCount: row.retry_count,
   };
 }
-
-// Note: MCP server storage is handled by the SDK's this.addMcpServer() / this.getMcpServers()
-// No SQL row types needed.

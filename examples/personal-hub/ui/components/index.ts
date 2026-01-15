@@ -4,10 +4,12 @@ export { Select } from "./Select";
 export { LayerCard, LayerCardContent, LayerCardFooter } from "./LayerCard";
 
 // Layout components
-export { Sidebar } from "./Sidebar";
 export { ContentHeader } from "./ContentHeader";
-export { HomeView } from "./HomeView";
-export { MindPanel } from "./MindPanel";
+export { TopHeader } from "./TopHeader";
+export { TabBar, type OpenTab } from "./TabBar";
+export { CommandPalette } from "./CommandPalette";
+export { AgentPanel } from "./AgentPanel";
+export { BottomPanel } from "./BottomPanel";
 
 // View components
 export { ChatView } from "./ChatView";
@@ -21,6 +23,12 @@ export { ConfirmModal } from "./ConfirmModal";
 export { BlueprintEditor } from "./BlueprintEditor";
 export { VarEditor } from "./VarEditor";
 
+// Error handling
+export { ErrorBoundary } from "./ErrorBoundary";
+
+// Toast notifications
+export { ToastProvider, useToast } from "./Toast";
+
 // Re-export types from shared
 export type {
   AgencyMeta,
@@ -31,10 +39,8 @@ export type {
   Message,
   ToolCall,
   Todo,
-  ActivityItem,
   DashboardMetrics,
   MemoryDisk,
-  MentionTarget,
 } from "./shared";
 
 // Re-export TraceView types

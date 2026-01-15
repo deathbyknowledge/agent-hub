@@ -48,7 +48,7 @@ export const hitl: AgentPlugin = {
         approved,
         modifiedToolCalls: decided,
       });
-      ctx.agent.emit(AgentEventType.RUN_RESUMED, {});
+      ctx.agent.emit(AgentEventType.AGENT_RESUMED, {});
 
       await ctx.agent.ensureScheduled();
       return { ok: true };
@@ -69,7 +69,7 @@ export const hitl: AgentPlugin = {
     if (risky) {
       runState.status = "paused";
       runState.reason = "hitl";
-      ctx.agent.emit(AgentEventType.RUN_PAUSED, {
+      ctx.agent.emit(AgentEventType.AGENT_PAUSED, {
         reason: "hitl",
       });
     }

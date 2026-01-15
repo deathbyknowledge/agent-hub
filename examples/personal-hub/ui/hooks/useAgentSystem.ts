@@ -74,11 +74,21 @@ export const queryKeys = {
 // ============================================================================
 
 type AgencyEventListener = (event: AgencyWebSocketEvent) => void;
+type ConnectionStatusListener = (connected: boolean) => void;
+
+// Reconnection configuration
+const RECONNECT_BASE_DELAY = 1000; // 1 second
+const RECONNECT_MAX_DELAY = 30000; // 30 seconds
+const RECONNECT_MAX_ATTEMPTS = 10;
 
 interface AgencyWsManager {
   connection: AgencyWebSocket | null;
   listeners: Set<AgencyEventListener>;
+  statusListeners: Set<ConnectionStatusListener>;
   connecting: boolean;
+  reconnectAttempts: number;
+  reconnectTimeout: ReturnType<typeof setTimeout> | null;
+  intentionallyClosed: boolean;
 }
 
 const agencyWsManagers = new Map<string, AgencyWsManager>();
@@ -89,23 +99,75 @@ function getOrCreateAgencyWsManager(agencyId: string): AgencyWsManager {
     manager = {
       connection: null,
       listeners: new Set(),
+      statusListeners: new Set(),
       connecting: false,
+      reconnectAttempts: 0,
+      reconnectTimeout: null,
+      intentionallyClosed: false,
     };
     agencyWsManagers.set(agencyId, manager);
   }
   return manager;
 }
 
+function notifyConnectionStatus(manager: AgencyWsManager, connected: boolean): void {
+  for (const listener of manager.statusListeners) {
+    try {
+      listener(connected);
+    } catch (e) {
+      console.error("[AgencyWS] Status listener error:", e);
+    }
+  }
+}
+
+function scheduleReconnect(agencyId: string): void {
+  const manager = getOrCreateAgencyWsManager(agencyId);
+  
+  // Don't reconnect if intentionally closed or no listeners
+  if (manager.intentionallyClosed || manager.listeners.size === 0) {
+    return;
+  }
+  
+  // Don't reconnect if max attempts reached
+  if (manager.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
+    console.error(`[AgencyWS] Max reconnect attempts (${RECONNECT_MAX_ATTEMPTS}) reached for agency ${agencyId}`);
+    return;
+  }
+  
+  // Calculate delay with exponential backoff
+  const delay = Math.min(
+    RECONNECT_BASE_DELAY * Math.pow(2, manager.reconnectAttempts),
+    RECONNECT_MAX_DELAY
+  );
+  
+  console.log(`[AgencyWS] Scheduling reconnect for agency ${agencyId} in ${delay}ms (attempt ${manager.reconnectAttempts + 1})`);
+  
+  manager.reconnectTimeout = setTimeout(() => {
+    manager.reconnectTimeout = null;
+    manager.reconnectAttempts++;
+    connectAgencyWs(agencyId);
+  }, delay);
+}
+
 function connectAgencyWs(agencyId: string): void {
   const manager = getOrCreateAgencyWsManager(agencyId);
   if (manager.connection || manager.connecting) return;
 
+  // Clear any pending reconnect
+  if (manager.reconnectTimeout) {
+    clearTimeout(manager.reconnectTimeout);
+    manager.reconnectTimeout = null;
+  }
+  
   manager.connecting = true;
+  manager.intentionallyClosed = false;
   const client = getClient().agency(agencyId);
   
   const ws = client.connect({
     onOpen: () => {
       manager.connecting = false;
+      manager.reconnectAttempts = 0; // Reset on successful connection
+      notifyConnectionStatus(manager, true);
     },
     onEvent: (event) => {
       // Notify all listeners
@@ -120,10 +182,22 @@ function connectAgencyWs(agencyId: string): void {
     onClose: () => {
       manager.connection = null;
       manager.connecting = false;
+      notifyConnectionStatus(manager, false);
+      
+      // Schedule reconnect if not intentionally closed
+      if (!manager.intentionallyClosed) {
+        scheduleReconnect(agencyId);
+      }
     },
     onError: () => {
       manager.connection = null;
       manager.connecting = false;
+      notifyConnectionStatus(manager, false);
+      
+      // Schedule reconnect
+      if (!manager.intentionallyClosed) {
+        scheduleReconnect(agencyId);
+      }
     },
   });
 
@@ -146,12 +220,84 @@ function subscribeToAgencyEvents(
   return () => {
     manager.listeners.delete(listener);
     
-    // If no more listeners, close connection
-    if (manager.listeners.size === 0 && manager.connection) {
-      manager.connection.close();
-      manager.connection = null;
+    // If no more listeners, close connection and cleanup
+    if (manager.listeners.size === 0) {
+      manager.intentionallyClosed = true;
+      
+      // Clear any pending reconnect
+      if (manager.reconnectTimeout) {
+        clearTimeout(manager.reconnectTimeout);
+        manager.reconnectTimeout = null;
+      }
+      
+      if (manager.connection) {
+        manager.connection.close();
+        manager.connection = null;
+      }
     }
   };
+}
+
+/**
+ * Subscribe to connection status changes for an agency WebSocket
+ */
+function subscribeToConnectionStatus(
+  agencyId: string,
+  listener: ConnectionStatusListener
+): () => void {
+  const manager = getOrCreateAgencyWsManager(agencyId);
+  manager.statusListeners.add(listener);
+  
+  // Immediately notify current status
+  const isConnected = !!manager.connection && !manager.connecting;
+  listener(isConnected);
+  
+  return () => {
+    manager.statusListeners.delete(listener);
+  };
+}
+
+/**
+ * Get current connection status for an agency
+ */
+function getAgencyConnectionStatus(agencyId: string): { connected: boolean; reconnecting: boolean } {
+  const manager = agencyWsManagers.get(agencyId);
+  if (!manager) {
+    return { connected: false, reconnecting: false };
+  }
+  return {
+    connected: !!manager.connection && !manager.connecting,
+    reconnecting: manager.reconnectAttempts > 0 && !manager.intentionallyClosed,
+  };
+}
+
+/**
+ * Manually trigger reconnection for an agency WebSocket
+ */
+function reconnectAgencyWs(agencyId: string): void {
+  const manager = agencyWsManagers.get(agencyId);
+  if (!manager) return;
+  
+  // Reset state for manual reconnect
+  manager.intentionallyClosed = false;
+  manager.reconnectAttempts = 0;
+  
+  // Clear any pending reconnect
+  if (manager.reconnectTimeout) {
+    clearTimeout(manager.reconnectTimeout);
+    manager.reconnectTimeout = null;
+  }
+  
+  // Close existing connection if any
+  if (manager.connection) {
+    manager.connection.close();
+    manager.connection = null;
+  }
+  
+  // Connect if there are listeners
+  if (manager.listeners.size > 0) {
+    connectAgencyWs(agencyId);
+  }
 }
 
 // ============================================================================
@@ -265,13 +411,6 @@ async function fetchMemoryDisks(agencyId: string): Promise<MemoryDisk[]> {
   }
 }
 
-// Special agent type for Agency Mind
-const AGENCY_MIND_TYPE = "_agency-mind";
-
-// Special agency and agent type for Hub Mind
-const SYSTEM_AGENCY_ID = "_system";
-const HUB_MIND_TYPE = "_hub-mind";
-
 export function useAgency(agencyId: string | null) {
   const queryClient = useQueryClient();
   const client = useMemo(
@@ -279,13 +418,25 @@ export function useAgency(agencyId: string | null) {
     [agencyId]
   );
 
+  // Helper to get client with error if not available
+  const requireClient = useCallback(() => {
+    if (!client) throw new Error("No agency selected");
+    return client;
+  }, [client]);
+
   // Stable function references for filesystem operations
   const listDirectory = useCallback(
-    (path: string = "/") => client!.listDirectory(path),
+    (path: string = "/") => {
+      if (!client) return Promise.reject(new Error("No agency selected"));
+      return client.listDirectory(path);
+    },
     [client]
   );
   const readFile = useCallback(
-    (path: string) => client!.readFile(path),
+    (path: string) => {
+      if (!client) return Promise.reject(new Error("No agency selected"));
+      return client.readFile(path);
+    },
     [client]
   );
   const normalizeFsPath = useCallback(
@@ -298,77 +449,87 @@ export function useAgency(agencyId: string | null) {
   );
   const writeFile = useCallback(
     (path: string, content: string) => {
+      if (!client) return Promise.reject(new Error("No agency selected"));
       if (isProtectedFile(path)) {
         return Promise.reject(new Error("`.agency.json` is read-only"));
       }
-      return client!.writeFile(path, content);
+      return client.writeFile(path, content);
     },
     [client, isProtectedFile]
   );
   const deleteFile = useCallback(
     (path: string) => {
+      if (!client) return Promise.reject(new Error("No agency selected"));
       if (isProtectedFile(path)) {
         return Promise.reject(new Error("`.agency.json` is read-only"));
       }
-      return client!.deleteFile(path);
+      return client.deleteFile(path);
     },
     [client, isProtectedFile]
   );
 
-  // Queries
+  // Queries - enabled flag ensures client exists, but we add defensive checks
   const {
     data: agents = [],
     isLoading: loading,
     error,
   } = useQuery({
-    queryKey: queryKeys.agents(agencyId!),
+    queryKey: queryKeys.agents(agencyId || "_none"),
     queryFn: async () => {
-      const { agents } = await client!.listAgents();
+      if (!client) throw new Error("No agency selected");
+      const { agents } = await client.listAgents();
       return agents;
     },
-    enabled: !!agencyId,
+    enabled: !!agencyId && !!client,
   });
 
   const { data: blueprints = [] } = useQuery({
-    queryKey: queryKeys.blueprints(agencyId!),
+    queryKey: queryKeys.blueprints(agencyId || "_none"),
     queryFn: async () => {
-      const { blueprints } = await client!.listBlueprints();
+      if (!client) throw new Error("No agency selected");
+      const { blueprints } = await client.listBlueprints();
       return blueprints;
     },
-    enabled: !!agencyId,
+    enabled: !!agencyId && !!client,
   });
 
   const { data: schedules = [] } = useQuery({
-    queryKey: queryKeys.schedules(agencyId!),
+    queryKey: queryKeys.schedules(agencyId || "_none"),
     queryFn: async () => {
-      const { schedules } = await client!.listSchedules();
+      if (!client) throw new Error("No agency selected");
+      const { schedules } = await client.listSchedules();
       return schedules;
     },
-    enabled: !!agencyId,
+    enabled: !!agencyId && !!client,
   });
 
   const { data: vars = {} } = useQuery({
-    queryKey: queryKeys.vars(agencyId!),
+    queryKey: queryKeys.vars(agencyId || "_none"),
     queryFn: async () => {
-      const { vars } = await client!.getVars();
+      if (!client) throw new Error("No agency selected");
+      const { vars } = await client.getVars();
       return vars;
     },
-    enabled: !!agencyId,
+    enabled: !!agencyId && !!client,
   });
 
   const { data: memoryDisks = [] } = useQuery({
-    queryKey: queryKeys.memoryDisks(agencyId!),
-    queryFn: () => fetchMemoryDisks(agencyId!),
+    queryKey: queryKeys.memoryDisks(agencyId || "_none"),
+    queryFn: () => {
+      if (!agencyId) throw new Error("No agency selected");
+      return fetchMemoryDisks(agencyId);
+    },
     enabled: !!agencyId,
   });
 
   const { data: mcpServers = [] } = useQuery({
-    queryKey: queryKeys.mcpServers(agencyId!),
+    queryKey: queryKeys.mcpServers(agencyId || "_none"),
     queryFn: async () => {
-      const { servers } = await client!.listMcpServers();
+      if (!client) throw new Error("No agency selected");
+      const { servers } = await client.listMcpServers();
       return servers;
     },
-    enabled: !!agencyId,
+    enabled: !!agencyId && !!client,
   });
 
   // Subscribe to live MCP server updates via agency WebSocket
@@ -408,12 +569,13 @@ export function useAgency(agencyId: string | null) {
     return unsubscribe;
   }, [agencyId, queryClient]);
 
-  // Mutations
+  // Mutations - all use requireClient() for safe client access
   const spawnMutation = useMutation({
-    mutationFn: async (agentType: string) => client!.spawnAgent({ agentType }),
+    mutationFn: async (agentType: string) => requireClient().spawnAgent({ agentType }),
     onSuccess: (newAgent) => {
+      if (!agencyId) return;
       queryClient.setQueryData<AgentSummary[]>(
-        queryKeys.agents(agencyId!),
+        queryKeys.agents(agencyId),
         (old) => (old ? [...old, newAgent] : [newAgent])
       );
     },
@@ -421,64 +583,70 @@ export function useAgency(agencyId: string | null) {
 
   const scheduleMutation = useMutation({
     mutationFn: async (request: CreateScheduleRequest) => {
-      const { schedule } = await client!.createSchedule(request);
+      const { schedule } = await requireClient().createSchedule(request);
       return schedule;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.schedules(agencyId!),
-      }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId) });
+    },
   });
 
   const deleteScheduleMutation = useMutation({
-    mutationFn: (scheduleId: string) => client!.deleteSchedule(scheduleId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.schedules(agencyId!),
-      }),
+    mutationFn: (scheduleId: string) => requireClient().deleteSchedule(scheduleId),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId) });
+    },
   });
 
   const pauseScheduleMutation = useMutation({
-    mutationFn: (scheduleId: string) => client!.pauseSchedule(scheduleId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.schedules(agencyId!),
-      }),
+    mutationFn: (scheduleId: string) => requireClient().pauseSchedule(scheduleId),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId) });
+    },
   });
 
   const deleteAgentMutation = useMutation({
-    mutationFn: (agentId: string) => client!.deleteAgent(agentId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId!) }),
+    mutationFn: (agentId: string) => requireClient().deleteAgent(agentId),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId) });
+    },
   });
 
   const deleteAgencyMutation = useMutation({
-    mutationFn: () => client!.deleteAgency(),
+    mutationFn: () => requireClient().deleteAgency(),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.agencies });
     },
   });
 
   const resumeScheduleMutation = useMutation({
-    mutationFn: (scheduleId: string) => client!.resumeSchedule(scheduleId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.schedules(agencyId!),
-      }),
+    mutationFn: (scheduleId: string) => requireClient().resumeSchedule(scheduleId),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId) });
+    },
   });
 
   const setVarMutation = useMutation({
     mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
-      await client!.setVar(key, value);
+      await requireClient().setVar(key, value);
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId) });
+    },
   });
 
   const deleteVarMutation = useMutation({
-    mutationFn: (key: string) => client!.deleteVar(key),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
+    mutationFn: (key: string) => requireClient().deleteVar(key),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId) });
+    },
   });
 
   const createMemoryDiskMutation = useMutation({
@@ -498,15 +666,15 @@ export function useAgency(agencyId: string | null) {
         hasEmbeddings: false,
         entries: entries?.map((content) => ({ content })) ?? [],
       };
-      await client!.writeFile(
+      await requireClient().writeFile(
         `/shared/memories/${name}.idz`,
         JSON.stringify(idz)
       );
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.memoryDisks(agencyId!),
-      }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId) });
+    },
   });
 
   const importMemoryDiskMutation = useMutation({
@@ -514,21 +682,21 @@ export function useAgency(agencyId: string | null) {
       const content = await file.text();
       const data = JSON.parse(content) as { name?: string };
       const name = data.name || file.name.replace(/\.(idz|json)$/, "");
-      await client!.writeFile(`/shared/memories/${name}.idz`, content);
+      await requireClient().writeFile(`/shared/memories/${name}.idz`, content);
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.memoryDisks(agencyId!),
-      }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId) });
+    },
   });
 
   const deleteMemoryDiskMutation = useMutation({
     mutationFn: (name: string) =>
-      client!.deleteFile(`/shared/memories/${name}.idz`),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.memoryDisks(agencyId!),
-      }),
+      requireClient().deleteFile(`/shared/memories/${name}.idz`),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId) });
+    },
   });
 
   const blueprintMutation = useMutation({
@@ -536,49 +704,49 @@ export function useAgency(agencyId: string | null) {
       blueprint:
         | Omit<AgentBlueprint, "createdAt" | "updatedAt">
         | AgentBlueprint
-    ) => client!.createBlueprint(blueprint),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints(agencyId!),
-      }),
+    ) => requireClient().createBlueprint(blueprint),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId) });
+    },
   });
 
   const deleteBlueprintMutation = useMutation({
-    mutationFn: (name: string) => client!.deleteBlueprint(name),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints(agencyId!),
-      }),
+    mutationFn: (name: string) => requireClient().deleteBlueprint(name),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId) });
+    },
   });
 
   const addMcpServerMutation = useMutation({
     mutationFn: async (request: AddMcpServerRequest) => {
-      const { server } = await client!.addMcpServer(request);
+      const { server } = await requireClient().addMcpServer(request);
       return server;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.mcpServers(agencyId!),
-      }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers(agencyId) });
+    },
   });
 
   const removeMcpServerMutation = useMutation({
-    mutationFn: (serverId: string) => client!.removeMcpServer(serverId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.mcpServers(agencyId!),
-      }),
+    mutationFn: (serverId: string) => requireClient().removeMcpServer(serverId),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers(agencyId) });
+    },
   });
 
   const retryMcpServerMutation = useMutation({
     mutationFn: async (serverId: string) => {
-      const { server } = await client!.retryMcpServer(serverId);
+      const { server } = await requireClient().retryMcpServer(serverId);
       return server;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.mcpServers(agencyId!),
-      }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers(agencyId) });
+    },
   });
 
   /**
@@ -606,22 +774,26 @@ export function useAgency(agencyId: string | null) {
     loading,
     error: error as Error | null,
     sendMessageToAgent,
-    refreshAgents: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId!) }),
-    refreshBlueprints: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints(agencyId!),
-      }),
-    refreshSchedules: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.schedules(agencyId!),
-      }),
-    refreshVars: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
-    refreshMemoryDisks: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.memoryDisks(agencyId!),
-      }),
+    refreshAgents: () => {
+      if (!agencyId) return Promise.resolve();
+      return queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId) });
+    },
+    refreshBlueprints: () => {
+      if (!agencyId) return Promise.resolve();
+      return queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId) });
+    },
+    refreshSchedules: () => {
+      if (!agencyId) return Promise.resolve();
+      return queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId) });
+    },
+    refreshVars: () => {
+      if (!agencyId) return Promise.resolve();
+      return queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId) });
+    },
+    refreshMemoryDisks: () => {
+      if (!agencyId) return Promise.resolve();
+      return queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId) });
+    },
     // Note: refreshMcpServers removed - MCP updates come live via agency WebSocket
     spawnAgent: spawnMutation.mutateAsync,
     listDirectory,
@@ -633,11 +805,11 @@ export function useAgency(agencyId: string | null) {
     pauseSchedule: pauseScheduleMutation.mutateAsync,
     resumeSchedule: resumeScheduleMutation.mutateAsync,
     triggerSchedule: async (scheduleId: string) => {
-      const { run } = await client!.triggerSchedule(scheduleId);
+      const { run } = await requireClient().triggerSchedule(scheduleId);
       return run;
     },
     getScheduleRuns: async (scheduleId: string): Promise<ScheduleRun[]> => {
-      const { runs } = await client!.getScheduleRuns(scheduleId);
+      const { runs } = await requireClient().getScheduleRuns(scheduleId);
       return runs;
     },
     deleteAgent: deleteAgentMutation.mutateAsync,
@@ -658,28 +830,6 @@ export function useAgency(agencyId: string | null) {
     addMcpServer: addMcpServerMutation.mutateAsync,
     removeMcpServer: removeMcpServerMutation.mutateAsync,
     retryMcpServer: retryMcpServerMutation.mutateAsync,
-    /**
-     * Get or create the Agency Mind agent for this agency.
-     * Returns the agent ID of the existing or newly spawned mind.
-     */
-    getOrCreateMind: async (): Promise<string> => {
-      if (!client) throw new Error("No agency selected");
-
-      // Check if mind agent already exists
-      const { agents: currentAgents } = await client.listAgents();
-      const existingMind = currentAgents.find(
-        (a) => a.agentType === AGENCY_MIND_TYPE
-      );
-      if (existingMind) return existingMind.id;
-
-      // Spawn new mind agent
-      const newMind = await client.spawnAgent({ agentType: AGENCY_MIND_TYPE });
-      queryClient.setQueryData<AgentSummary[]>(
-        queryKeys.agents(agencyId!),
-        (old) => (old ? [...old, newMind] : [newMind])
-      );
-      return newMind.id;
-    },
   };
 }
 
@@ -825,32 +975,32 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
 
     // Update run state based on event type
     if (event.agentId === agentId) {
-      if (event.type === "run.started") {
+      if (event.type === "gen_ai.agent.invoked") {
         setHookState((prev) => ({
           ...prev,
           run: { ...prev.run, status: "running", step: 0 } as RunState,
         }));
-      } else if (event.type === "agent.completed") {
+      } else if (event.type === "gen_ai.agent.completed") {
         setHookState((prev) => ({
           ...prev,
           run: { ...prev.run, status: "completed" } as RunState,
         }));
-      } else if (event.type === "agent.error") {
+      } else if (event.type === "gen_ai.agent.error") {
         setHookState((prev) => ({
           ...prev,
           run: { 
             ...prev.run, 
             status: "error",
-            reason: (event.data as { error?: string })?.error,
+            reason: (event.data as { "error.message"?: string })?.["error.message"],
           } as RunState,
         }));
-      } else if (event.type === "run.tick") {
+      } else if (event.type === "gen_ai.agent.step") {
         const step = (event.data as { step?: number })?.step ?? 0;
         setHookState((prev) => ({
           ...prev,
           run: { ...prev.run, status: "running", step } as RunState,
         }));
-      } else if (event.type === "run.paused") {
+      } else if (event.type === "gen_ai.agent.paused") {
         setHookState((prev) => ({
           ...prev,
           run: { 
@@ -859,12 +1009,12 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
             reason: (event.data as { reason?: string })?.reason,
           } as RunState,
         }));
-      } else if (event.type === "run.resumed") {
+      } else if (event.type === "gen_ai.agent.resumed") {
         setHookState((prev) => ({
           ...prev,
           run: { ...prev.run, status: "running" } as RunState,
         }));
-      } else if (event.type === "run.canceled") {
+      } else if (event.type === "gen_ai.agent.canceled") {
         setHookState((prev) => ({
           ...prev,
           run: { ...prev.run, status: "canceled" } as RunState,
@@ -895,30 +1045,31 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
       }
     }
 
-    // Handle assistant.message - add message incrementally (no fetch needed)
-    if (event.type === "assistant.message" && event.agentId === agentId) {
+    // Handle gen_ai.content.message - add message incrementally (no fetch needed)
+    if (event.type === "gen_ai.content.message" && event.agentId === agentId) {
       const data = event.data as {
-        content?: string;
-        toolCalls?: Array<{ id: string; name: string; args: unknown }>;
+        "gen_ai.content.text"?: string;
+        "gen_ai.content.tool_calls"?: Array<{ id: string; name: string; arguments: unknown }>;
       };
       
       setHookState((prev) => {
         if (!prev.state) return prev;
         
         // Build the new assistant message
-        const newMessage: ChatMessage = data.toolCalls?.length
+        const toolCalls = data["gen_ai.content.tool_calls"];
+        const newMessage: ChatMessage = toolCalls?.length
           ? {
               role: "assistant" as const,
-              toolCalls: data.toolCalls.map(tc => ({
+              toolCalls: toolCalls.map((tc: { id: string; name: string; arguments: unknown }) => ({
                 id: tc.id,
                 name: tc.name,
-                args: tc.args,
+                args: tc.arguments,
               })),
               ts: event.ts,
             }
           : {
               role: "assistant" as const,
-              content: data.content || "",
+              content: data["gen_ai.content.text"] || "",
               ts: event.ts,
             };
         
@@ -932,22 +1083,23 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
       });
     }
 
-    // Handle tool.output - add tool result message incrementally
-    if (event.type === "tool.output" && event.agentId === agentId) {
+    // Handle gen_ai.tool.finish - add tool result message incrementally
+    if (event.type === "gen_ai.tool.finish" && event.agentId === agentId) {
       const data = event.data as {
-        toolCallId: string;
-        output: unknown;
+        "gen_ai.tool.call.id": string;
+        "gen_ai.tool.response"?: unknown;
       };
       
       setHookState((prev) => {
         if (!prev.state) return prev;
         
+        const output = data["gen_ai.tool.response"];
         const toolMessage: ChatMessage = {
           role: "tool" as const,
-          toolCallId: data.toolCallId,
-          content: typeof data.output === "string" 
-            ? data.output 
-            : JSON.stringify(data.output),
+          toolCallId: data["gen_ai.tool.call.id"],
+          content: typeof output === "string" 
+            ? output 
+            : JSON.stringify(output),
           ts: event.ts,
         };
         
@@ -961,12 +1113,12 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
       });
     }
 
-    // Handle tool.error - add error result message incrementally
-    if (event.type === "tool.error" && event.agentId === agentId) {
+    // Handle gen_ai.tool.error - add error result message incrementally
+    if (event.type === "gen_ai.tool.error" && event.agentId === agentId) {
       const data = event.data as {
-        toolCallId: string;
-        toolName: string;
-        error: string;
+        "gen_ai.tool.call.id": string;
+        "gen_ai.tool.name": string;
+        "error.message"?: string;
       };
       
       setHookState((prev) => {
@@ -974,8 +1126,8 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
         
         const toolMessage: ChatMessage = {
           role: "tool" as const,
-          toolCallId: data.toolCallId,
-          content: `Error: ${data.error}`,
+          toolCallId: data["gen_ai.tool.call.id"],
+          content: `Error: ${data["error.message"] || "Unknown error"}`,
           ts: event.ts,
         };
         
@@ -1019,7 +1171,7 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     };
   }, [agencyId, agentId, fetchState, fetchEvents, handleAgencyEvent]);
 
-  // Send message
+  // Send message with optimistic update and rollback
   const sendMessage = useCallback(
     async (content: string) => {
       const agentClient = agentClientRef.current;
@@ -1030,9 +1182,13 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
         content,
       };
 
+      // Capture previous state for rollback
+      let previousMessages: ChatMessage[] | null = null;
+      
       // Optimistically add user message
       setHookState((prev) => {
         if (!prev.state) return prev;
+        previousMessages = prev.state.messages || [];
         return {
           ...prev,
           state: {
@@ -1042,8 +1198,26 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
         };
       });
 
-      // Invoke agent - response will come via WebSocket events
-      await agentClient.invoke({ messages: [message] });
+      try {
+        // Invoke agent - response will come via WebSocket events
+        await agentClient.invoke({ messages: [message] });
+      } catch (error) {
+        // Rollback optimistic update on failure
+        if (previousMessages !== null) {
+          const rollbackMessages = previousMessages;
+          setHookState((prev) => {
+            if (!prev.state) return prev;
+            return {
+              ...prev,
+              state: {
+                ...prev.state,
+                messages: rollbackMessages,
+              },
+            };
+          });
+        }
+        throw error; // Re-throw so caller can handle
+      }
     },
     []
   );
@@ -1065,6 +1239,13 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     []
   );
 
+  // Reconnect handler - uses the agency WS reconnect
+  const reconnect = useCallback(() => {
+    if (agencyId) {
+      reconnectAgencyWs(agencyId);
+    }
+  }, [agencyId]);
+
   return {
     ...hookState,
     sendMessage,
@@ -1072,438 +1253,51 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     approve,
     refresh: fetchState,
     refreshEvents: fetchEvents,
-    reconnect: () => {}, // No-op - agency WS handles reconnection
+    reconnect,
   };
 }
 
 // ============================================================================
-// useActivityFeed - Aggregate activity across all agents in an agency
-// ============================================================================
-
-export interface ActivityItem {
-  id: string;
-  timestamp: string;
-  type: "message" | "agent_event" | "system";
-  from?: string;
-  to?: string;
-  content?: string;
-  agentId?: string;
-  agentType?: string;
-  event?: string;
-  details?: string;
-  status?: "running" | "done" | "error";
-}
-
-export function useActivityFeed(agencyId: string | null) {
-  const [items, setItems] = useState<ActivityItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  // Track agent types for display
-  const agentTypesRef = useRef<Map<string, string>>(new Map());
-  // Track message count per agent for stable IDs
-  const msgCountRef = useRef<Map<string, number>>(new Map());
-
-  // Fetch all agents and their states (initial load only)
-  const fetchActivity = useCallback(async () => {
-    if (!agencyId) {
-      setItems([]);
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const client = getClient().agency(agencyId);
-      const { agents } = await client.listAgents();
-
-      const allItems: ActivityItem[] = [];
-
-      // Build agent type lookup and reset message counters
-      for (const agent of agents) {
-        agentTypesRef.current.set(agent.id, agent.agentType);
-      }
-      msgCountRef.current.clear();
-
-      // Fetch state for each agent
-      for (const agent of agents) {
-        try {
-          const agentClient = client.agent(agent.id);
-          const { state, run } = await agentClient.getState();
-
-          // Convert messages to activity items
-          if (state?.messages) {
-            let assistantCount = 0;
-            for (let i = 0; i < state.messages.length; i++) {
-              const msg = state.messages[i];
-              const ts = msg.ts || new Date().toISOString();
-
-              if (msg.role === "user") {
-                allItems.push({
-                  id: `${agent.id}-msg-${i}`,
-                  timestamp: ts,
-                  type: "message",
-                  from: "you",
-                  to: agent.agentType,
-                  content: (msg as { content?: string }).content || "",
-                  agentId: agent.id,
-                  agentType: agent.agentType,
-                });
-              } else if (msg.role === "assistant") {
-                const content = (msg as { content?: string }).content;
-                if (content) {
-                  assistantCount++;
-                  allItems.push({
-                    id: `${agent.id}-assistant-${assistantCount}`,
-                    timestamp: ts,
-                    type: "message",
-                    from: agent.agentType,
-                    content,
-                    agentId: agent.id,
-                    agentType: agent.agentType,
-                    status: run?.status === "running" ? "running" : "done",
-                  });
-                }
-              }
-            }
-            // Track assistant message count for this agent
-            msgCountRef.current.set(agent.id, assistantCount);
-          }
-
-          // Add current run status if running
-          if (run?.status === "running") {
-            allItems.push({
-              id: `${agent.id}-run`,
-              timestamp: new Date().toISOString(),
-              type: "agent_event",
-              agentId: agent.id,
-              agentType: agent.agentType,
-              event: "Running",
-              status: "running",
-            });
-          }
-        } catch (e) {
-          // Agent might be initializing
-          console.warn(`Failed to fetch state for agent ${agent.id}:`, e);
-        }
-      }
-
-      // Sort by timestamp
-      allItems.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      setItems(allItems);
-    } catch (e) {
-      console.error("Failed to fetch activity:", e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [agencyId]);
-
-  // Handle incoming events from agency WebSocket
-  const handleAgencyEvent = useCallback((event: AgencyWebSocketEvent) => {
-    const agentType = event.agentType || agentTypesRef.current.get(event.agentId) || "unknown";
-    
-    // Update agent type lookup
-    if (event.agentType) {
-      agentTypesRef.current.set(event.agentId, event.agentType);
-    }
-
-    // Add activity items based on event type
-    if (event.type === "agent.completed") {
-      setItems((prev) => {
-        // Remove any "running" status item for this agent
-        const filtered = prev.filter(
-          (item) => !(item.id === `${event.agentId}-run` && item.status === "running")
-        );
-        return filtered;
-      });
-    } else if (event.type === "run.started") {
-      setItems((prev) => [
-        ...prev,
-        {
-          id: `${event.agentId}-run`,
-          timestamp: event.ts,
-          type: "agent_event",
-          agentId: event.agentId,
-          agentType,
-          event: "Running",
-          status: "running",
-        },
-      ]);
-    } else if (event.type === "assistant.message") {
-      // Assistant message contains content directly - no need to fetch state
-      const data = event.data as { content?: string; toolCalls?: unknown[] };
-      const content = data.content;
-      if (!content) return; // Skip if no text content (e.g., only tool calls)
-
-      // Use a counter for stable message IDs per agent
-      const count = (msgCountRef.current.get(event.agentId) || 0) + 1;
-      msgCountRef.current.set(event.agentId, count);
-
-      setItems((prev) => {
-        const msgId = `${event.agentId}-assistant-${count}`;
-        // Prevent duplicates
-        if (prev.some((item) => item.id === msgId)) return prev;
-
-        const newItem: ActivityItem = {
-          id: msgId,
-          timestamp: event.ts,
-          type: "message",
-          from: agentType,
-          content,
-          agentId: event.agentId,
-          agentType,
-          status: "done",
-        };
-        return [...prev, newItem].sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-      });
-    }
-  }, [agencyId]);
-
-  // Subscribe to agency WebSocket
-  useEffect(() => {
-    if (!agencyId) {
-      setItems([]);
-      return;
-    }
-
-    // Initial fetch
-    fetchActivity();
-
-    // Subscribe to all agency events
-    const unsubscribe = subscribeToAgencyEvents(agencyId, handleAgencyEvent);
-
-    return unsubscribe;
-  }, [agencyId, fetchActivity, handleAgencyEvent]);
-
-  // Add a user message to the feed (optimistic update)
-  const addUserMessage = useCallback((target: string, content: string, agentId: string) => {
-    const newItem: ActivityItem = {
-      id: `user-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      type: "message",
-      from: "you",
-      to: target,
-      content,
-      agentId,
-      agentType: target,
-    };
-    setItems((prev) => [...prev, newItem]);
-    
-    // Update agent type lookup
-    agentTypesRef.current.set(agentId, target);
-  }, []);
-
-  // No longer needed - agency WS handles all agents automatically
-  const subscribeToAgent = useCallback(
-    (agentId: string, agentType?: string) => {
-      if (agentType) {
-        agentTypesRef.current.set(agentId, agentType);
-      }
-    },
-    []
-  );
-
-  return {
-    items,
-    isLoading,
-    refresh: fetchActivity,
-    addUserMessage,
-    subscribeToAgent,
-  };
-}
-
-// ============================================================================
-// useHubMind - Work with the Hub Mind (lives in _system agency)
-// ============================================================================
-
-interface HubMindHookState {
-  hubMindId: string | null;
-  isLoading: boolean;
-  error: Error | null;
-}
-
-export function useHubMind() {
-  const [hookState, setHookState] = useState<HubMindHookState>({
-    hubMindId: null,
-    isLoading: false,
-    error: null,
-  });
-
-  /**
-   * Get or create the Hub Mind agent.
-   * This will:
-   * 1. Create the _system agency if it doesn't exist
-   * 2. Find or spawn a _hub-mind agent in it
-   * 3. Set up the required vars (HUB_BASE_URL, HUB_SECRET)
-   */
-  const getOrCreateHubMind = useCallback(async (): Promise<string> => {
-    setHookState((prev) => ({ ...prev, isLoading: true, error: null }));
-
-    try {
-      const client = getClient();
-
-      // 1. Check if _system agency exists, create if not
-      const { agencies } = await client.listAgencies();
-      let systemAgency = agencies.find((a) => a.id === SYSTEM_AGENCY_ID);
-
-      if (!systemAgency) {
-        // Create the _system agency
-        systemAgency = await client.createAgency({ name: SYSTEM_AGENCY_ID });
-      }
-
-      // 2. Get the _system agency client
-      const systemClient = client.agency(SYSTEM_AGENCY_ID);
-
-      // 3. Set up required vars for hub-management and memory plugins
-      const baseUrl = window.location.origin;
-      const secret = getStoredSecret();
-
-      await systemClient.setVar("HUB_BASE_URL", baseUrl);
-      if (secret) {
-        await systemClient.setVar("HUB_SECRET", secret);
-      }
-
-      // Also set embedding vars if available in current agency
-      // (Hub Mind needs these for memory plugin)
-      // For now we'll use the same as LLM API (OpenAI compatible)
-      const currentVars = await systemClient.getVars().catch(() => ({ vars: {} as Record<string, unknown> }));
-      if (!(currentVars.vars as Record<string, unknown>).EMBEDDING_API_BASE) {
-        // Default to OpenAI-compatible endpoint
-        await systemClient.setVar("EMBEDDING_API_BASE", "https://api.openai.com/v1");
-      }
-
-      // 4. Check if hub-manual memory disk exists, create if not
-      try {
-        await systemClient.readFile("/shared/memories/hub-manual.idz");
-      } catch {
-        // Manual doesn't exist - create it with initial content
-        const hubManual = {
-          version: 1,
-          name: "hub-manual",
-          description: "Agent Hub system documentation and best practices",
-          hasEmbeddings: false,
-          entries: [
-            { content: "Agent Hub is a framework for building multi-agent AI systems. It consists of agencies (containers for agents), blueprints (agent templates), and plugins (capability extensions). Each agency can have multiple agents running concurrently.", extra: { topic: "overview" } },
-            { content: "A blueprint defines an agent type with: name (identifier), description (what it does), prompt (system instructions), capabilities (list of plugins/tools), and optional model override. Blueprints starting with _ are system blueprints and hidden from users.", extra: { topic: "blueprints" } },
-            { content: "Capabilities in a blueprint can be: plugin names (e.g., 'planning', 'memory'), tool names (e.g., 'internet_search'), or tags with @ prefix (e.g., '@default' includes all default tools). Multiple capabilities can be combined.", extra: { topic: "capabilities" } },
-            { content: "The planning plugin adds todo list management. Agents can create, update, and complete tasks. Best used for complex multi-step operations. Add 'planning' to capabilities to enable.", extra: { topic: "plugin", name: "planning" } },
-            { content: "The memory plugin provides semantic search over .idz memory files. It requires EMBEDDING_API_BASE and EMBEDDING_API_KEY vars. Agents can recall (search) and remember (store) information. Add 'memory' to capabilities.", extra: { topic: "plugin", name: "memory" } },
-            { content: "The filesystem plugin provides read/write access to the agency's R2-backed storage. Agents have a home directory (~/) and shared space (/shared/). Add 'filesystem' to capabilities.", extra: { topic: "plugin", name: "filesystem" } },
-            { content: "The subagents plugin allows agents to spawn child agents for subtasks. Children report back to parents when done. Useful for parallel work or specialized tasks. Add 'subagents' to capabilities.", extra: { topic: "plugin", name: "subagents" } },
-            { content: "Agency variables (vars) are key-value configuration accessible to all agents. Common vars: LLM_API_KEY, LLM_API_BASE, EMBEDDING_API_KEY, EMBEDDING_API_BASE, DEFAULT_MODEL. Set via Agency settings or API.", extra: { topic: "configuration" } },
-            { content: "Schedules allow automatic agent spawning. Types: 'once' (single run at time), 'cron' (recurring pattern), 'interval' (every N milliseconds). Schedules can be paused, resumed, or manually triggered.", extra: { topic: "schedules" } },
-            { content: "The Agency Mind (_agency-mind) is a special agent that manages its parent agency. It can list/create/update blueprints, manage agents, view schedules, and configure variables. Each agency has one.", extra: { topic: "system-agents" } },
-            { content: "The Hub Mind (_hub-mind) is the top-level intelligence managing all agencies. It lives in the _system agency and can create/delete agencies, get hub-wide statistics, and provide guidance.", extra: { topic: "system-agents" } },
-            { content: "Best practice for blueprint prompts: Be specific about the agent's role, list what it should and shouldn't do, mention available tools, and set expectations for output format.", extra: { topic: "best-practices" } },
-            { content: "Best practice for capabilities: Start minimal and add as needed. '@default' gives common tools. Add 'planning' for complex tasks. Add 'memory' if the agent needs to remember across sessions.", extra: { topic: "best-practices" } },
-            { content: "Memory disks are .idz files in /shared/memories/. They store entries with semantic embeddings for search. Create topic-specific disks like 'user-preferences', 'project-notes', 'learned-facts'.", extra: { topic: "memory-system" } },
-          ],
-        };
-        await systemClient.writeFile("/shared/memories/hub-manual.idz", JSON.stringify(hubManual));
-      }
-
-      // 5. Check if hub mind agent already exists
-      const { agents } = await systemClient.listAgents();
-      const existingMind = agents.find((a) => a.agentType === HUB_MIND_TYPE);
-
-      if (existingMind) {
-        setHookState({ hubMindId: existingMind.id, isLoading: false, error: null });
-        return existingMind.id;
-      }
-
-      // 5. Spawn new hub mind agent
-      const newMind = await systemClient.spawnAgent({ agentType: HUB_MIND_TYPE });
-      setHookState({ hubMindId: newMind.id, isLoading: false, error: null });
-      return newMind.id;
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      setHookState((prev) => ({ ...prev, isLoading: false, error }));
-      throw error;
-    }
-  }, []);
-
-  return {
-    ...hookState,
-    systemAgencyId: SYSTEM_AGENCY_ID,
-    getOrCreateHubMind,
-  };
-}
-
-// ============================================================================
-// useAgencyMetrics - Aggregated metrics with WebSocket updates
+// useAgencyMetrics - Simple metrics from /metrics endpoint
 // ============================================================================
 
 export interface AgencyMetrics {
-  totalTokens: number;
-  tokensByDay: Map<string, number>; // YYYY-MM-DD -> tokens
-  runsCompleted: number;
-  runsErrored: number;
-  responseTimes: number[]; // ms for each model call
+  agents: {
+    total: number;
+    byType: Record<string, number>;
+  };
+  schedules: {
+    total: number;
+    active: number;
+    paused: number;
+    disabled: number;
+  };
+  runs: {
+    today: number;
+    completed: number;
+    failed: number;
+    successRate: number;
+  };
+  timestamp: string;
 }
 
 const EMPTY_METRICS: AgencyMetrics = {
-  totalTokens: 0,
-  tokensByDay: new Map(),
-  runsCompleted: 0,
-  runsErrored: 0,
-  responseTimes: [],
+  agents: { total: 0, byType: {} },
+  schedules: { total: 0, active: 0, paused: 0, disabled: 0 },
+  runs: { today: 0, completed: 0, failed: 0, successRate: 100 },
+  timestamp: new Date().toISOString(),
 };
 
 /**
- * Hook to fetch and maintain agency-wide metrics.
- * 
- * Strategy:
- * 1. Initial load: Fetch all events from all agents once
- * 2. Agency WebSocket: Subscribe to all agent events, update metrics incrementally
- * 3. No polling: Metrics update in real-time via single agency WebSocket
+ * Hook to fetch agency-wide metrics from the /metrics endpoint.
+ * Uses React Query for caching and automatic refetch.
  */
 export function useAgencyMetrics(agencyId: string | null) {
   const [metrics, setMetrics] = useState<AgencyMetrics>(EMPTY_METRICS);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
-  
-  // Track model.started timestamps for response time calculation
-  const modelStartTimes = useRef<Map<string, number>>(new Map());
 
-  // Process a single event and update metrics incrementally
-  const processEvent = useCallback((event: AgencyWebSocketEvent) => {
-    const eventDate = new Date(event.ts).toISOString().split("T")[0];
-    const agentId = event.agentId;
-
-    setMetrics((prev) => {
-      const next = { ...prev, tokensByDay: new Map(prev.tokensByDay) };
-
-      if (event.type === "model.completed") {
-        const data = event.data as { usage?: { inputTokens: number; outputTokens: number } };
-        if (data.usage) {
-          const tokens = data.usage.inputTokens + data.usage.outputTokens;
-          next.totalTokens += tokens;
-          next.tokensByDay.set(eventDate, (next.tokensByDay.get(eventDate) || 0) + tokens);
-        }
-
-        // Calculate response time if we have a start time
-        const startTime = modelStartTimes.current.get(agentId);
-        if (startTime !== undefined) {
-          const endTime = new Date(event.ts).getTime();
-          next.responseTimes = [...prev.responseTimes, endTime - startTime];
-          modelStartTimes.current.delete(agentId);
-        }
-      } else if (event.type === "model.started") {
-        modelStartTimes.current.set(agentId, new Date(event.ts).getTime());
-        return prev; // No state change needed
-      } else if (event.type === "agent.completed") {
-        next.runsCompleted = prev.runsCompleted + 1;
-      } else if (event.type === "agent.error") {
-        next.runsErrored = prev.runsErrored + 1;
-      } else {
-        return prev; // No relevant change
-      }
-
-      return next;
-    });
-  }, []);
-
-  // Initial fetch of all historical events
-  const fetchHistoricalMetrics = useCallback(async () => {
+  const fetchMetrics = useCallback(async () => {
     if (!agencyId) {
       setMetrics(EMPTY_METRICS);
       setHasFetched(false);
@@ -1514,60 +1308,8 @@ export function useAgencyMetrics(agencyId: string | null) {
 
     try {
       const client = getClient().agency(agencyId);
-      const { agents } = await client.listAgents();
-
-      // Reset metrics for fresh calculation
-      let totalTokens = 0;
-      const tokensByDay = new Map<string, number>();
-      let runsCompleted = 0;
-      let runsErrored = 0;
-      const responseTimes: number[] = [];
-
-      // Fetch events for each agent
-      for (const agent of agents) {
-        try {
-          const agentClient = client.agent(agent.id);
-          const { events } = await agentClient.getEvents();
-
-          // Track model.started times for this agent's event history
-          let agentModelStartTime: number | null = null;
-
-          for (const event of events) {
-            const eventDate = new Date(event.ts).toISOString().split("T")[0];
-
-            if (event.type === "model.completed") {
-              const data = event.data as { usage?: { inputTokens: number; outputTokens: number } };
-              if (data.usage) {
-                const tokens = data.usage.inputTokens + data.usage.outputTokens;
-                totalTokens += tokens;
-                tokensByDay.set(eventDate, (tokensByDay.get(eventDate) || 0) + tokens);
-              }
-
-              if (agentModelStartTime !== null) {
-                const endTime = new Date(event.ts).getTime();
-                responseTimes.push(endTime - agentModelStartTime);
-                agentModelStartTime = null;
-              }
-            } else if (event.type === "model.started") {
-              agentModelStartTime = new Date(event.ts).getTime();
-            } else if (event.type === "agent.completed") {
-              runsCompleted++;
-            } else if (event.type === "agent.error") {
-              runsErrored++;
-            }
-          }
-        } catch {
-          // Agent might be initializing, skip
-        }
-      }
-
-      setMetrics({
-        totalTokens,
-        tokensByDay,
-        runsCompleted,
-        runsErrored,
-        responseTimes,
-      });
+      const data = await client.getMetrics();
+      setMetrics(data);
       setHasFetched(true);
     } catch (err) {
       console.error("Failed to fetch metrics:", err);
@@ -1576,36 +1318,15 @@ export function useAgencyMetrics(agencyId: string | null) {
     }
   }, [agencyId]);
 
-  // Subscribe to agency WebSocket for live updates
+  // Fetch on mount and when agencyId changes
   useEffect(() => {
-    if (!agencyId) {
-      setMetrics(EMPTY_METRICS);
-      setHasFetched(false);
-      return;
-    }
-
-    // Fetch historical metrics
-    fetchHistoricalMetrics();
-
-    // Subscribe to agency events for live updates
-    const unsubscribe = subscribeToAgencyEvents(agencyId, processEvent);
-
-    return () => {
-      unsubscribe();
-      modelStartTimes.current.clear();
-    };
-  }, [agencyId, fetchHistoricalMetrics, processEvent]);
-
-  // No longer needed - agency WS automatically receives all agent events
-  const subscribeToNewAgents = useCallback(() => {
-    // No-op - agency WS handles all agents automatically
-  }, []);
+    fetchMetrics();
+  }, [fetchMetrics]);
 
   return {
     metrics,
     isLoading,
     hasFetched,
-    refresh: fetchHistoricalMetrics,
-    subscribeToNewAgents,
+    refresh: fetchMetrics,
   };
 }

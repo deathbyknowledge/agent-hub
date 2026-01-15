@@ -154,6 +154,19 @@ export function PersistedObject<T extends Record<string, unknown>>(
       return true;
     },
 
+    has(_t, prop) {
+      if (typeof prop !== "string") return prop in target;
+      if (prop in target) return true;
+      const k = keyOf(prop);
+      // Check cache first
+      if (cache.has(k)) return true;
+      // Check KV storage
+      if (kv.get(k) !== undefined) return true;
+      // Check defaults
+      if (prop in defaults) return true;
+      return false;
+    },
+
     ownKeys() {
       if (typeof kv.list === "function") {
         const listed = kv.list({ prefix });

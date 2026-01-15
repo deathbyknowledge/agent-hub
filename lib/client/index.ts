@@ -150,6 +150,27 @@ export interface GetVarsResponse {
   vars: Record<string, unknown>;
 }
 
+/** Response from GET /agency/:id/metrics */
+export interface GetMetricsResponse {
+  agents: {
+    total: number;
+    byType: Record<string, number>;
+  };
+  schedules: {
+    total: number;
+    active: number;
+    paused: number;
+    disabled: number;
+  };
+  runs: {
+    today: number;
+    completed: number;
+    failed: number;
+    successRate: number;
+  };
+  timestamp: string;
+}
+
 /** Response from GET /agency/:id/vars/:key */
 export interface GetVarResponse {
   key: string;
@@ -817,6 +838,14 @@ export class AgencyClient {
 
   async deleteAgency(): Promise<OkResponse> {
     return this.request<OkResponse>("DELETE", "/destroy");
+  }
+
+  /**
+   * Get aggregated metrics for this agency.
+   * Returns counts and stats for agents, schedules, and recent runs.
+   */
+  async getMetrics(): Promise<GetMetricsResponse> {
+    return this.request<GetMetricsResponse>("GET", "/metrics");
   }
 
   /**

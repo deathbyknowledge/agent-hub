@@ -35,17 +35,17 @@ const FILTER_CONFIG: Record<
   model: {
     label: "MODEL",
     tag: "[MODEL]",
-    events: ["model.started"],
+    events: ["gen_ai.chat.start", "gen_ai.chat.finish"],
   },
   tool: {
     label: "TOOLS",
     tag: "[TOOL]",
-    events: ["tool.output", "tool.error"],
+    events: ["gen_ai.tool.start", "gen_ai.tool.finish", "gen_ai.tool.error"],
   },
   status: {
     label: "STATUS",
     tag: "[SYS]",
-    events: ["run.paused", "run.resumed", "agent.completed", "agent.error"],
+    events: ["gen_ai.agent.invoked", "gen_ai.agent.paused", "gen_ai.agent.resumed", "gen_ai.agent.completed", "gen_ai.agent.error", "gen_ai.agent.canceled"],
   },
   context: {
     label: "CONTEXT",
@@ -55,7 +55,7 @@ const FILTER_CONFIG: Record<
   tick: {
     label: "TICKS",
     tag: "[TICK]",
-    events: ["run.tick"],
+    events: ["gen_ai.agent.step"],
   },
 };
 
@@ -71,45 +71,65 @@ const EVENT_CONFIG: Record<
     label: string;
   }
 > = {
-  "run.tick": {
+  "gen_ai.agent.invoked": {
+    tag: "[SYS]",
+    color: "text-[#00aaff]",
+    label: "START",
+  },
+  "gen_ai.agent.step": {
     tag: "[TICK]",
     color: "text-white/30",
     label: "TICK",
   },
-  "model.started": {
-    tag: "[MODEL]",
-    color: "text-white/50",
-    label: "MODEL",
-  },
-  "tool.output": {
-    tag: "[TOOL]",
-    color: "text-[#00ff00]",
-    label: "TOOL",
-  },
-  "tool.error": {
-    tag: "[TOOL]",
-    color: "text-[#ff0000]",
-    label: "TOOL_ERR",
-  },
-  "run.paused": {
+  "gen_ai.agent.paused": {
     tag: "[SYS]",
     color: "text-[#ffaa00]",
     label: "PAUSED",
   },
-  "run.resumed": {
+  "gen_ai.agent.resumed": {
     tag: "[SYS]",
     color: "text-[#00aaff]",
     label: "RESUMED",
   },
-  "agent.completed": {
+  "gen_ai.agent.completed": {
     tag: "[SYS]",
     color: "text-[#00ff00]",
     label: "DONE",
   },
-  "agent.error": {
+  "gen_ai.agent.error": {
     tag: "[SYS]",
     color: "text-[#ff0000]",
     label: "ERROR",
+  },
+  "gen_ai.agent.canceled": {
+    tag: "[SYS]",
+    color: "text-[#ffaa00]",
+    label: "CANCELED",
+  },
+  "gen_ai.chat.start": {
+    tag: "[MODEL]",
+    color: "text-white/50",
+    label: "MODEL",
+  },
+  "gen_ai.chat.finish": {
+    tag: "[MODEL]",
+    color: "text-white/50",
+    label: "MODEL_DONE",
+  },
+  "gen_ai.tool.start": {
+    tag: "[TOOL]",
+    color: "text-[#00aaff]",
+    label: "TOOL_START",
+  },
+  "gen_ai.tool.finish": {
+    tag: "[TOOL]",
+    color: "text-[#00ff00]",
+    label: "TOOL",
+  },
+  "gen_ai.tool.error": {
+    tag: "[TOOL]",
+    color: "text-[#ff0000]",
+    label: "TOOL_ERR",
   },
   "subagent.spawned": {
     tag: "[SUB]",
@@ -183,44 +203,69 @@ function getEventLabel(event: AgentEvent): string {
   const config = EVENT_CONFIG[event.type] || DEFAULT_EVENT_CONFIG;
   const data = event.data;
 
-  if (
-    event.type === "run.tick" &&
+  // Agent lifecycle events
+  if (event.type === "gen_ai.agent.invoked") {
+    return "Agent Started";
+  } else if (
+    event.type === "gen_ai.agent.step" &&
     "step" in data &&
     typeof (data as any).step === "number"
   ) {
     return `Step ${(data as any).step}`;
-  } else if (
-    event.type === "model.started" &&
-    data &&
-    "model" in data &&
-    typeof (data as any).model === "string"
-  ) {
-    const model = String((data as any).model)
+  } else if (event.type === "gen_ai.agent.paused" && data && "reason" in data) {
+    return `Paused: ${String(data.reason)}`;
+  } else if (event.type === "gen_ai.agent.completed") {
+    return "Completed";
+  } else if (event.type === "gen_ai.agent.error" && data) {
+    const msg = (data as any)["error.message"] || "Unknown error";
+    return `Error: ${String(msg).slice(0, 30)}`;
+  }
+
+  // Model/chat events
+  if (event.type === "gen_ai.chat.start" && data && "gen_ai.request.model" in data) {
+    const model = String((data as any)["gen_ai.request.model"])
       .split("/")
       .pop()
       ?.slice(0, 20);
     return model || "Model";
+  } else if (event.type === "gen_ai.chat.finish" && data) {
+    const inputTokens = (data as any)["gen_ai.usage.input_tokens"] || 0;
+    const outputTokens = (data as any)["gen_ai.usage.output_tokens"] || 0;
+    if (inputTokens || outputTokens) {
+      return `${inputTokens}/${outputTokens} tokens`;
+    }
+    return "Model Done";
+  }
+
+  // Tool events
+  if (event.type === "gen_ai.tool.start" && data && "gen_ai.tool.name" in data) {
+    return String((data as any)["gen_ai.tool.name"]);
   } else if (
-    (event.type === "tool.output" || event.type === "tool.error") &&
+    (event.type === "gen_ai.tool.finish" || event.type === "gen_ai.tool.error") &&
     data &&
-    "toolName" in data
+    "gen_ai.tool.name" in data
   ) {
-    return String(data.toolName);
-  } else if (event.type === "run.paused" && data && "reason" in data) {
-    return `Paused: ${String(data.reason)}`;
-  } else if (event.type === "subagent.spawned" && data && "agentType" in data) {
+    return String((data as any)["gen_ai.tool.name"]);
+  }
+
+  // Subagent events
+  if (event.type === "subagent.spawned" && data && "agentType" in data) {
     return `Spawned ${String(data.agentType)}`;
   } else if (event.type === "subagent.completed") {
     return "Child returned";
   } else if (event.type === "task.batch" && data && "count" in data) {
     const count = (data as { count: number }).count;
     return count === 1 ? "1 Subagent" : `${count} Subagents`;
-  } else if (event.type === "context.summarized" && data) {
+  }
+
+  // Context events
+  if (event.type === "context.summarized" && data) {
     const d = data as { messagesSummarized?: number; memoriesExtracted?: number };
     const msgs = d.messagesSummarized || 0;
     const mems = d.memoriesExtracted || 0;
     return `Summarized ${msgs} msgs${mems > 0 ? `, ${mems} memories` : ""}`;
   }
+
   return config.label;
 }
 
@@ -288,12 +333,12 @@ function InlineAgentCard({
   };
 
   // Build timeline with children grouped into batches
-  // A batch is all consecutive spawns before a run.paused event
+  // A batch is all consecutive spawns before a gen_ai.agent.paused event
   const timeline = useMemo(() => {
     const items: TimelineItem[] = [];
     const spawnedChildren = new Set<string>();
 
-    // Collect spawns into batches separated by run.paused events
+    // Collect spawns into batches separated by gen_ai.agent.paused events
     // Each batch contains all spawns that occur before the next pause
     type Batch = { startIndex: number; children: ChildAgent[]; ts: string };
     const batches: Batch[] = [];
@@ -323,7 +368,7 @@ function InlineAgentCard({
           }
           currentBatch.children.push(child);
         }
-      } else if (event.type === "run.paused" || event.type === "run.resumed") {
+      } else if (event.type === "gen_ai.agent.paused" || event.type === "gen_ai.agent.resumed") {
         // End current batch when we hit a pause/resume
         if (currentBatch && currentBatch.children.length > 0) {
           batches.push(currentBatch);
@@ -473,11 +518,11 @@ function InlineAgentCard({
                           const childEvents = child.events;
                           let childStatus: AgentStatus = "running";
                           for (const ev of childEvents) {
-                            if (ev.type === "agent.completed") childStatus = "done";
-                            else if (ev.type === "agent.error") childStatus = "error";
-                            else if (ev.type === "run.paused" && childStatus === "running")
+                            if (ev.type === "gen_ai.agent.completed") childStatus = "done";
+                            else if (ev.type === "gen_ai.agent.error") childStatus = "error";
+                            else if (ev.type === "gen_ai.agent.paused" && childStatus === "running")
                               childStatus = "paused";
-                            else if (ev.type === "run.resumed" && childStatus === "paused")
+                            else if (ev.type === "gen_ai.agent.resumed" && childStatus === "paused")
                               childStatus = "running";
                           }
 
@@ -508,23 +553,23 @@ function InlineAgentCard({
                   </div>
                 );
               } else {
-                // Standalone child agent (no toolCallId match) - render inline recursively
-                const childEvents = item.events;
-                let childStatus: AgentStatus = "running";
-                for (const ev of childEvents) {
-                  if (ev.type === "agent.completed") childStatus = "done";
-                  else if (ev.type === "agent.error") childStatus = "error";
-                  else if (
-                    ev.type === "run.paused" &&
-                    childStatus === "running"
-                  )
-                    childStatus = "paused";
-                  else if (
-                    ev.type === "run.resumed" &&
-                    childStatus === "paused"
-                  )
-                    childStatus = "running";
-                }
+              // Standalone child agent (no toolCallId match) - render inline recursively
+              const childEvents = item.events;
+              let childStatus: AgentStatus = "running";
+              for (const ev of childEvents) {
+                if (ev.type === "gen_ai.agent.completed") childStatus = "done";
+                else if (ev.type === "gen_ai.agent.error") childStatus = "error";
+                else if (
+                  ev.type === "gen_ai.agent.paused" &&
+                  childStatus === "running"
+                )
+                  childStatus = "paused";
+                else if (
+                  ev.type === "gen_ai.agent.resumed" &&
+                  childStatus === "paused"
+                )
+                  childStatus = "running";
+              }
 
                 let childDuration: number | undefined;
                 if (childEvents.length > 0) {
@@ -645,7 +690,7 @@ export function TraceView({
 
     // Sort events within each thread by timestamp to ensure correct ordering
     // When timestamps are equal, put subagent.spawned events first so all spawns
-    // in a batch are grouped together before the run.paused event
+    // in a batch are grouped together before the gen_ai.agent.paused event
     for (const [, threadEvents] of eventsByThread) {
       threadEvents.sort((a, b) => {
         const timeA = new Date(a.ts || 0).getTime();
@@ -679,11 +724,11 @@ export function TraceView({
 
       let status: AgentStatus = "running";
       for (const ev of threadEvents) {
-        if (ev.type === "agent.completed") status = "done";
-        else if (ev.type === "agent.error") status = "error";
-        else if (ev.type === "run.paused" && status === "running")
+        if (ev.type === "gen_ai.agent.completed") status = "done";
+        else if (ev.type === "gen_ai.agent.error") status = "error";
+        else if (ev.type === "gen_ai.agent.paused" && status === "running")
           status = "paused";
-        else if (ev.type === "run.resumed" && status === "paused")
+        else if (ev.type === "gen_ai.agent.resumed" && status === "paused")
           status = "running";
       }
 
@@ -718,9 +763,9 @@ export function TraceView({
         totalAgents++;
         const threadEvents = eventsByThread.get(threadId) || [];
         const hasCompleted = threadEvents.some(
-          (e) => e.type === "agent.completed"
+          (e) => e.type === "gen_ai.agent.completed"
         );
-        const hasError = threadEvents.some((e) => e.type === "agent.error");
+        const hasError = threadEvents.some((e) => e.type === "gen_ai.agent.error");
         if (hasCompleted) completed++;
         if (hasError) errors++;
       }

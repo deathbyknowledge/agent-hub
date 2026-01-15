@@ -48,6 +48,11 @@ export interface CloudflareConfig {
     instance_type?: string;
     max_instances?: number;
   }>;
+  /** Analytics Engine datasets for metrics */
+  analytics_engine_datasets?: Array<{
+    binding: string;
+    dataset: string;
+  }>;
   /** Any other wrangler config options */
   [key: string]: unknown;
 }
@@ -121,6 +126,15 @@ export interface AgentsPluginOptions {
    * @default "agents-hub-fs"
    */
   bucket?: string;
+
+  /**
+   * Enable Analytics Engine metrics collection.
+   * When true or a string, adds METRICS binding to the Analytics Engine dataset.
+   * - `true`: Uses default dataset name "agent_metrics"
+   * - `string`: Uses the provided dataset name
+   * @default false
+   */
+  metrics?: boolean | string;
 }
 
 const TS_EXTENSIONS = [".ts", ".tsx"];
@@ -332,6 +346,7 @@ function buildCloudflareConfig(
   outFile: string,
   sandbox: boolean,
   bucket: string,
+  metrics: boolean | string | undefined,
 ): Record<string, unknown> {
   const mainFile = path.basename(outFile);
 
@@ -383,12 +398,23 @@ function buildCloudflareConfig(
     });
   }
 
+  // Build analytics engine datasets
+  const analyticsDatasets: Array<{ binding: string; dataset: string }> = [];
+  if (metrics) {
+    const datasetName = typeof metrics === "string" ? metrics : "agent_metrics";
+    analyticsDatasets.push({
+      binding: "METRICS",
+      dataset: datasetName,
+    });
+  }
+
   // Merge user config
   const {
     durable_objects: userDO,
     migrations: userMigrations,
     containers: userContainers,
     assets: userAssets,
+    analytics_engine_datasets: userAnalytics,
     ...restUserConfig
   } = userConfig || {};
 
@@ -411,6 +437,12 @@ function buildCloudflareConfig(
     ...(userContainers || []),
   ];
 
+  // Merge analytics engine datasets
+  const allAnalytics = [
+    ...analyticsDatasets,
+    ...(userAnalytics || []),
+  ];
+
   // Merge assets config
   const mergedAssets = {
     ...(baseConfig.assets as Record<string, unknown>),
@@ -430,6 +462,10 @@ function buildCloudflareConfig(
 
   if (allContainers.length > 0) {
     finalConfig.containers = allContainers;
+  }
+
+  if (allAnalytics.length > 0) {
+    finalConfig.analytics_engine_datasets = allAnalytics;
   }
 
   return finalConfig;
@@ -532,7 +568,8 @@ export default function agentsPlugin(
 
   // Build cloudflare config and return combined plugins
   const bucket = options.bucket || "agents-hub-fs";
-  const cfConfig = buildCloudflareConfig(options.cloudflare, outFile, sandbox, bucket);
+  const metrics = options.metrics;
+  const cfConfig = buildCloudflareConfig(options.cloudflare, outFile, sandbox, bucket, metrics);
   const cfPlugins = cloudflare({ config: cfConfig });
   const plugins = Array.isArray(cfPlugins) ? cfPlugins : [cfPlugins];
 

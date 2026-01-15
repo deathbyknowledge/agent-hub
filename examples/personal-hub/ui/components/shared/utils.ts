@@ -147,16 +147,4 @@ export function shortId(id: string, length = 8): string {
   return (id || "").slice(0, length);
 }
 
-/**
- * Check if an agent is a system agent (name starts with _)
- */
-export function isSystemAgent(agent: { agentType: string }): boolean {
-  return agent.agentType.startsWith("_");
-}
 
-/**
- * Check if a blueprint is a system blueprint (name starts with _)
- */
-export function isSystemBlueprint(bp: { name: string }): boolean {
-  return bp.name.startsWith("_");
-}

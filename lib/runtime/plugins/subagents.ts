@@ -1,11 +1,7 @@
-import {
-  tool,
-  z,
-  type AgentEnv,
-  AgentEventType,
-  type AgentPlugin,
-} from "agents-hub";
 import { getAgentByName } from "agents";
+import { tool, z } from "../tools";
+import { AgentEventType } from "../events";
+import type { AgentPlugin } from "../types";
 
 const SubagentEventType = {
   SPAWNED: "subagent.spawned",

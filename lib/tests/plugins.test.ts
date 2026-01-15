@@ -1,7 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it, beforeEach } from "vitest";
-import { getAgentByName } from "agents";
-import type { Env } from "./worker";
+import { getAgentByName, type Env } from "./worker";
 import { TestProvider, createTestProvider, createEchoProvider, createToolCallProvider } from "../runtime/providers/test";
 
 declare module "cloudflare:test" {

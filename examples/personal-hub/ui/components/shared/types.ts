@@ -55,27 +55,17 @@ export interface Message {
 }
 
 // Todo item type
+export type TodoStatus = "pending" | "in_progress" | "done" | "blocked";
+export type TodoPriority = "low" | "medium" | "high";
+
 export interface Todo {
   id: string;
   title: string;
-  status: "pending" | "in_progress" | "done";
-  priority: "low" | "medium" | "high";
+  description?: string;
+  status: TodoStatus;
+  priority: TodoPriority;
   createdAt: string;
-}
-
-// Activity item for unified feed
-export interface ActivityItem {
-  id: string;
-  timestamp: string;
-  type: "message" | "agent_event" | "system";
-  from?: string;
-  to?: string;
-  content?: string;
-  agentId?: string;
-  agentType?: string;
-  event?: string;
-  details?: string;
-  status?: "running" | "done" | "error";
+  completedAt?: string;
 }
 
 // Dashboard metrics
@@ -93,11 +83,4 @@ export interface MemoryDisk {
   name: string;
   description?: string;
   size?: number;
-}
-
-// Mention target for command input
-export interface MentionTarget {
-  id: string;
-  label: string;
-  type: "mind" | "blueprint" | "agent";
 }

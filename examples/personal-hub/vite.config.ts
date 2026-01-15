@@ -12,6 +12,7 @@ export default defineConfig({
       outFile: "./_generated.ts",
       defaultModel: "z-ai/glm-4.7",
       sandbox,
+      metrics: true, // Enable Analytics Engine metrics
       cloudflare: {
         name: "agents-hub",
         routes: [
