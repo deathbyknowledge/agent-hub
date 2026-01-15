@@ -6,6 +6,7 @@ import { LayerCard, LayerCardContent, LayerCardFooter } from "./LayerCard";
 import { ConfirmModal } from "./ConfirmModal";
 import { BlueprintEditor } from "./BlueprintEditor";
 import { FilesView } from "./FilesView";
+import type { MemoryDisk } from "./shared";
 import type {
   AgentBlueprint,
   AgentSchedule,
@@ -18,12 +19,6 @@ import type {
   McpServerConfig,
   AddMcpServerRequest,
 } from "agents-hub/client";
-
-export interface MemoryDisk {
-  name: string;
-  description?: string;
-  size?: number;
-}
 
 interface SettingsViewProps {
   agencyId: string | null;

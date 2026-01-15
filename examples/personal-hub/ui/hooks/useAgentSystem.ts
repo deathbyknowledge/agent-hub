@@ -74,11 +74,21 @@ export const queryKeys = {
 // ============================================================================
 
 type AgencyEventListener = (event: AgencyWebSocketEvent) => void;
+type ConnectionStatusListener = (connected: boolean) => void;
+
+// Reconnection configuration
+const RECONNECT_BASE_DELAY = 1000; // 1 second
+const RECONNECT_MAX_DELAY = 30000; // 30 seconds
+const RECONNECT_MAX_ATTEMPTS = 10;
 
 interface AgencyWsManager {
   connection: AgencyWebSocket | null;
   listeners: Set<AgencyEventListener>;
+  statusListeners: Set<ConnectionStatusListener>;
   connecting: boolean;
+  reconnectAttempts: number;
+  reconnectTimeout: ReturnType<typeof setTimeout> | null;
+  intentionallyClosed: boolean;
 }
 
 const agencyWsManagers = new Map<string, AgencyWsManager>();
@@ -89,23 +99,75 @@ function getOrCreateAgencyWsManager(agencyId: string): AgencyWsManager {
     manager = {
       connection: null,
       listeners: new Set(),
+      statusListeners: new Set(),
       connecting: false,
+      reconnectAttempts: 0,
+      reconnectTimeout: null,
+      intentionallyClosed: false,
     };
     agencyWsManagers.set(agencyId, manager);
   }
   return manager;
 }
 
+function notifyConnectionStatus(manager: AgencyWsManager, connected: boolean): void {
+  for (const listener of manager.statusListeners) {
+    try {
+      listener(connected);
+    } catch (e) {
+      console.error("[AgencyWS] Status listener error:", e);
+    }
+  }
+}
+
+function scheduleReconnect(agencyId: string): void {
+  const manager = getOrCreateAgencyWsManager(agencyId);
+  
+  // Don't reconnect if intentionally closed or no listeners
+  if (manager.intentionallyClosed || manager.listeners.size === 0) {
+    return;
+  }
+  
+  // Don't reconnect if max attempts reached
+  if (manager.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
+    console.error(`[AgencyWS] Max reconnect attempts (${RECONNECT_MAX_ATTEMPTS}) reached for agency ${agencyId}`);
+    return;
+  }
+  
+  // Calculate delay with exponential backoff
+  const delay = Math.min(
+    RECONNECT_BASE_DELAY * Math.pow(2, manager.reconnectAttempts),
+    RECONNECT_MAX_DELAY
+  );
+  
+  console.log(`[AgencyWS] Scheduling reconnect for agency ${agencyId} in ${delay}ms (attempt ${manager.reconnectAttempts + 1})`);
+  
+  manager.reconnectTimeout = setTimeout(() => {
+    manager.reconnectTimeout = null;
+    manager.reconnectAttempts++;
+    connectAgencyWs(agencyId);
+  }, delay);
+}
+
 function connectAgencyWs(agencyId: string): void {
   const manager = getOrCreateAgencyWsManager(agencyId);
   if (manager.connection || manager.connecting) return;
 
+  // Clear any pending reconnect
+  if (manager.reconnectTimeout) {
+    clearTimeout(manager.reconnectTimeout);
+    manager.reconnectTimeout = null;
+  }
+  
   manager.connecting = true;
+  manager.intentionallyClosed = false;
   const client = getClient().agency(agencyId);
   
   const ws = client.connect({
     onOpen: () => {
       manager.connecting = false;
+      manager.reconnectAttempts = 0; // Reset on successful connection
+      notifyConnectionStatus(manager, true);
     },
     onEvent: (event) => {
       // Notify all listeners
@@ -120,10 +182,22 @@ function connectAgencyWs(agencyId: string): void {
     onClose: () => {
       manager.connection = null;
       manager.connecting = false;
+      notifyConnectionStatus(manager, false);
+      
+      // Schedule reconnect if not intentionally closed
+      if (!manager.intentionallyClosed) {
+        scheduleReconnect(agencyId);
+      }
     },
     onError: () => {
       manager.connection = null;
       manager.connecting = false;
+      notifyConnectionStatus(manager, false);
+      
+      // Schedule reconnect
+      if (!manager.intentionallyClosed) {
+        scheduleReconnect(agencyId);
+      }
     },
   });
 
@@ -146,12 +220,84 @@ function subscribeToAgencyEvents(
   return () => {
     manager.listeners.delete(listener);
     
-    // If no more listeners, close connection
-    if (manager.listeners.size === 0 && manager.connection) {
-      manager.connection.close();
-      manager.connection = null;
+    // If no more listeners, close connection and cleanup
+    if (manager.listeners.size === 0) {
+      manager.intentionallyClosed = true;
+      
+      // Clear any pending reconnect
+      if (manager.reconnectTimeout) {
+        clearTimeout(manager.reconnectTimeout);
+        manager.reconnectTimeout = null;
+      }
+      
+      if (manager.connection) {
+        manager.connection.close();
+        manager.connection = null;
+      }
     }
   };
+}
+
+/**
+ * Subscribe to connection status changes for an agency WebSocket
+ */
+function subscribeToConnectionStatus(
+  agencyId: string,
+  listener: ConnectionStatusListener
+): () => void {
+  const manager = getOrCreateAgencyWsManager(agencyId);
+  manager.statusListeners.add(listener);
+  
+  // Immediately notify current status
+  const isConnected = !!manager.connection && !manager.connecting;
+  listener(isConnected);
+  
+  return () => {
+    manager.statusListeners.delete(listener);
+  };
+}
+
+/**
+ * Get current connection status for an agency
+ */
+function getAgencyConnectionStatus(agencyId: string): { connected: boolean; reconnecting: boolean } {
+  const manager = agencyWsManagers.get(agencyId);
+  if (!manager) {
+    return { connected: false, reconnecting: false };
+  }
+  return {
+    connected: !!manager.connection && !manager.connecting,
+    reconnecting: manager.reconnectAttempts > 0 && !manager.intentionallyClosed,
+  };
+}
+
+/**
+ * Manually trigger reconnection for an agency WebSocket
+ */
+function reconnectAgencyWs(agencyId: string): void {
+  const manager = agencyWsManagers.get(agencyId);
+  if (!manager) return;
+  
+  // Reset state for manual reconnect
+  manager.intentionallyClosed = false;
+  manager.reconnectAttempts = 0;
+  
+  // Clear any pending reconnect
+  if (manager.reconnectTimeout) {
+    clearTimeout(manager.reconnectTimeout);
+    manager.reconnectTimeout = null;
+  }
+  
+  // Close existing connection if any
+  if (manager.connection) {
+    manager.connection.close();
+    manager.connection = null;
+  }
+  
+  // Connect if there are listeners
+  if (manager.listeners.size > 0) {
+    connectAgencyWs(agencyId);
+  }
 }
 
 // ============================================================================
@@ -279,13 +425,25 @@ export function useAgency(agencyId: string | null) {
     [agencyId]
   );
 
+  // Helper to get client with error if not available
+  const requireClient = useCallback(() => {
+    if (!client) throw new Error("No agency selected");
+    return client;
+  }, [client]);
+
   // Stable function references for filesystem operations
   const listDirectory = useCallback(
-    (path: string = "/") => client!.listDirectory(path),
+    (path: string = "/") => {
+      if (!client) return Promise.reject(new Error("No agency selected"));
+      return client.listDirectory(path);
+    },
     [client]
   );
   const readFile = useCallback(
-    (path: string) => client!.readFile(path),
+    (path: string) => {
+      if (!client) return Promise.reject(new Error("No agency selected"));
+      return client.readFile(path);
+    },
     [client]
   );
   const normalizeFsPath = useCallback(
@@ -298,77 +456,87 @@ export function useAgency(agencyId: string | null) {
   );
   const writeFile = useCallback(
     (path: string, content: string) => {
+      if (!client) return Promise.reject(new Error("No agency selected"));
       if (isProtectedFile(path)) {
         return Promise.reject(new Error("`.agency.json` is read-only"));
       }
-      return client!.writeFile(path, content);
+      return client.writeFile(path, content);
     },
     [client, isProtectedFile]
   );
   const deleteFile = useCallback(
     (path: string) => {
+      if (!client) return Promise.reject(new Error("No agency selected"));
       if (isProtectedFile(path)) {
         return Promise.reject(new Error("`.agency.json` is read-only"));
       }
-      return client!.deleteFile(path);
+      return client.deleteFile(path);
     },
     [client, isProtectedFile]
   );
 
-  // Queries
+  // Queries - enabled flag ensures client exists, but we add defensive checks
   const {
     data: agents = [],
     isLoading: loading,
     error,
   } = useQuery({
-    queryKey: queryKeys.agents(agencyId!),
+    queryKey: queryKeys.agents(agencyId || "_none"),
     queryFn: async () => {
-      const { agents } = await client!.listAgents();
+      if (!client) throw new Error("No agency selected");
+      const { agents } = await client.listAgents();
       return agents;
     },
-    enabled: !!agencyId,
+    enabled: !!agencyId && !!client,
   });
 
   const { data: blueprints = [] } = useQuery({
-    queryKey: queryKeys.blueprints(agencyId!),
+    queryKey: queryKeys.blueprints(agencyId || "_none"),
     queryFn: async () => {
-      const { blueprints } = await client!.listBlueprints();
+      if (!client) throw new Error("No agency selected");
+      const { blueprints } = await client.listBlueprints();
       return blueprints;
     },
-    enabled: !!agencyId,
+    enabled: !!agencyId && !!client,
   });
 
   const { data: schedules = [] } = useQuery({
-    queryKey: queryKeys.schedules(agencyId!),
+    queryKey: queryKeys.schedules(agencyId || "_none"),
     queryFn: async () => {
-      const { schedules } = await client!.listSchedules();
+      if (!client) throw new Error("No agency selected");
+      const { schedules } = await client.listSchedules();
       return schedules;
     },
-    enabled: !!agencyId,
+    enabled: !!agencyId && !!client,
   });
 
   const { data: vars = {} } = useQuery({
-    queryKey: queryKeys.vars(agencyId!),
+    queryKey: queryKeys.vars(agencyId || "_none"),
     queryFn: async () => {
-      const { vars } = await client!.getVars();
+      if (!client) throw new Error("No agency selected");
+      const { vars } = await client.getVars();
       return vars;
     },
-    enabled: !!agencyId,
+    enabled: !!agencyId && !!client,
   });
 
   const { data: memoryDisks = [] } = useQuery({
-    queryKey: queryKeys.memoryDisks(agencyId!),
-    queryFn: () => fetchMemoryDisks(agencyId!),
+    queryKey: queryKeys.memoryDisks(agencyId || "_none"),
+    queryFn: () => {
+      if (!agencyId) throw new Error("No agency selected");
+      return fetchMemoryDisks(agencyId);
+    },
     enabled: !!agencyId,
   });
 
   const { data: mcpServers = [] } = useQuery({
-    queryKey: queryKeys.mcpServers(agencyId!),
+    queryKey: queryKeys.mcpServers(agencyId || "_none"),
     queryFn: async () => {
-      const { servers } = await client!.listMcpServers();
+      if (!client) throw new Error("No agency selected");
+      const { servers } = await client.listMcpServers();
       return servers;
     },
-    enabled: !!agencyId,
+    enabled: !!agencyId && !!client,
   });
 
   // Subscribe to live MCP server updates via agency WebSocket
@@ -408,12 +576,13 @@ export function useAgency(agencyId: string | null) {
     return unsubscribe;
   }, [agencyId, queryClient]);
 
-  // Mutations
+  // Mutations - all use requireClient() for safe client access
   const spawnMutation = useMutation({
-    mutationFn: async (agentType: string) => client!.spawnAgent({ agentType }),
+    mutationFn: async (agentType: string) => requireClient().spawnAgent({ agentType }),
     onSuccess: (newAgent) => {
+      if (!agencyId) return;
       queryClient.setQueryData<AgentSummary[]>(
-        queryKeys.agents(agencyId!),
+        queryKeys.agents(agencyId),
         (old) => (old ? [...old, newAgent] : [newAgent])
       );
     },
@@ -421,64 +590,70 @@ export function useAgency(agencyId: string | null) {
 
   const scheduleMutation = useMutation({
     mutationFn: async (request: CreateScheduleRequest) => {
-      const { schedule } = await client!.createSchedule(request);
+      const { schedule } = await requireClient().createSchedule(request);
       return schedule;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.schedules(agencyId!),
-      }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId) });
+    },
   });
 
   const deleteScheduleMutation = useMutation({
-    mutationFn: (scheduleId: string) => client!.deleteSchedule(scheduleId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.schedules(agencyId!),
-      }),
+    mutationFn: (scheduleId: string) => requireClient().deleteSchedule(scheduleId),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId) });
+    },
   });
 
   const pauseScheduleMutation = useMutation({
-    mutationFn: (scheduleId: string) => client!.pauseSchedule(scheduleId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.schedules(agencyId!),
-      }),
+    mutationFn: (scheduleId: string) => requireClient().pauseSchedule(scheduleId),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId) });
+    },
   });
 
   const deleteAgentMutation = useMutation({
-    mutationFn: (agentId: string) => client!.deleteAgent(agentId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId!) }),
+    mutationFn: (agentId: string) => requireClient().deleteAgent(agentId),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId) });
+    },
   });
 
   const deleteAgencyMutation = useMutation({
-    mutationFn: () => client!.deleteAgency(),
+    mutationFn: () => requireClient().deleteAgency(),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.agencies });
     },
   });
 
   const resumeScheduleMutation = useMutation({
-    mutationFn: (scheduleId: string) => client!.resumeSchedule(scheduleId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.schedules(agencyId!),
-      }),
+    mutationFn: (scheduleId: string) => requireClient().resumeSchedule(scheduleId),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId) });
+    },
   });
 
   const setVarMutation = useMutation({
     mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
-      await client!.setVar(key, value);
+      await requireClient().setVar(key, value);
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId) });
+    },
   });
 
   const deleteVarMutation = useMutation({
-    mutationFn: (key: string) => client!.deleteVar(key),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
+    mutationFn: (key: string) => requireClient().deleteVar(key),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId) });
+    },
   });
 
   const createMemoryDiskMutation = useMutation({
@@ -498,15 +673,15 @@ export function useAgency(agencyId: string | null) {
         hasEmbeddings: false,
         entries: entries?.map((content) => ({ content })) ?? [],
       };
-      await client!.writeFile(
+      await requireClient().writeFile(
         `/shared/memories/${name}.idz`,
         JSON.stringify(idz)
       );
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.memoryDisks(agencyId!),
-      }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId) });
+    },
   });
 
   const importMemoryDiskMutation = useMutation({
@@ -514,21 +689,21 @@ export function useAgency(agencyId: string | null) {
       const content = await file.text();
       const data = JSON.parse(content) as { name?: string };
       const name = data.name || file.name.replace(/\.(idz|json)$/, "");
-      await client!.writeFile(`/shared/memories/${name}.idz`, content);
+      await requireClient().writeFile(`/shared/memories/${name}.idz`, content);
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.memoryDisks(agencyId!),
-      }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId) });
+    },
   });
 
   const deleteMemoryDiskMutation = useMutation({
     mutationFn: (name: string) =>
-      client!.deleteFile(`/shared/memories/${name}.idz`),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.memoryDisks(agencyId!),
-      }),
+      requireClient().deleteFile(`/shared/memories/${name}.idz`),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId) });
+    },
   });
 
   const blueprintMutation = useMutation({
@@ -536,49 +711,49 @@ export function useAgency(agencyId: string | null) {
       blueprint:
         | Omit<AgentBlueprint, "createdAt" | "updatedAt">
         | AgentBlueprint
-    ) => client!.createBlueprint(blueprint),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints(agencyId!),
-      }),
+    ) => requireClient().createBlueprint(blueprint),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId) });
+    },
   });
 
   const deleteBlueprintMutation = useMutation({
-    mutationFn: (name: string) => client!.deleteBlueprint(name),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints(agencyId!),
-      }),
+    mutationFn: (name: string) => requireClient().deleteBlueprint(name),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId) });
+    },
   });
 
   const addMcpServerMutation = useMutation({
     mutationFn: async (request: AddMcpServerRequest) => {
-      const { server } = await client!.addMcpServer(request);
+      const { server } = await requireClient().addMcpServer(request);
       return server;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.mcpServers(agencyId!),
-      }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers(agencyId) });
+    },
   });
 
   const removeMcpServerMutation = useMutation({
-    mutationFn: (serverId: string) => client!.removeMcpServer(serverId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.mcpServers(agencyId!),
-      }),
+    mutationFn: (serverId: string) => requireClient().removeMcpServer(serverId),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers(agencyId) });
+    },
   });
 
   const retryMcpServerMutation = useMutation({
     mutationFn: async (serverId: string) => {
-      const { server } = await client!.retryMcpServer(serverId);
+      const { server } = await requireClient().retryMcpServer(serverId);
       return server;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.mcpServers(agencyId!),
-      }),
+    onSuccess: () => {
+      if (!agencyId) return;
+      queryClient.invalidateQueries({ queryKey: queryKeys.mcpServers(agencyId) });
+    },
   });
 
   /**
@@ -606,22 +781,26 @@ export function useAgency(agencyId: string | null) {
     loading,
     error: error as Error | null,
     sendMessageToAgent,
-    refreshAgents: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId!) }),
-    refreshBlueprints: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.blueprints(agencyId!),
-      }),
-    refreshSchedules: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.schedules(agencyId!),
-      }),
-    refreshVars: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId!) }),
-    refreshMemoryDisks: () =>
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.memoryDisks(agencyId!),
-      }),
+    refreshAgents: () => {
+      if (!agencyId) return Promise.resolve();
+      return queryClient.invalidateQueries({ queryKey: queryKeys.agents(agencyId) });
+    },
+    refreshBlueprints: () => {
+      if (!agencyId) return Promise.resolve();
+      return queryClient.invalidateQueries({ queryKey: queryKeys.blueprints(agencyId) });
+    },
+    refreshSchedules: () => {
+      if (!agencyId) return Promise.resolve();
+      return queryClient.invalidateQueries({ queryKey: queryKeys.schedules(agencyId) });
+    },
+    refreshVars: () => {
+      if (!agencyId) return Promise.resolve();
+      return queryClient.invalidateQueries({ queryKey: queryKeys.vars(agencyId) });
+    },
+    refreshMemoryDisks: () => {
+      if (!agencyId) return Promise.resolve();
+      return queryClient.invalidateQueries({ queryKey: queryKeys.memoryDisks(agencyId) });
+    },
     // Note: refreshMcpServers removed - MCP updates come live via agency WebSocket
     spawnAgent: spawnMutation.mutateAsync,
     listDirectory,
@@ -633,11 +812,11 @@ export function useAgency(agencyId: string | null) {
     pauseSchedule: pauseScheduleMutation.mutateAsync,
     resumeSchedule: resumeScheduleMutation.mutateAsync,
     triggerSchedule: async (scheduleId: string) => {
-      const { run } = await client!.triggerSchedule(scheduleId);
+      const { run } = await requireClient().triggerSchedule(scheduleId);
       return run;
     },
     getScheduleRuns: async (scheduleId: string): Promise<ScheduleRun[]> => {
-      const { runs } = await client!.getScheduleRuns(scheduleId);
+      const { runs } = await requireClient().getScheduleRuns(scheduleId);
       return runs;
     },
     deleteAgent: deleteAgentMutation.mutateAsync,
@@ -663,21 +842,23 @@ export function useAgency(agencyId: string | null) {
      * Returns the agent ID of the existing or newly spawned mind.
      */
     getOrCreateMind: async (): Promise<string> => {
-      if (!client) throw new Error("No agency selected");
+      const c = requireClient();
 
       // Check if mind agent already exists
-      const { agents: currentAgents } = await client.listAgents();
+      const { agents: currentAgents } = await c.listAgents();
       const existingMind = currentAgents.find(
         (a) => a.agentType === AGENCY_MIND_TYPE
       );
       if (existingMind) return existingMind.id;
 
       // Spawn new mind agent
-      const newMind = await client.spawnAgent({ agentType: AGENCY_MIND_TYPE });
-      queryClient.setQueryData<AgentSummary[]>(
-        queryKeys.agents(agencyId!),
-        (old) => (old ? [...old, newMind] : [newMind])
-      );
+      const newMind = await c.spawnAgent({ agentType: AGENCY_MIND_TYPE });
+      if (agencyId) {
+        queryClient.setQueryData<AgentSummary[]>(
+          queryKeys.agents(agencyId),
+          (old) => (old ? [...old, newMind] : [newMind])
+        );
+      }
       return newMind.id;
     },
   };
@@ -1019,7 +1200,7 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     };
   }, [agencyId, agentId, fetchState, fetchEvents, handleAgencyEvent]);
 
-  // Send message
+  // Send message with optimistic update and rollback
   const sendMessage = useCallback(
     async (content: string) => {
       const agentClient = agentClientRef.current;
@@ -1030,9 +1211,13 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
         content,
       };
 
+      // Capture previous state for rollback
+      let previousMessages: ChatMessage[] | null = null;
+      
       // Optimistically add user message
       setHookState((prev) => {
         if (!prev.state) return prev;
+        previousMessages = prev.state.messages || [];
         return {
           ...prev,
           state: {
@@ -1042,8 +1227,26 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
         };
       });
 
-      // Invoke agent - response will come via WebSocket events
-      await agentClient.invoke({ messages: [message] });
+      try {
+        // Invoke agent - response will come via WebSocket events
+        await agentClient.invoke({ messages: [message] });
+      } catch (error) {
+        // Rollback optimistic update on failure
+        if (previousMessages !== null) {
+          const rollbackMessages = previousMessages;
+          setHookState((prev) => {
+            if (!prev.state) return prev;
+            return {
+              ...prev,
+              state: {
+                ...prev.state,
+                messages: rollbackMessages,
+              },
+            };
+          });
+        }
+        throw error; // Re-throw so caller can handle
+      }
     },
     []
   );
@@ -1065,6 +1268,13 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     []
   );
 
+  // Reconnect handler - uses the agency WS reconnect
+  const reconnect = useCallback(() => {
+    if (agencyId) {
+      reconnectAgencyWs(agencyId);
+    }
+  }, [agencyId]);
+
   return {
     ...hookState,
     sendMessage,
@@ -1072,7 +1282,7 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     approve,
     refresh: fetchState,
     refreshEvents: fetchEvents,
-    reconnect: () => {}, // No-op - agency WS handles reconnection
+    reconnect,
   };
 }
 
@@ -1080,19 +1290,8 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
 // useActivityFeed - Aggregate activity across all agents in an agency
 // ============================================================================
 
-export interface ActivityItem {
-  id: string;
-  timestamp: string;
-  type: "message" | "agent_event" | "system";
-  from?: string;
-  to?: string;
-  content?: string;
-  agentId?: string;
-  agentType?: string;
-  event?: string;
-  details?: string;
-  status?: "running" | "done" | "error";
-}
+import type { ActivityItem } from "../components/shared/types";
+export type { ActivityItem };
 
 export function useActivityFeed(agencyId: string | null) {
   const [items, setItems] = useState<ActivityItem[]>([]);
@@ -1290,6 +1489,14 @@ export function useActivityFeed(agencyId: string | null) {
     
     // Update agent type lookup
     agentTypesRef.current.set(agentId, target);
+    
+    // Return the ID for potential rollback
+    return newItem.id;
+  }, []);
+
+  // Remove a user message by ID (for rollback on failure)
+  const removeUserMessage = useCallback((messageId: string) => {
+    setItems((prev) => prev.filter((item) => item.id !== messageId));
   }, []);
 
   // No longer needed - agency WS handles all agents automatically
@@ -1307,6 +1514,7 @@ export function useActivityFeed(agencyId: string | null) {
     isLoading,
     refresh: fetchActivity,
     addUserMessage,
+    removeUserMessage,
     subscribeToAgent,
   };
 }

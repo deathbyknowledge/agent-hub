@@ -1,19 +1,6 @@
 import { useState } from "react";
 import { cn } from "../lib/utils";
-
-// Types
-type TodoStatus = "pending" | "in_progress" | "done" | "blocked";
-type TodoPriority = "low" | "medium" | "high";
-
-interface Todo {
-  id: string;
-  title: string;
-  description?: string;
-  status: TodoStatus;
-  priority: TodoPriority;
-  createdAt: string;
-  completedAt?: string;
-}
+import type { Todo, TodoStatus, TodoPriority } from "./shared";
 
 interface TodosViewProps {
   todos: Todo[];

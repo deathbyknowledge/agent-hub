@@ -1,24 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { cn } from "../lib/utils";
 import { Button } from "./Button";
-
-// Types
-interface ToolCall {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-  result?: unknown;
-  status: "pending" | "running" | "done" | "error";
-}
-
-interface Message {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  timestamp: string;
-  toolCalls?: ToolCall[];
-  reasoning?: string;
-}
+import { formatTime, type Message, type ToolCall } from "./shared";
 
 interface ChatViewProps {
   messages: Message[];
@@ -26,24 +9,6 @@ interface ChatViewProps {
   onStop?: () => void;
   isLoading?: boolean;
   placeholder?: string;
-}
-
-function formatTime(timestamp: string): string {
-  const date = new Date(timestamp);
-  const now = new Date();
-  const isToday = date.toDateString() === now.toDateString();
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const isYesterday = date.toDateString() === yesterday.toDateString();
-  
-  const time = date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-  
-  if (isToday) return time;
-  if (isYesterday) return `Yesterday ${time}`;
-  return date.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + time;
 }
 
 function ReasoningBlock({ reasoning }: { reasoning: string }) {
@@ -320,5 +285,3 @@ export function ChatView({
     </div>
   );
 }
-
-export type { Message, ToolCall };

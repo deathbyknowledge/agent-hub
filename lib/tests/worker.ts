@@ -56,6 +56,24 @@ const testBlueprint: AgentBlueprint = {
   model: "gpt-4o-mini",
 };
 
+// Parent agent that can spawn subagents
+const parentBlueprint: AgentBlueprint = {
+  name: "parent-agent",
+  description: "A parent agent that can spawn subagents",
+  prompt: "You are a parent agent. Use the task tool to delegate work to child agents.",
+  capabilities: ["@test", "@subagents"],
+  model: "gpt-4o-mini",
+};
+
+// Child agent that reports back to parent
+const childBlueprint: AgentBlueprint = {
+  name: "child-agent",
+  description: "A child agent that reports back to parent",
+  prompt: "You are a child agent. Complete the task and report back.",
+  capabilities: ["@test", "@subagent_reporter"],
+  model: "gpt-4o-mini",
+};
+
 const hub = new AgentHub({ defaultModel: "gpt-4o-mini", provider: testProvider })
   .addTool(echoTool, ["@test"])
   .addTool(addTool, ["@test"])
@@ -63,8 +81,12 @@ const hub = new AgentHub({ defaultModel: "gpt-4o-mini", provider: testProvider }
   .use(plugins.planning)
   .use(plugins.hitl)
   .use(plugins.context)
+  .use(plugins.subagents)
+  .use(plugins.subagentReporter)
   .use(plugins.logger, ["@test"])
-  .addAgent(testBlueprint);
+  .addAgent(testBlueprint)
+  .addAgent(parentBlueprint)
+  .addAgent(childBlueprint);
 
 // Export with standard names so ctx.exports.Agency and ctx.exports.HubAgent work
 export const { HubAgent, Agency, handler } = hub.export();

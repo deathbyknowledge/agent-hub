@@ -21,6 +21,12 @@ export { ConfirmModal } from "./ConfirmModal";
 export { BlueprintEditor } from "./BlueprintEditor";
 export { VarEditor } from "./VarEditor";
 
+// Error handling
+export { ErrorBoundary } from "./ErrorBoundary";
+
+// Toast notifications
+export { ToastProvider, useToast } from "./Toast";
+
 // Re-export types from shared
 export type {
   AgencyMeta,

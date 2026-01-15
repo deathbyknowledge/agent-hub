@@ -11,6 +11,9 @@ import {
   ConfirmModal,
   MindPanel,
   HomeView,
+  ErrorBoundary,
+  ToastProvider,
+  useToast,
   type TabId,
   type Message,
   type Todo,
@@ -48,11 +51,6 @@ const queryClient = new QueryClient({
 // Helper Functions
 // ============================================================================
 
-// System blueprints start with _ and are hidden from the picker
-function isSystemBlueprintLocal(bp: AgentBlueprint): boolean {
-  return bp.name.startsWith("_");
-}
-
 // Blueprint picker component
 function BlueprintPicker({
   blueprints,
@@ -64,7 +62,7 @@ function BlueprintPicker({
   onClose: () => void;
 }) {
   // Filter out system blueprints
-  const visibleBlueprints = blueprints.filter((bp) => !isSystemBlueprintLocal(bp));
+  const visibleBlueprints = blueprints.filter((bp) => !isSystemBlueprint(bp));
 
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
@@ -524,6 +522,7 @@ function AgentView({
     loading: agentLoading,
   } = useAgent(agencyId, agentId);
   const [, navigate] = useLocation();
+  const { showError } = useToast();
 
   // Event detail modal state
   const [selectedEvent, setSelectedEvent] = useState<{
@@ -575,14 +574,24 @@ function AgentView({
   }, [agentState]);
 
   const handleSendMessage = async (content: string) => {
-    await sendMessage(content);
+    try {
+      await sendMessage(content);
+    } catch (err) {
+      console.error("[AgentView] Failed to send message:", err);
+      showError("Failed to send message. Please try again.");
+    }
   };
 
   const handleConfirmDeleteAgent = async () => {
     if (!selectedAgent) return;
-    await deleteAgent(selectedAgent.id);
-    await refreshAgents();
-    navigate(`/${agencyId}`);
+    try {
+      await deleteAgent(selectedAgent.id);
+      await refreshAgents();
+      navigate(`/${agencyId}`);
+    } catch (err) {
+      console.error("[AgentView] Failed to delete agent:", err);
+      showError("Failed to delete agent. Please try again.");
+    }
   };
 
   // Render content based on active tab
@@ -823,9 +832,10 @@ function HomeRoute({
 }) {
   const { agencies } = useAgencies();
   const { agents, blueprints, spawnAgent, getOrCreateMind, sendMessageToAgent } = useAgency(agencyId);
-  const { items: activityItems, addUserMessage, subscribeToAgent } = useActivityFeed(agencyId);
+  const { items: activityItems, addUserMessage, removeUserMessage, subscribeToAgent } = useActivityFeed(agencyId);
   const { metrics } = useAgencyMetrics(agencyId);
   const [, navigate] = useLocation();
+  const { showError } = useToast();
 
   const agency = agencies.find((a) => a.id === agencyId);
 
@@ -869,59 +879,81 @@ function HomeRoute({
   // Handle sending message to agent - stays in command center view
   const handleSendMessage = useCallback(
     async (target: string, message: string) => {
-      // Find or create the target agent
-      let targetAgentId: string;
-      let agentType = target;
+      let optimisticMessageId: string | undefined;
+      
+      try {
+        // Find or create the target agent
+        let targetAgentId: string;
+        let agentType = target;
 
-      if (target === "_agency-mind") {
-        // Get or create the agency mind
-        targetAgentId = await getOrCreateMind();
-        agentType = "_agency-mind";
-      } else {
-        // Find existing agent
-        const agent = agents.find((a) => a.id === target);
-        if (!agent) {
-          console.error("Agent not found:", target);
-          return;
+        if (target === "_agency-mind") {
+          // Get or create the agency mind
+          targetAgentId = await getOrCreateMind();
+          agentType = "_agency-mind";
+        } else {
+          // Find existing agent
+          const agent = agents.find((a) => a.id === target);
+          if (!agent) {
+            console.error("[HomeRoute] Agent not found:", target);
+            return;
+          }
+          targetAgentId = agent.id;
+          agentType = agent.agentType;
         }
-        targetAgentId = agent.id;
-        agentType = agent.agentType;
+
+        // Register agent type for activity feed display
+        subscribeToAgent(targetAgentId, agentType);
+
+        // Add optimistic update to activity feed (returns ID for rollback)
+        optimisticMessageId = addUserMessage(target, message, targetAgentId);
+
+        // Actually send the message to the agent
+        // Response will come via agency WebSocket - no polling needed
+        await sendMessageToAgent(targetAgentId, message);
+      } catch (err) {
+        // Rollback optimistic update on failure
+        if (optimisticMessageId) {
+          removeUserMessage(optimisticMessageId);
+        }
+        console.error("[HomeRoute] Failed to send message:", err);
+        showError("Failed to send message. Please try again.");
       }
-
-      // Register agent type for activity feed display
-      subscribeToAgent(targetAgentId, agentType);
-
-      // Add optimistic update to activity feed
-      addUserMessage(target, message, targetAgentId);
-
-      // Actually send the message to the agent
-      // Response will come via agency WebSocket - no polling needed
-      await sendMessageToAgent(targetAgentId, message);
     },
-    [agents, getOrCreateMind, addUserMessage, sendMessageToAgent, subscribeToAgent]
+    [agents, getOrCreateMind, addUserMessage, removeUserMessage, sendMessageToAgent, subscribeToAgent, showError]
   );
 
   // Handle creating new agent from blueprint
   // If message is provided, send it to the agent and stay in command center
   const handleCreateAgent = useCallback(
     async (blueprintName: string, message?: string) => {
-      const agent = await spawnAgent(blueprintName);
+      let optimisticMessageId: string | undefined;
+      
+      try {
+        const agent = await spawnAgent(blueprintName);
 
-      if (message) {
-        // Register agent type for activity feed display
-        subscribeToAgent(agent.id, blueprintName);
+        if (message) {
+          // Register agent type for activity feed display
+          subscribeToAgent(agent.id, blueprintName);
 
-        // Send message and stay in command center
-        addUserMessage(blueprintName, message, agent.id);
-        
-        // Send the message - response will come via agency WebSocket
-        await sendMessageToAgent(agent.id, message);
-      } else {
-        // Navigate to agent page when no initial message
-        navigate(`/${agencyId}/agent/${agent.id}`);
+          // Send message and stay in command center (returns ID for rollback)
+          optimisticMessageId = addUserMessage(blueprintName, message, agent.id);
+          
+          // Send the message - response will come via agency WebSocket
+          await sendMessageToAgent(agent.id, message);
+        } else {
+          // Navigate to agent page when no initial message
+          navigate(`/${agencyId}/agent/${agent.id}`);
+        }
+      } catch (err) {
+        // Rollback optimistic update on failure
+        if (optimisticMessageId) {
+          removeUserMessage(optimisticMessageId);
+        }
+        console.error("[HomeRoute] Failed to create agent:", err);
+        showError("Failed to create agent. Please try again.");
       }
     },
-    [agencyId, spawnAgent, navigate, addUserMessage, sendMessageToAgent, subscribeToAgent]
+    [agencyId, spawnAgent, navigate, addUserMessage, removeUserMessage, sendMessageToAgent, subscribeToAgent, showError]
   );
 
   return (
@@ -996,6 +1028,7 @@ function MainContent({
 
 export default function App() {
   const [location, navigate] = useLocation();
+  const { showError } = useToast();
 
   // Auth state
   const [isLocked, setIsLocked] = useState(false);
@@ -1082,10 +1115,11 @@ export default function App() {
       setIsMindOpen(true);
     } catch (err) {
       console.error("Failed to get or create mind:", err);
+      showError("Failed to open Agency Mind. Please try again.");
     } finally {
       setIsMindLoading(false);
     }
-  }, [agencyId, mindAgentId, getOrCreateMind]);
+  }, [agencyId, mindAgentId, getOrCreateMind, showError]);
 
   // Derive agent status
   const agentStatus = useMemo(() => {
@@ -1121,10 +1155,15 @@ export default function App() {
   // Handlers
   const handleCreateAgency = async (name?: string) => {
     if (name) {
-      const agency = await createAgency(name);
-      navigate(`/${agency.id}`);
-      setShowAgencyModal(false);
-      setNewAgencyName("");
+      try {
+        const agency = await createAgency(name);
+        navigate(`/${agency.id}`);
+        setShowAgencyModal(false);
+        setNewAgencyName("");
+      } catch (err) {
+        console.error("[App] Failed to create agency:", err);
+        showError("Failed to create agency. Please try again.");
+      }
     } else {
       setShowAgencyModal(true);
     }
@@ -1132,9 +1171,14 @@ export default function App() {
 
   const handleCreateAgent = async (agentType?: string) => {
     if (agentType && agencyId) {
-      const agent = await spawnAgent(agentType);
-      navigate(`/${agencyId}/agent/${agent.id}`);
-      setShowBlueprintPicker(false);
+      try {
+        const agent = await spawnAgent(agentType);
+        navigate(`/${agencyId}/agent/${agent.id}`);
+        setShowBlueprintPicker(false);
+      } catch (err) {
+        console.error("[App] Failed to create agent:", err);
+        showError("Failed to create agent. Please try again.");
+      }
     } else {
       setShowBlueprintPicker(true);
     }
@@ -1244,8 +1288,12 @@ export default function App() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </StrictMode>
 );

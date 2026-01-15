@@ -55,12 +55,17 @@ export interface Message {
 }
 
 // Todo item type
+export type TodoStatus = "pending" | "in_progress" | "done" | "blocked";
+export type TodoPriority = "low" | "medium" | "high";
+
 export interface Todo {
   id: string;
   title: string;
-  status: "pending" | "in_progress" | "done";
-  priority: "low" | "medium" | "high";
+  description?: string;
+  status: TodoStatus;
+  priority: TodoPriority;
   createdAt: string;
+  completedAt?: string;
 }
 
 // Activity item for unified feed
