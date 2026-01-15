@@ -337,6 +337,9 @@ export abstract class HubAgent<
         this.info.pendingToolCalls = toolCalls;
       }
 
+      // HITL plugin may have paused the agent in onModelResult
+      if (this.isPaused) return;
+
       await this.executePendingTools(MAX_TOOLS_PER_TICK);
 
       if (this.isPaused) return;

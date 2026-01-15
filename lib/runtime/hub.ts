@@ -242,8 +242,8 @@ class ToolRegistry {
 
     for (const cap of capabilities) {
       if (cap.startsWith("@")) {
-        const tag = cap.slice(1);
-        const toolNames = this.tags.get(tag) || [];
+        // Tags are stored WITH the @ prefix, so look up directly
+        const toolNames = this.tags.get(cap) || [];
         for (const name of toolNames) {
           if (!seen.has(name)) {
             seen.add(name);
