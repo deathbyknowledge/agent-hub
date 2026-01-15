@@ -276,20 +276,38 @@ export const context: AgentPlugin = {
     // Build summarization prompt
     const summaryPrompt = buildSummaryPrompt(checkpoint?.summary, toSummarize);
 
-    // Call LLM for summarization
+    // Emit event so we know summarization started
+    ctx.agent.emit("context.summarizing", {
+      messageCount: toSummarize.length,
+      keepingRecent: toKeep.length,
+    });
+
+    // Call LLM for summarization with timeout
+    const SUMMARIZATION_TIMEOUT_MS = 60000; // 60s max
     let summaryResult;
     try {
-      summaryResult = await ctx.agent.provider.invoke(
-        {
-          model: SUMMARY_MODEL ?? ctx.agent.model,
-          systemPrompt: SUMMARIZATION_SYSTEM_PROMPT,
-          messages: [{ role: "user", content: summaryPrompt }],
-          toolDefs: [],
-        },
-        {}
-      );
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), SUMMARIZATION_TIMEOUT_MS);
+      try {
+        summaryResult = await ctx.agent.provider.invoke(
+          {
+            model: SUMMARY_MODEL ?? ctx.agent.model,
+            systemPrompt: SUMMARIZATION_SYSTEM_PROMPT,
+            messages: [{ role: "user", content: summaryPrompt }],
+            toolDefs: [],
+          },
+          { signal: controller.signal }
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
     } catch (err) {
-      console.error("context: Summarization failed:", err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      ctx.agent.emit("context.error", { 
+        phase: "summarization",
+        error: errorMsg,
+      });
+      console.error("context: Summarization failed:", errorMsg);
       return;
     }
 
