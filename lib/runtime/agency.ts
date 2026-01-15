@@ -141,6 +141,12 @@ function validateSchedule(req: CreateScheduleRequest): string | null {
 
 const AGENCY_NAME_KEY = "_agency_name";
 
+// Metric event types for Analytics Engine
+type MetricEvent = 
+  | { type: "agent_spawn"; agentType: string }
+  | { type: "agent_delete"; agentType: string }
+  | { type: "schedule_run"; scheduleId: string; agentType: string; status: "completed" | "failed"; durationMs: number };
+
 export class Agency extends Agent<AgentEnv> {
   private _cachedAgencyName: string | null = null;
   /** Agency-level vars inherited by all spawned agents */
@@ -217,6 +223,9 @@ export class Agency extends Agent<AgentEnv> {
     router.all("/fs/:path+", (req: IRequest) => this.handleFilesystem(req, req.params.path || ""));
     router.all("/fs", (req: IRequest) => this.handleFilesystem(req, ""));
 
+    // Metrics
+    router.get("/metrics", () => this.handleGetMetrics());
+
     // Internal
     router.get("/internal/blueprint/:name", (req: IRequest) => this.handleGetInternalBlueprint(req.params.name));
 
@@ -246,6 +255,44 @@ export class Agency extends Agent<AgentEnv> {
     if (this._cachedAgencyName === name) return;
     this._cachedAgencyName = name;
     this.ctx.storage.kv.put(AGENCY_NAME_KEY, name);
+  }
+
+  /**
+   * Emit a metric event to Analytics Engine.
+   * Safe to call even if METRICS binding is not configured.
+   */
+  private emitMetric(event: MetricEvent): void {
+    const metrics = this.env.METRICS;
+    if (!metrics) return;
+
+    try {
+      switch (event.type) {
+        case "agent_spawn":
+          metrics.writeDataPoint({
+            blobs: [this.agencyName, event.agentType, "spawn"],
+            doubles: [1],
+            indexes: [this.agencyName],
+          });
+          break;
+        case "agent_delete":
+          metrics.writeDataPoint({
+            blobs: [this.agencyName, event.agentType, "delete"],
+            doubles: [1],
+            indexes: [this.agencyName],
+          });
+          break;
+        case "schedule_run":
+          metrics.writeDataPoint({
+            blobs: [this.agencyName, event.scheduleId, event.agentType, event.status],
+            doubles: [event.durationMs],
+            indexes: [this.agencyName],
+          });
+          break;
+      }
+    } catch (err) {
+      // Don't let metrics failures break the main flow
+      console.warn("[Agency] Failed to emit metric:", err);
+    }
   }
 
   constructor(ctx: AgentContext, env: AgentEnv) {
@@ -976,6 +1023,9 @@ export class Agency extends Agent<AgentEnv> {
       );
     }
 
+    // Emit spawn metric
+    this.emitMetric({ type: "agent_spawn", agentType });
+
     return Response.json(initPayload, { status: 201 });
   }
 
@@ -1199,6 +1249,7 @@ export class Agency extends Agent<AgentEnv> {
   ): Promise<ScheduleRun> {
     const runId = crypto.randomUUID();
     const now = new Date().toISOString();
+    const startTime = Date.now();
 
     // Create run record
     this.sql`
@@ -1234,6 +1285,15 @@ export class Agency extends Agent<AgentEnv> {
         WHERE id = ${runId}
       `;
 
+      // Emit schedule run metric
+      this.emitMetric({
+        type: "schedule_run",
+        scheduleId: schedule.id,
+        agentType: schedule.agentType,
+        status: "completed",
+        durationMs: Date.now() - startTime,
+      });
+
       return this.getRunById(runId)!;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -1245,6 +1305,15 @@ export class Agency extends Agent<AgentEnv> {
           error = ${errorMsg}
         WHERE id = ${runId}
       `;
+
+      // Emit schedule run metric for failure
+      this.emitMetric({
+        type: "schedule_run",
+        scheduleId: schedule.id,
+        agentType: schedule.agentType,
+        status: "failed",
+        durationMs: Date.now() - startTime,
+      });
 
       // TODO: Implement retry logic based on schedule.maxRetries
       console.error(`Schedule ${schedule.id} execution failed:`, errorMsg);
@@ -1308,6 +1377,12 @@ export class Agency extends Agent<AgentEnv> {
   }
 
   private async deleteAgentResources(agentId: string): Promise<void> {
+    // Get agent type for metrics before deleting
+    const agentRows = this.sql<{ type: string }>`
+      SELECT type FROM agents WHERE id = ${agentId}
+    `;
+    const agentType = agentRows[0]?.type;
+
     try {
       const stub = await getAgentByName(this.exports.HubAgent, agentId);
       await stub.fetch(
@@ -1327,6 +1402,11 @@ export class Agency extends Agent<AgentEnv> {
       UPDATE schedule_runs SET agent_id = NULL WHERE agent_id = ${agentId}
     `;
     this.sql`DELETE FROM agents WHERE id = ${agentId}`;
+
+    // Emit delete metric
+    if (agentType) {
+      this.emitMetric({ type: "agent_delete", agentType });
+    }
   }
 
   private async deletePrefix(bucket: AgentEnv["FS"], prefix: string): Promise<void> {
@@ -1521,6 +1601,78 @@ export class Agency extends Agent<AgentEnv> {
     return Response.json({
       ok: true,
       path: "/" + fsPath,
+    });
+  }
+
+  // ============================================================
+  // Metrics Handlers
+  // ============================================================
+
+  /**
+   * Get aggregated metrics for this agency.
+   * Returns counts and stats computed from local state (schedules, agents).
+   * 
+   * Note: For full Analytics Engine queries, use the SQL API directly with
+   * ACCOUNT_ID and API_TOKEN. This endpoint provides basic real-time counts.
+   */
+  private handleGetMetrics(): Response {
+    // Get agent counts
+    const agentCounts = this.sql<{ total: number }>`
+      SELECT COUNT(*) as total FROM agents
+    `;
+    const totalAgents = agentCounts[0]?.total ?? 0;
+
+    // Get agent type breakdown
+    const agentsByType = this.sql<{ type: string; count: number }>`
+      SELECT type, COUNT(*) as count FROM agents GROUP BY type
+    `;
+
+    // Get schedule counts
+    const scheduleCounts = this.sql<{ status: string; count: number }>`
+      SELECT status, COUNT(*) as count FROM agent_schedules GROUP BY status
+    `;
+    const schedulesByStatus: Record<string, number> = {};
+    for (const row of scheduleCounts) {
+      schedulesByStatus[row.status] = row.count;
+    }
+
+    // Get recent schedule runs (last 24h)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const recentRuns = this.sql<{ status: string; count: number }>`
+      SELECT status, COUNT(*) as count 
+      FROM schedule_runs 
+      WHERE scheduled_at >= ${oneDayAgo}
+      GROUP BY status
+    `;
+    const runsByStatus: Record<string, number> = {};
+    let totalRuns = 0;
+    for (const row of recentRuns) {
+      runsByStatus[row.status] = row.count;
+      totalRuns += row.count;
+    }
+
+    // Calculate success rate
+    const completedRuns = runsByStatus["completed"] ?? 0;
+    const successRate = totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 100;
+
+    return Response.json({
+      agents: {
+        total: totalAgents,
+        byType: Object.fromEntries(agentsByType.map(r => [r.type, r.count])),
+      },
+      schedules: {
+        total: Object.values(schedulesByStatus).reduce((a, b) => a + b, 0),
+        active: schedulesByStatus["active"] ?? 0,
+        paused: schedulesByStatus["paused"] ?? 0,
+        disabled: schedulesByStatus["disabled"] ?? 0,
+      },
+      runs: {
+        today: totalRuns,
+        completed: completedRuns,
+        failed: runsByStatus["failed"] ?? 0,
+        successRate,
+      },
+      timestamp: new Date().toISOString(),
     });
   }
 }

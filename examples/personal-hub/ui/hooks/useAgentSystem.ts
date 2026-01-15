@@ -1256,81 +1256,46 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
 }
 
 // ============================================================================
-// useAgencyMetrics - Aggregated metrics with WebSocket updates
+// useAgencyMetrics - Simple metrics from /metrics endpoint
 // ============================================================================
 
 export interface AgencyMetrics {
-  totalTokens: number;
-  tokensByDay: Map<string, number>; // YYYY-MM-DD -> tokens
-  runsCompleted: number;
-  runsErrored: number;
-  responseTimes: number[]; // ms for each model call
+  agents: {
+    total: number;
+    byType: Record<string, number>;
+  };
+  schedules: {
+    total: number;
+    active: number;
+    paused: number;
+    disabled: number;
+  };
+  runs: {
+    today: number;
+    completed: number;
+    failed: number;
+    successRate: number;
+  };
+  timestamp: string;
 }
 
 const EMPTY_METRICS: AgencyMetrics = {
-  totalTokens: 0,
-  tokensByDay: new Map(),
-  runsCompleted: 0,
-  runsErrored: 0,
-  responseTimes: [],
+  agents: { total: 0, byType: {} },
+  schedules: { total: 0, active: 0, paused: 0, disabled: 0 },
+  runs: { today: 0, completed: 0, failed: 0, successRate: 100 },
+  timestamp: new Date().toISOString(),
 };
 
 /**
- * Hook to fetch and maintain agency-wide metrics.
- * 
- * Strategy:
- * 1. Initial load: Fetch all events from all agents once
- * 2. Agency WebSocket: Subscribe to all agent events, update metrics incrementally
- * 3. No polling: Metrics update in real-time via single agency WebSocket
+ * Hook to fetch agency-wide metrics from the /metrics endpoint.
+ * Uses React Query for caching and automatic refetch.
  */
 export function useAgencyMetrics(agencyId: string | null) {
   const [metrics, setMetrics] = useState<AgencyMetrics>(EMPTY_METRICS);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
-  
-  // Track model.started timestamps for response time calculation
-  const modelStartTimes = useRef<Map<string, number>>(new Map());
 
-  // Process a single event and update metrics incrementally
-  const processEvent = useCallback((event: AgencyWebSocketEvent) => {
-    const eventDate = new Date(event.ts).toISOString().split("T")[0];
-    const agentId = event.agentId;
-
-    setMetrics((prev) => {
-      const next = { ...prev, tokensByDay: new Map(prev.tokensByDay) };
-
-      if (event.type === "model.completed") {
-        const data = event.data as { usage?: { inputTokens: number; outputTokens: number } };
-        if (data.usage) {
-          const tokens = data.usage.inputTokens + data.usage.outputTokens;
-          next.totalTokens += tokens;
-          next.tokensByDay.set(eventDate, (next.tokensByDay.get(eventDate) || 0) + tokens);
-        }
-
-        // Calculate response time if we have a start time
-        const startTime = modelStartTimes.current.get(agentId);
-        if (startTime !== undefined) {
-          const endTime = new Date(event.ts).getTime();
-          next.responseTimes = [...prev.responseTimes, endTime - startTime];
-          modelStartTimes.current.delete(agentId);
-        }
-      } else if (event.type === "model.started") {
-        modelStartTimes.current.set(agentId, new Date(event.ts).getTime());
-        return prev; // No state change needed
-      } else if (event.type === "agent.completed") {
-        next.runsCompleted = prev.runsCompleted + 1;
-      } else if (event.type === "agent.error") {
-        next.runsErrored = prev.runsErrored + 1;
-      } else {
-        return prev; // No relevant change
-      }
-
-      return next;
-    });
-  }, []);
-
-  // Initial fetch of all historical events
-  const fetchHistoricalMetrics = useCallback(async () => {
+  const fetchMetrics = useCallback(async () => {
     if (!agencyId) {
       setMetrics(EMPTY_METRICS);
       setHasFetched(false);
@@ -1341,60 +1306,8 @@ export function useAgencyMetrics(agencyId: string | null) {
 
     try {
       const client = getClient().agency(agencyId);
-      const { agents } = await client.listAgents();
-
-      // Reset metrics for fresh calculation
-      let totalTokens = 0;
-      const tokensByDay = new Map<string, number>();
-      let runsCompleted = 0;
-      let runsErrored = 0;
-      const responseTimes: number[] = [];
-
-      // Fetch events for each agent
-      for (const agent of agents) {
-        try {
-          const agentClient = client.agent(agent.id);
-          const { events } = await agentClient.getEvents();
-
-          // Track model.started times for this agent's event history
-          let agentModelStartTime: number | null = null;
-
-          for (const event of events) {
-            const eventDate = new Date(event.ts).toISOString().split("T")[0];
-
-            if (event.type === "model.completed") {
-              const data = event.data as { usage?: { inputTokens: number; outputTokens: number } };
-              if (data.usage) {
-                const tokens = data.usage.inputTokens + data.usage.outputTokens;
-                totalTokens += tokens;
-                tokensByDay.set(eventDate, (tokensByDay.get(eventDate) || 0) + tokens);
-              }
-
-              if (agentModelStartTime !== null) {
-                const endTime = new Date(event.ts).getTime();
-                responseTimes.push(endTime - agentModelStartTime);
-                agentModelStartTime = null;
-              }
-            } else if (event.type === "model.started") {
-              agentModelStartTime = new Date(event.ts).getTime();
-            } else if (event.type === "agent.completed") {
-              runsCompleted++;
-            } else if (event.type === "agent.error") {
-              runsErrored++;
-            }
-          }
-        } catch {
-          // Agent might be initializing, skip
-        }
-      }
-
-      setMetrics({
-        totalTokens,
-        tokensByDay,
-        runsCompleted,
-        runsErrored,
-        responseTimes,
-      });
+      const data = await client.getMetrics();
+      setMetrics(data);
       setHasFetched(true);
     } catch (err) {
       console.error("Failed to fetch metrics:", err);
@@ -1403,36 +1316,15 @@ export function useAgencyMetrics(agencyId: string | null) {
     }
   }, [agencyId]);
 
-  // Subscribe to agency WebSocket for live updates
+  // Fetch on mount and when agencyId changes
   useEffect(() => {
-    if (!agencyId) {
-      setMetrics(EMPTY_METRICS);
-      setHasFetched(false);
-      return;
-    }
-
-    // Fetch historical metrics
-    fetchHistoricalMetrics();
-
-    // Subscribe to agency events for live updates
-    const unsubscribe = subscribeToAgencyEvents(agencyId, processEvent);
-
-    return () => {
-      unsubscribe();
-      modelStartTimes.current.clear();
-    };
-  }, [agencyId, fetchHistoricalMetrics, processEvent]);
-
-  // No longer needed - agency WS automatically receives all agent events
-  const subscribeToNewAgents = useCallback(() => {
-    // No-op - agency WS handles all agents automatically
-  }, []);
+    fetchMetrics();
+  }, [fetchMetrics]);
 
   return {
     metrics,
     isLoading,
     hasFetched,
-    refresh: fetchHistoricalMetrics,
-    subscribeToNewAgents,
+    refresh: fetchMetrics,
   };
 }

@@ -155,6 +155,15 @@ export type AgentBlueprint = {
   updatedAt?: string; // ISO
 };
 
+/** Analytics Engine dataset binding for metrics */
+export interface AnalyticsEngineDataset {
+  writeDataPoint(event: {
+    blobs?: string[];
+    doubles?: number[];
+    indexes?: string[];
+  }): void;
+}
+
 /** Environment bindings required by the AgentHub runtime. */
 export interface AgentEnv {
   HUB_AGENT: DurableObjectNamespace<HubAgent>;
@@ -168,6 +177,12 @@ export interface AgentEnv {
   LLM_RETRY_STATUS_CODES?: string;
   FS?: R2Bucket;
   SANDBOX?: DurableObjectNamespace;
+  /** Analytics Engine dataset for agent metrics */
+  METRICS?: AnalyticsEngineDataset;
+  /** Cloudflare Account ID (for querying Analytics Engine SQL API) */
+  CF_ACCOUNT_ID?: string;
+  /** API Token with Analytics Read permission (for querying Analytics Engine SQL API) */
+  CF_API_TOKEN?: string;
 }
 
 /** Context passed to plugin hooks, providing access to the agent and tool registration. */
