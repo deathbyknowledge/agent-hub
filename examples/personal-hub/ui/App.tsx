@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, StrictMode } from "react";
 import { useLocation, useRoute } from "wouter";
 import {
-  Sidebar,
   ContentHeader,
   ChatView,
   TraceView,
@@ -9,34 +8,30 @@ import {
   TodosView,
   SettingsView,
   ConfirmModal,
-  MindPanel,
-  HomeView,
   ErrorBoundary,
   ToastProvider,
   useToast,
+  TopHeader,
+  TabBar,
+  CommandPalette,
+  AgentPanel,
   type TabId,
   type Message,
   type Todo,
+  type OpenTab,
 } from "./components";
 import {
   useAgencies,
   useAgency,
   useAgent,
   usePlugins,
-  useActivityFeed,
-  useAgencyMetrics,
   setStoredSecret,
   QueryClient,
   QueryClientProvider,
 } from "./hooks";
-import type { AgentBlueprint, ChatMessage, ToolCall as APIToolCall } from "agents-hub/client";
+import type { AgentBlueprint, ChatMessage, ToolCall as APIToolCall, AgentSummary } from "agents-hub/client";
 import { createRoot } from "react-dom/client";
-import {
-  type ScheduleSummary,
-  type DashboardMetrics,
-  convertChatMessages,
-  isSystemBlueprint,
-} from "./components/shared";
+import { convertChatMessages } from "./components/shared";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,8 +56,7 @@ function BlueprintPicker({
   onSelect: (bp: AgentBlueprint) => void;
   onClose: () => void;
 }) {
-  // Filter out system blueprints
-  const visibleBlueprints = blueprints.filter((bp) => !isSystemBlueprint(bp));
+  // All blueprints are visible (no filtering)
 
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
@@ -79,13 +73,13 @@ function BlueprintPicker({
           </button>
         </div>
         <div className="p-3 max-h-80 overflow-y-auto">
-          {visibleBlueprints.length === 0 ? (
+          {blueprints.length === 0 ? (
             <p className="text-white/30 text-[10px] uppercase tracking-wider text-center py-4">
               // NO BLUEPRINTS AVAILABLE
             </p>
           ) : (
             <div className="space-y-1">
-              {visibleBlueprints.map((bp) => (
+              {blueprints.map((bp) => (
                 <button
                   key={bp.name}
                   onClick={() => onSelect(bp)}
@@ -498,12 +492,10 @@ function AgentView({
   agencyId,
   agentId,
   tab = "chat",
-  onMenuClick,
 }: {
   agencyId: string;
   agentId: string;
   tab?: string;
-  onMenuClick?: () => void;
 }) {
   const {
     agents,
@@ -657,7 +649,6 @@ function AgentView({
         status={status}
         onStop={cancel}
         onDelete={() => setShowDeleteAgent(true)}
-        onMenuClick={onMenuClick}
       />
       <div className="flex-1 flex flex-col overflow-hidden">{renderContent()}</div>
 
@@ -693,10 +684,8 @@ function AgentView({
 
 function SettingsRoute({
   agencyId,
-  onMenuClick,
 }: {
   agencyId: string;
-  onMenuClick?: () => void;
 }) {
   const {
     blueprints,
@@ -738,21 +727,11 @@ function SettingsRoute({
 
   return (
     <>
-      <div className="px-3 py-2 border-b border-white bg-black relative shrink-0">
-        {/* Mobile menu button */}
-        {onMenuClick && (
-          <button
-            onClick={onMenuClick}
-            className="md:hidden absolute top-2 left-2 p-2 text-white/50 hover:text-white transition-colors z-10"
-            aria-label="Open menu"
-          >
-            <span className="text-xs">[=]</span>
-          </button>
-        )}
-        <h1 className="text-xs uppercase tracking-widest text-white md:ml-0 ml-8">
+      <div className="px-3 py-2 border-b border-white bg-black shrink-0">
+        <h1 className="text-xs uppercase tracking-widest text-white">
           AGENCY_CONFIG
         </h1>
-        <p className="text-[10px] text-white/40 font-mono md:ml-0 ml-8">
+        <p className="text-[10px] text-white/40 font-mono">
           ID: {agency?.name || "UNKNOWN"}
         </p>
       </div>
@@ -760,7 +739,6 @@ function SettingsRoute({
         <SettingsView
           agencyId={agencyId}
           agencyName={agency?.name}
-          onMenuClick={onMenuClick}
           blueprints={blueprints}
           schedules={schedules}
           vars={vars}
@@ -820,210 +798,7 @@ function SettingsRoute({
 }
 
 // ============================================================================
-// Home View Route (handles /:agencyId - dashboard)
-// ============================================================================
-
-function HomeRoute({
-  agencyId,
-  onMenuClick,
-}: {
-  agencyId: string;
-  onMenuClick?: () => void;
-}) {
-  const { agencies } = useAgencies();
-  const { agents, blueprints, spawnAgent, getOrCreateMind, sendMessageToAgent } = useAgency(agencyId);
-  const { items: activityItems, addUserMessage, removeUserMessage, subscribeToAgent } = useActivityFeed(agencyId);
-  const { metrics } = useAgencyMetrics(agencyId);
-  const [, navigate] = useLocation();
-  const { showError } = useToast();
-
-  const agency = agencies.find((a) => a.id === agencyId);
-
-  // Build dashboard metrics
-  const dashboardMetrics: DashboardMetrics = useMemo(() => {
-    const activeAgents = agents.filter((a) => !a.agentType.startsWith("_")).length;
-    return {
-      agents: {
-        total: activeAgents,
-        active: metrics.runsCompleted > 0 ? Math.min(activeAgents, metrics.runsCompleted) : 0,
-        idle: activeAgents,
-        error: metrics.runsErrored,
-      },
-      runs: {
-        today: metrics.runsCompleted + metrics.runsErrored,
-        week: metrics.runsCompleted + metrics.runsErrored,
-        successRate:
-          metrics.runsCompleted + metrics.runsErrored > 0
-            ? Math.round((metrics.runsCompleted / (metrics.runsCompleted + metrics.runsErrored)) * 100)
-            : 100,
-        hourlyData: Array.from(metrics.tokensByDay.values()).slice(-12),
-      },
-      schedules: {
-        total: 0, // Will be populated from useAgency
-        active: 0,
-        paused: 0,
-      },
-      tokens: metrics.totalTokens > 0 ? {
-        today: metrics.totalTokens,
-        week: metrics.totalTokens,
-        dailyData: Array.from(metrics.tokensByDay.values()),
-      } : undefined,
-      responseTime: metrics.responseTimes.length > 0 ? {
-        avg: Math.round(metrics.responseTimes.reduce((a, b) => a + b, 0) / metrics.responseTimes.length),
-        p95: Math.round(metrics.responseTimes.sort((a, b) => a - b)[Math.floor(metrics.responseTimes.length * 0.95)] || 0),
-        recentData: metrics.responseTimes.slice(-12),
-      } : undefined,
-    };
-  }, [agents, metrics]);
-
-  // Handle sending message to agent - stays in command center view
-  const handleSendMessage = useCallback(
-    async (target: string, message: string) => {
-      let optimisticMessageId: string | undefined;
-      
-      try {
-        // Find or create the target agent
-        let targetAgentId: string;
-        let agentType = target;
-
-        if (target === "_agency-mind") {
-          // Get or create the agency mind
-          targetAgentId = await getOrCreateMind();
-          agentType = "_agency-mind";
-        } else {
-          // Find existing agent
-          const agent = agents.find((a) => a.id === target);
-          if (!agent) {
-            console.error("[HomeRoute] Agent not found:", target);
-            return;
-          }
-          targetAgentId = agent.id;
-          agentType = agent.agentType;
-        }
-
-        // Register agent type for activity feed display
-        subscribeToAgent(targetAgentId, agentType);
-
-        // Add optimistic update to activity feed (returns ID for rollback)
-        optimisticMessageId = addUserMessage(target, message, targetAgentId);
-
-        // Actually send the message to the agent
-        // Response will come via agency WebSocket - no polling needed
-        await sendMessageToAgent(targetAgentId, message);
-      } catch (err) {
-        // Rollback optimistic update on failure
-        if (optimisticMessageId) {
-          removeUserMessage(optimisticMessageId);
-        }
-        console.error("[HomeRoute] Failed to send message:", err);
-        showError("Failed to send message. Please try again.");
-      }
-    },
-    [agents, getOrCreateMind, addUserMessage, removeUserMessage, sendMessageToAgent, subscribeToAgent, showError]
-  );
-
-  // Handle creating new agent from blueprint
-  // If message is provided, send it to the agent and stay in command center
-  const handleCreateAgent = useCallback(
-    async (blueprintName: string, message?: string) => {
-      let optimisticMessageId: string | undefined;
-      
-      try {
-        const agent = await spawnAgent(blueprintName);
-
-        if (message) {
-          // Register agent type for activity feed display
-          subscribeToAgent(agent.id, blueprintName);
-
-          // Send message and stay in command center (returns ID for rollback)
-          optimisticMessageId = addUserMessage(blueprintName, message, agent.id);
-          
-          // Send the message - response will come via agency WebSocket
-          await sendMessageToAgent(agent.id, message);
-        } else {
-          // Navigate to agent page when no initial message
-          navigate(`/${agencyId}/agent/${agent.id}`);
-        }
-      } catch (err) {
-        // Rollback optimistic update on failure
-        if (optimisticMessageId) {
-          removeUserMessage(optimisticMessageId);
-        }
-        console.error("[HomeRoute] Failed to create agent:", err);
-        showError("Failed to create agent. Please try again.");
-      }
-    },
-    [agencyId, spawnAgent, navigate, addUserMessage, removeUserMessage, sendMessageToAgent, subscribeToAgent, showError]
-  );
-
-  return (
-    <HomeView
-      agencyId={agencyId}
-      agencyName={agency?.name}
-      agents={agents}
-      blueprints={blueprints}
-      metrics={dashboardMetrics}
-      activityItems={activityItems}
-      onSendMessage={handleSendMessage}
-      onCreateAgent={handleCreateAgent}
-      onMenuClick={onMenuClick}
-    />
-  );
-}
-
-// ============================================================================
-// Main Content Router
-// ============================================================================
-
-function MainContent({
-  agencyId,
-  onMenuClick,
-}: {
-  agencyId: string;
-  onMenuClick: () => void;
-}) {
-  // Match routes
-  const [matchAgent, paramsAgent] = useRoute("/:agencyId/agent/:agentId");
-  const [matchAgentTab, paramsAgentTab] = useRoute("/:agencyId/agent/:agentId/:tab");
-  const [matchSettings] = useRoute("/:agencyId/settings");
-  const [matchHome] = useRoute("/:agencyId");
-
-  if (matchSettings) {
-    return <SettingsRoute agencyId={agencyId} onMenuClick={onMenuClick} />;
-  }
-
-  if (matchAgentTab && paramsAgentTab) {
-    return (
-      <AgentView
-        agencyId={agencyId}
-        agentId={paramsAgentTab.agentId}
-        tab={paramsAgentTab.tab}
-        onMenuClick={onMenuClick}
-      />
-    );
-  }
-
-  if (matchAgent && paramsAgent) {
-    return (
-      <AgentView
-        agencyId={agencyId}
-        agentId={paramsAgent.agentId}
-        onMenuClick={onMenuClick}
-      />
-    );
-  }
-
-  // Default to home/dashboard view
-  return (
-    <HomeRoute
-      agencyId={agencyId}
-      onMenuClick={onMenuClick}
-    />
-  );
-}
-
-// ============================================================================
-// App Component
+// App Component - IDE-style layout with tabs
 // ============================================================================
 
 export default function App() {
@@ -1034,28 +809,20 @@ export default function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [authError, setAuthError] = useState<string | undefined>();
 
-  // Mobile menu state
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(() => {
-    if (typeof window !== "undefined") {
-      return window.innerWidth >= 768;
-    }
-    return true;
-  });
-
-  // Modal state
-  const [showBlueprintPicker, setShowBlueprintPicker] = useState(false);
+  // UI state
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [showAgencyModal, setShowAgencyModal] = useState(false);
   const [newAgencyName, setNewAgencyName] = useState("");
 
-  // Agency Mind panel state
-  const [isMindOpen, setIsMindOpen] = useState(false);
-  const [mindAgentId, setMindAgentId] = useState<string | null>(null);
-  const [isMindLoading, setIsMindLoading] = useState(false);
+  // Tab state - tracks open agents
+  const [openTabs, setOpenTabs] = useState<OpenTab[]>([]);
 
-  // Parse agencyId from URL
+  // Parse agencyId and agentId from URL
   const pathParts = location.split("/").filter(Boolean);
   const agencyId = pathParts[0] || null;
   const agentId = pathParts[1] === "agent" ? pathParts[2] || null : null;
+  const isOnSettings = location.endsWith("/settings");
 
   // Data hooks
   const {
@@ -1064,20 +831,62 @@ export default function App() {
     error: agenciesError,
     hasFetched: agenciesFetched,
   } = useAgencies();
-  const { agents, blueprints, schedules, spawnAgent, getOrCreateMind } = useAgency(agencyId);
+  const { agents, blueprints, spawnAgent } = useAgency(agencyId);
   const { run: runState } = useAgent(agencyId, agentId);
 
-  // Agency Mind agent state
-  const {
-    state: mindState,
-    run: mindRunState,
-    connected: mindConnected,
-    loading: mindAgentLoading,
-    sendMessage: sendMindMessage,
-    cancel: cancelMind,
-  } = useAgent(agencyId, mindAgentId);
-
   const isUnauthorized = agenciesError?.message.includes("401") ?? false;
+
+  // Current agency
+  const currentAgency = agencies.find((a) => a.id === agencyId);
+
+  // Track running agents
+  const runningAgentIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (agentId && runState?.status === "running") {
+      ids.add(agentId);
+    }
+    return ids;
+  }, [agentId, runState]);
+
+  // Sync tabs with agents - add tab when navigating to agent
+  useEffect(() => {
+    if (!agentId || !agencyId) return;
+    
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent) return;
+
+    // Check if tab already exists
+    const existingTab = openTabs.find((t) => t.agentId === agentId);
+    if (!existingTab) {
+      // Add new tab
+      setOpenTabs((prev) => [
+        ...prev,
+        {
+          id: `tab-${agentId}`,
+          agentId: agent.id,
+          agentType: agent.agentType,
+          isRunning: runState?.status === "running",
+        },
+      ]);
+    }
+  }, [agentId, agencyId, agents, runState?.status]);
+
+  // Update tab running state
+  useEffect(() => {
+    if (!agentId) return;
+    setOpenTabs((prev) =>
+      prev.map((tab) =>
+        tab.agentId === agentId
+          ? { ...tab, isRunning: runState?.status === "running" }
+          : tab
+      )
+    );
+  }, [agentId, runState?.status]);
+
+  // Clear tabs when agency changes
+  useEffect(() => {
+    setOpenTabs([]);
+  }, [agencyId]);
 
   // Check if we got a 401 error
   useEffect(() => {
@@ -1093,66 +902,80 @@ export default function App() {
     window.location.reload();
   }, []);
 
-  // Reset mind agent when agency changes
+  // Auto-select agency if only one exists
   useEffect(() => {
-    setMindAgentId(null);
-    setIsMindOpen(false);
-  }, [agencyId]);
-
-  // Handle opening the Agency Mind panel
-  const handleOpenMind = useCallback(async () => {
-    if (!agencyId) return;
-
-    if (mindAgentId) {
-      setIsMindOpen(true);
-      return;
+    if (!agenciesFetched || isLocked || isUnauthorized) return;
+    if (!agencyId && agencies.length === 1) {
+      navigate(`/${agencies[0].id}`);
     }
+  }, [agenciesFetched, isLocked, isUnauthorized, agencyId, agencies, navigate]);
 
-    setIsMindLoading(true);
-    try {
-      const id = await getOrCreateMind();
-      setMindAgentId(id);
-      setIsMindOpen(true);
-    } catch (err) {
-      console.error("Failed to get or create mind:", err);
-      showError("Failed to open Agency Mind. Please try again.");
-    } finally {
-      setIsMindLoading(false);
-    }
-  }, [agencyId, mindAgentId, getOrCreateMind, showError]);
-
-  // Derive agent status
-  const agentStatus = useMemo(() => {
-    const status: Record<string, "running" | "paused" | "done" | "error" | "idle"> = {};
-    agents.forEach((a) => {
-      if (a.id === agentId && runState) {
-        status[a.id] =
-          runState.status === "running"
-            ? "running"
-            : runState.status === "completed"
-              ? "done"
-              : runState.status === "error"
-                ? "error"
-                : "idle";
-      } else {
-        status[a.id] = "idle";
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+K or Cmd+K - Open command palette
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setIsCommandPaletteOpen(true);
+        return;
       }
-    });
-    return status;
-  }, [agents, agentId, runState]);
 
-  // Convert schedules to summary format
-  const scheduleSummaries: ScheduleSummary[] = useMemo(() => {
-    return schedules.map((s) => ({
-      id: s.id,
-      name: s.name,
-      agentType: s.agentType,
-      status: (s.status === "paused" ? "paused" : "active") as "active" | "paused",
-      type: s.type as "once" | "cron" | "interval",
-    }));
-  }, [schedules]);
+      // Ctrl+B - Toggle panel
+      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+        e.preventDefault();
+        setIsPanelOpen((prev) => !prev);
+        return;
+      }
+
+      // Ctrl+W - Close current tab
+      if ((e.ctrlKey || e.metaKey) && e.key === "w" && agentId) {
+        e.preventDefault();
+        handleCloseTab(`tab-${agentId}`);
+        return;
+      }
+
+      // Ctrl+1-9 - Switch to tab by index
+      if ((e.ctrlKey || e.metaKey) && e.key >= "1" && e.key <= "9") {
+        e.preventDefault();
+        const index = parseInt(e.key) - 1;
+        if (openTabs[index]) {
+          navigate(`/${agencyId}/agent/${openTabs[index].agentId}`);
+        }
+        return;
+      }
+
+      // Ctrl+Tab - Next tab
+      if (e.ctrlKey && e.key === "Tab" && !e.shiftKey) {
+        e.preventDefault();
+        const currentIndex = openTabs.findIndex((t) => t.agentId === agentId);
+        const nextIndex = (currentIndex + 1) % openTabs.length;
+        if (openTabs[nextIndex]) {
+          navigate(`/${agencyId}/agent/${openTabs[nextIndex].agentId}`);
+        }
+        return;
+      }
+
+      // Ctrl+Shift+Tab - Previous tab
+      if (e.ctrlKey && e.key === "Tab" && e.shiftKey) {
+        e.preventDefault();
+        const currentIndex = openTabs.findIndex((t) => t.agentId === agentId);
+        const prevIndex = currentIndex <= 0 ? openTabs.length - 1 : currentIndex - 1;
+        if (openTabs[prevIndex]) {
+          navigate(`/${agencyId}/agent/${openTabs[prevIndex].agentId}`);
+        }
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [agencyId, agentId, openTabs, navigate]);
 
   // Handlers
+  const handleSelectAgency = (id: string) => {
+    navigate(`/${id}`);
+  };
+
   const handleCreateAgency = async (name?: string) => {
     if (name) {
       try {
@@ -1169,41 +992,65 @@ export default function App() {
     }
   };
 
-  const handleCreateAgent = async (agentType?: string) => {
-    if (agentType && agencyId) {
-      try {
-        const agent = await spawnAgent(agentType);
-        navigate(`/${agencyId}/agent/${agent.id}`);
-        setShowBlueprintPicker(false);
-      } catch (err) {
-        console.error("[App] Failed to create agent:", err);
-        showError("Failed to create agent. Please try again.");
-      }
-    } else {
-      setShowBlueprintPicker(true);
+  const handleSelectAgent = (agent: { id: string; agentType: string }) => {
+    if (agencyId) {
+      navigate(`/${agencyId}/agent/${agent.id}`);
     }
   };
 
-  // Auto-select agency if only one exists, or navigate away from invalid agency
-  useEffect(() => {
-    if (!agenciesFetched || isLocked || isUnauthorized) return;
-
-    // If no agency selected and exactly one exists, auto-select it
-    if (!agencyId && agencies.length === 1) {
-      navigate(`/${agencies[0].id}`);
+  const handleCreateFromBlueprint = async (blueprint: AgentBlueprint) => {
+    if (!agencyId) return;
+    try {
+      const agent = await spawnAgent(blueprint.name);
+      navigate(`/${agencyId}/agent/${agent.id}`);
+    } catch (err) {
+      console.error("[App] Failed to create agent:", err);
+      showError("Failed to create agent. Please try again.");
     }
-  }, [agenciesFetched, isLocked, isUnauthorized, agencyId, agencies, navigate]);
+  };
 
+  const handleSelectTab = (tabId: string) => {
+    const tab = openTabs.find((t) => t.id === tabId);
+    if (tab && agencyId) {
+      navigate(`/${agencyId}/agent/${tab.agentId}`);
+    }
+  };
+
+  const handleCloseTab = (tabId: string) => {
+    const tabIndex = openTabs.findIndex((t) => t.id === tabId);
+    const tab = openTabs[tabIndex];
+    
+    setOpenTabs((prev) => prev.filter((t) => t.id !== tabId));
+
+    // Navigate to adjacent tab or home
+    if (tab && tab.agentId === agentId) {
+      const remainingTabs = openTabs.filter((t) => t.id !== tabId);
+      if (remainingTabs.length > 0) {
+        const nextTab = remainingTabs[Math.min(tabIndex, remainingTabs.length - 1)];
+        navigate(`/${agencyId}/agent/${nextTab.agentId}`);
+      } else {
+        navigate(`/${agencyId}`);
+      }
+    }
+  };
+
+  const handleOpenSettings = () => {
+    if (agencyId) {
+      navigate(`/${agencyId}/settings`);
+    }
+  };
+
+  // Loading state
   if (!agenciesFetched) {
     return <AuthLoadingScreen />;
   }
 
+  // Auth required
   if (isLocked || isUnauthorized) {
     return <AuthUnlockForm onUnlock={handleUnlock} error={authError} />;
   }
 
-  // No agency selected - show agency select/create modal
-  // Skip if exactly one agency (will auto-navigate via useEffect)
+  // No agency selected
   if (!agencyId && agencies.length !== 1) {
     return (
       <AgencySelectModal
@@ -1217,32 +1064,70 @@ export default function App() {
     );
   }
 
+  // Active tab ID
+  const activeTabId = agentId ? `tab-${agentId}` : null;
+
   return (
-    <div className="h-screen flex bg-black">
-      {/* Sidebar */}
-      <Sidebar
+    <div className="h-screen flex flex-col bg-black">
+      {/* Top Header */}
+      <TopHeader
         agencies={agencies}
         selectedAgencyId={agencyId}
-        onCreateAgency={handleCreateAgency}
-        agents={agents}
-        selectedAgentId={agentId}
-        onCreateAgent={() => handleCreateAgent()}
-        schedules={scheduleSummaries}
-        agentStatus={agentStatus}
-        isOpen={isMobileMenuOpen}
-        onClose={() => setIsMobileMenuOpen(false)}
-        onOpenMind={handleOpenMind}
-        isMindActive={isMindOpen}
+        selectedAgencyName={currentAgency?.name}
+        onSelectAgency={handleSelectAgency}
+        onCreateAgency={() => handleCreateAgency()}
+        onOpenSettings={handleOpenSettings}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        onTogglePanel={() => setIsPanelOpen((prev) => !prev)}
+        isPanelOpen={isPanelOpen}
       />
 
-      {/* Blueprint picker modal */}
-      {showBlueprintPicker && (
-        <BlueprintPicker
-          blueprints={blueprints}
-          onSelect={(bp) => handleCreateAgent(bp.name)}
-          onClose={() => setShowBlueprintPicker(false)}
+      {/* Tab Bar */}
+      {agencyId && !isOnSettings && (
+        <TabBar
+          tabs={openTabs}
+          activeTabId={activeTabId}
+          onSelectTab={handleSelectTab}
+          onCloseTab={handleCloseTab}
+          onNewTab={() => setIsCommandPaletteOpen(true)}
         />
       )}
+
+      {/* Main content area */}
+      <div className="flex-1 flex min-h-0">
+        {/* Agent Panel (sidebar) */}
+        {agencyId && (
+          <AgentPanel
+            isOpen={isPanelOpen}
+            agents={agents}
+            blueprints={blueprints}
+            runningAgentIds={runningAgentIds}
+            onSelectAgent={handleSelectAgent}
+            onCreateFromBlueprint={handleCreateFromBlueprint}
+          />
+        )}
+
+        {/* Content */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {isOnSettings && agencyId ? (
+            <SettingsRoute agencyId={agencyId} />
+          ) : agentId && agencyId ? (
+            <AgentView agencyId={agencyId} agentId={agentId} />
+          ) : agencyId ? (
+            <EmptyState onOpenCommandPalette={() => setIsCommandPaletteOpen(true)} />
+          ) : null}
+        </div>
+      </div>
+
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        agents={agents}
+        blueprints={blueprints}
+        onSelectAgent={handleSelectAgent}
+        onCreateFromBlueprint={handleCreateFromBlueprint}
+      />
 
       {/* Agency creation modal */}
       {showAgencyModal && (
@@ -1256,32 +1141,29 @@ export default function App() {
           }}
         />
       )}
+    </div>
+  );
+}
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {agencyId && (
-          <MainContent
-            agencyId={agencyId}
-            onMenuClick={() => setIsMobileMenuOpen(true)}
-          />
-        )}
+// Empty state when no agent is selected
+function EmptyState({ onOpenCommandPalette }: { onOpenCommandPalette: () => void }) {
+  return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="text-center px-4">
+        <div className="text-6xl text-white/10 font-mono mb-4">_</div>
+        <h2 className="text-[11px] uppercase tracking-widest text-white/40 mb-2">
+          NO AGENT SELECTED
+        </h2>
+        <p className="text-[10px] text-white/30 mb-4">
+          Open an agent or create a new one to get started.
+        </p>
+        <button
+          onClick={onOpenCommandPalette}
+          className="px-4 py-2 text-[10px] uppercase tracking-wider border border-white/30 text-white/50 hover:border-white hover:text-white transition-colors"
+        >
+          [Ctrl+K] Open Command Palette
+        </button>
       </div>
-
-      {/* Agency Mind Panel */}
-      {agencyId && (
-        <MindPanel
-          isOpen={isMindOpen}
-          onClose={() => setIsMindOpen(false)}
-          agencyId={agencyId}
-          agencyName={agencies.find((a) => a.id === agencyId)?.name}
-          mindState={mindState}
-          runState={mindRunState}
-          connected={mindConnected}
-          loading={isMindLoading || mindAgentLoading}
-          onSendMessage={sendMindMessage}
-          onStop={cancelMind}
-        />
-      )}
     </div>
   );
 }

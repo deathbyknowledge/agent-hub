@@ -68,21 +68,6 @@ export interface Todo {
   completedAt?: string;
 }
 
-// Activity item for unified feed
-export interface ActivityItem {
-  id: string;
-  timestamp: string;
-  type: "message" | "agent_event" | "system";
-  from?: string;
-  to?: string;
-  content?: string;
-  agentId?: string;
-  agentType?: string;
-  event?: string;
-  details?: string;
-  status?: "running" | "done" | "error";
-}
-
 // Dashboard metrics
 export interface DashboardMetrics {
   agents: { total: number; active: number; idle: number; error: number };
@@ -98,11 +83,4 @@ export interface MemoryDisk {
   name: string;
   description?: string;
   size?: number;
-}
-
-// Mention target for command input
-export interface MentionTarget {
-  id: string;
-  label: string;
-  type: "mind" | "blueprint" | "agent";
 }

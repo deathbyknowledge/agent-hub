@@ -4,10 +4,11 @@ export { Select } from "./Select";
 export { LayerCard, LayerCardContent, LayerCardFooter } from "./LayerCard";
 
 // Layout components
-export { Sidebar } from "./Sidebar";
 export { ContentHeader } from "./ContentHeader";
-export { HomeView } from "./HomeView";
-export { MindPanel } from "./MindPanel";
+export { TopHeader } from "./TopHeader";
+export { TabBar, type OpenTab } from "./TabBar";
+export { CommandPalette } from "./CommandPalette";
+export { AgentPanel } from "./AgentPanel";
 
 // View components
 export { ChatView } from "./ChatView";
@@ -37,10 +38,8 @@ export type {
   Message,
   ToolCall,
   Todo,
-  ActivityItem,
   DashboardMetrics,
   MemoryDisk,
-  MentionTarget,
 } from "./shared";
 
 // Re-export TraceView types
