@@ -147,6 +147,9 @@ export default defineConfig({
       srcDir: "./${relativeSrc}",
     }),
   ],
+  server: {
+    cors: true, // Allow cross-origin requests in dev mode
+  },
 });
 `;
 
