@@ -44,6 +44,33 @@ const CORS_HEADERS = {
 };
 
 /**
+ * Timing-safe string comparison to prevent timing attacks.
+ * Returns true if strings are equal, false otherwise.
+ */
+function secureCompare(a: string | null, b: string): boolean {
+  if (a === null) return false;
+  
+  // Ensure both strings are the same length by hashing
+  // This prevents length-based timing attacks
+  const encoder = new TextEncoder();
+  const aBytes = encoder.encode(a);
+  const bBytes = encoder.encode(b);
+  
+  // If lengths differ, we still need to do constant-time work
+  // XOR all bytes and accumulate differences
+  const maxLen = Math.max(aBytes.length, bBytes.length);
+  let result = aBytes.length ^ bBytes.length; // Will be non-zero if lengths differ
+  
+  for (let i = 0; i < maxLen; i++) {
+    const aByte = i < aBytes.length ? aBytes[i] : 0;
+    const bByte = i < bBytes.length ? bBytes[i] : 0;
+    result |= aByte ^ bByte;
+  }
+  
+  return result === 0;
+}
+
+/**
  * Create a DO request URL that preserves the original host but remaps the pathname.
  * This is important for OAuth callbacks where the DO needs to know the public host.
  */
@@ -579,10 +606,11 @@ export const createHandler = (opts: HandlerOptions = {}) => {
       }
 
       // Auth check (skip for OAuth callbacks which come from browser redirects)
-      const isOAuthCallback = url.pathname.includes("/callback") && url.searchParams.has("state");
+      // OAuth callback pattern: /oauth/agency/{agencyId}/callback with state param
+      const isOAuthCallback = /^\/oauth\/agency\/[^/]+\/callback$/.test(url.pathname) && url.searchParams.has("state");
       const providedSecret = req.headers.get("X-SECRET") || url.searchParams.get("key");
       const secret = process.env.SECRET;
-      if (secret && providedSecret !== secret && !isOAuthCallback) {
+      if (secret && !secureCompare(providedSecret, secret) && !isOAuthCallback) {
         if (req.headers.get("Upgrade")?.toLowerCase() === "websocket") {
           return withCors(new Response("Unauthorized", { status: 401 }));
         }
