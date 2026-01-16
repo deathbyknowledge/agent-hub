@@ -14,7 +14,7 @@ _Take a look at [this](https://github.com/deathbyknowledge/agent-hub#full-pictur
 
 - **Runtime**: The serverless runtime where each Agent has its own [compute and storage](https://developers.cloudflare.com/agents/concepts/agent-class/#what-is-the-agent). Multi-tenant via **Agencies** - each Agency holds configuration for its Agents, which can communicate with each other. Exposes a full [HTTP API](docs/reference/http-api.md). See [lib/README.md](lib/README.md) for usage.
 - **Client**: An HTTP/WS client library for any application. See [lib/README.md](lib/README.md) for usage.
-- **Example UI**: A web UI for managing Agencies and Agents. It's a static app using the Runtime API. I use it as my personal hub but you're free to use it. Feel free to build your own or skip the UI entirely.
+- **Control Plane**: A universal web UI for managing any Agent Hub deployment. Deploy it once and connect to any hub. See [examples/control-plane](examples/control-plane).
 ## Features
 
 - **Serverless agents** - Each agent has isolated compute and persistent storage
@@ -56,7 +56,10 @@ Start the development server:
 npm run dev
 ```
 
-Open http://localhost:5173 to see your hub running.
+Your hub is now running at http://localhost:5173. To manage it, either:
+- Use the **Control Plane** UI (see below)
+- Use the HTTP API directly
+- Build your own UI with the client library
 
 ### CLI Commands
 
@@ -150,6 +153,25 @@ export const myPlugin: AgentPlugin = {
 ```
 
 See the [Plugin Guide](docs/guides/plugins.md) for all available hooks and examples.
+
+## Control Plane UI
+
+The Control Plane is a universal dashboard that can connect to **any** deployed Agent Hub. Deploy it once and manage all your hubs from one place.
+
+```sh
+cd examples/control-plane
+npm run dev      # Local development
+npm run deploy   # Deploy to Cloudflare Pages
+```
+
+Then enter your hub's URL (e.g., `https://my-hub.workers.dev`) to connect.
+
+Features:
+- Connect to any hub by URL
+- Full agent management (spawn, chat, delete)
+- Blueprint and schedule configuration
+- Real-time event streaming
+- File browser
 
 ## Deployment
 
