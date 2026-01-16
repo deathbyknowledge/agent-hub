@@ -63,6 +63,10 @@
          ============================================ */
       
       :root {
+        /* Override Tailwind's default font */
+        --default-font-family: 'Berkeley Mono', monospace;
+        --default-mono-font-family: 'Berkeley Mono', monospace;
+        
         /* Core palette - brutal contrast */
         --color-bg: #000000;
         --color-fg: #ffffff;
@@ -221,6 +225,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/ui/App.tsx"></script>
+    <script type="module" src="/src/App.tsx"></script>
   </body>
 </html>

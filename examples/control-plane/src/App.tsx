@@ -24,10 +24,14 @@ import {
   useAgent,
   usePlugins,
   setStoredSecret,
+  getStoredHubUrl,
+  setStoredHubUrl,
+  clearStoredHubUrl,
+  isHubConfigured,
   QueryClient,
   QueryClientProvider,
 } from "./hooks";
-import type { AgentBlueprint, ChatMessage, ToolCall as APIToolCall, AgentSummary } from "agents-hub/client";
+import type { AgentBlueprint, ChatMessage, AgentSummary, AgencyMeta } from "agents-hub/client";
 import { createRoot } from "react-dom/client";
 import { convertChatMessages } from "./components/shared";
 
@@ -39,6 +43,118 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// ============================================================================
+// Hub Connection Screen - Connect to any Agent Hub deployment
+// ============================================================================
+
+function HubConnectScreen({
+  onConnect,
+  error,
+}: {
+  onConnect: (url: string, secret?: string) => void;
+  error?: string;
+}) {
+  const [hubUrl, setHubUrl] = useState(getStoredHubUrl() || "");
+  const [secret, setSecret] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  // Detect mixed content issue (HTTPS page trying to connect to HTTP hub)
+  const isHttpsPage = window.location.protocol === "https:";
+  const isHttpHub = hubUrl.trim().toLowerCase().startsWith("http://");
+  const hasMixedContentIssue = isHttpsPage && isHttpHub;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hubUrl.trim()) return;
+    
+    setIsConnecting(true);
+    onConnect(hubUrl.trim(), secret.trim() || undefined);
+  };
+
+  return (
+    <div className="h-screen flex items-center justify-center bg-black p-4">
+      <div className="max-w-md w-full border border-white overflow-hidden">
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-white">
+          <div className="text-center">
+            <div className="text-[#00ff00] text-4xl mb-3 font-mono">█</div>
+            <h1 className="text-xs uppercase tracking-widest text-white mb-1">
+              AGENT_HUB // CONTROL_PLANE
+            </h1>
+            <p className="text-[10px] uppercase tracking-wider text-white/40">
+              CONNECT TO ANY DEPLOYED HUB
+            </p>
+          </div>
+        </div>
+
+        {/* Content */}
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider text-white/50 mb-2">
+              HUB_URL:
+            </label>
+            <input
+              type="url"
+              value={hubUrl}
+              onChange={(e) => setHubUrl(e.target.value)}
+              placeholder="https://your-hub.workers.dev"
+              autoFocus
+              className="w-full px-3 py-2 border border-white/50 bg-black text-white text-xs tracking-wider placeholder:text-white/30 focus:outline-none focus:border-white font-mono"
+            />
+            <p className="mt-1 text-[9px] text-white/30">
+              Enter the URL of your deployed Agent Hub
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider text-white/50 mb-2">
+              SECRET (OPTIONAL):
+            </label>
+            <input
+              type="password"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder="••••••••"
+              className="w-full px-3 py-2 border border-white/50 bg-black text-white text-xs tracking-wider placeholder:text-white/20 focus:outline-none focus:border-white"
+            />
+            <p className="mt-1 text-[9px] text-white/30">
+              Required if the hub has authentication enabled
+            </p>
+          </div>
+
+          {hasMixedContentIssue && (
+            <div className="p-2 border border-[#ffaa00] text-[#ffaa00] text-[10px] uppercase tracking-wider">
+              WARNING: HTTPS page cannot connect to HTTP hub (mixed content).
+              Use a tunnel (cloudflared/ngrok) or run control-plane locally.
+            </div>
+          )}
+
+          {error && (
+            <div className="p-2 border border-[#ff0000] text-[#ff0000] text-[10px] uppercase tracking-wider">
+              ERROR: {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={!hubUrl.trim() || isConnecting || hasMixedContentIssue}
+            className="w-full px-4 py-2 text-[11px] uppercase tracking-widest bg-white text-black border border-white hover:bg-black hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            {isConnecting ? "CONNECTING..." : "CONNECT TO HUB"}
+          </button>
+        </form>
+
+        {/* Footer */}
+        <div className="px-4 py-2 border-t border-white/20 text-center">
+          <span className="text-[10px] text-white/20 font-mono">
+            UNIVERSAL CONTROL PLANE | v0.1
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ============================================================================
 // Helper Functions
@@ -54,8 +170,6 @@ function BlueprintPicker({
   onSelect: (bp: AgentBlueprint) => void;
   onClose: () => void;
 }) {
-  // All blueprints are visible (no filtering)
-
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
       <div className="bg-black border border-white max-w-md w-full mx-4 overflow-hidden">
@@ -172,10 +286,14 @@ function AgencySelectModal({
   agencies,
   onSelect,
   onCreate,
+  hubUrl,
+  onDisconnect,
 }: {
   agencies: { id: string; name?: string }[];
   onSelect: (id: string) => void;
   onCreate: (name: string) => void;
+  hubUrl: string;
+  onDisconnect: () => void;
 }) {
   const [mode, setMode] = useState<"select" | "create">(agencies.length > 0 ? "select" : "create");
   const [newName, setNewName] = useState("");
@@ -187,7 +305,27 @@ function AgencySelectModal({
   };
 
   return (
-    <div className="h-screen flex items-center justify-center bg-black p-4">
+    <div className="h-screen flex flex-col bg-black">
+      {/* Hub connection bar - always visible */}
+      <div className="px-3 py-1.5 border-b border-white/20 bg-black flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] uppercase tracking-wider text-white/40">
+            CONNECTED:
+          </span>
+          <span className="text-[9px] font-mono text-[#00ff00] truncate max-w-[300px]">
+            {hubUrl}
+          </span>
+        </div>
+        <button
+          onClick={onDisconnect}
+          className="text-[9px] uppercase tracking-wider text-white/40 hover:text-[#ff0000] transition-colors"
+        >
+          [DISCONNECT]
+        </button>
+      </div>
+
+      {/* Centered content */}
+      <div className="flex-1 flex items-center justify-center p-4">
       <div className="max-w-md w-full border border-white overflow-hidden">
         {/* Header */}
         <div className="px-4 py-3 border-b border-white">
@@ -318,6 +456,7 @@ function AgencySelectModal({
             SYS.BUILD: v0.1 | STATUS: READY
           </span>
         </div>
+      </div>
       </div>
     </div>
   );
@@ -507,7 +646,6 @@ function AgentView({
     events,
     sendMessage,
     cancel,
-    loading: agentLoading,
   } = useAgent(agencyId, agentId);
   const [, navigate] = useLocation();
   const { showError } = useToast();
@@ -520,7 +658,7 @@ function AgentView({
   } | null>(null);
   const [showDeleteAgent, setShowDeleteAgent] = useState(false);
 
-  const selectedAgent = agents.find((a) => a.id === agentId);
+  const selectedAgent = agents.find((a: AgentSummary) => a.id === agentId);
 
   // Get messages from agent state
   const messages = useMemo(() => {
@@ -695,7 +833,7 @@ function SettingsRoute({
   } = useAgency(agencyId);
   const { agencies } = useAgencies();
   const { plugins, tools } = usePlugins();
-  const agency = agencies.find((a) => a.id === agencyId);
+  const agency = agencies.find((a: { id: string }) => a.id === agencyId);
   const [, navigate] = useLocation();
   const [showDeleteAgency, setShowDeleteAgency] = useState(false);
 
@@ -772,12 +910,61 @@ function SettingsRoute({
 }
 
 // ============================================================================
+// Connected Header - shows hub URL and disconnect option
+// ============================================================================
+
+function ConnectedTopHeader({
+  hubUrl,
+  onDisconnect,
+  ...props
+}: {
+  hubUrl: string;
+  onDisconnect: () => void;
+  agencies: AgencyMeta[];
+  selectedAgencyId: string | null;
+  selectedAgencyName?: string;
+  onSelectAgency: (id: string) => void;
+  onCreateAgency: () => void;
+  onOpenSettings: () => void;
+  onOpenCommandPalette: () => void;
+  onTogglePanel: () => void;
+  isPanelOpen: boolean;
+}) {
+  return (
+    <div className="flex flex-col">
+      {/* Hub connection bar */}
+      <div className="px-3 py-1 border-b border-white/20 bg-black flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] uppercase tracking-wider text-white/40">
+            CONNECTED:
+          </span>
+          <span className="text-[9px] font-mono text-[#00ff00]">
+            {hubUrl}
+          </span>
+        </div>
+        <button
+          onClick={onDisconnect}
+          className="text-[9px] uppercase tracking-wider text-white/40 hover:text-[#ff0000] transition-colors"
+        >
+          [DISCONNECT]
+        </button>
+      </div>
+      <TopHeader {...props} />
+    </div>
+  );
+}
+
+// ============================================================================
 // App Component - IDE-style layout with tabs
 // ============================================================================
 
-export default function App() {
+function MainApp() {
   const [location, navigate] = useLocation();
   const { showError } = useToast();
+
+  // Hub connection state
+  const [hubConfigured, setHubConfigured] = useState(isHubConfigured());
+  const [connectionError, setConnectionError] = useState<string | undefined>();
 
   // Auth state
   const [isLocked, setIsLocked] = useState(false);
@@ -811,7 +998,7 @@ export default function App() {
   const isUnauthorized = agenciesError?.message.includes("401") ?? false;
 
   // Current agency
-  const currentAgency = agencies.find((a) => a.id === agencyId);
+  const currentAgency = agencies.find((a: { id: string }) => a.id === agencyId);
 
   // Track running agents
   const runningAgentIds = useMemo(() => {
@@ -826,7 +1013,7 @@ export default function App() {
   useEffect(() => {
     if (!agentId || !agencyId) return;
     
-    const agent = agents.find((a) => a.id === agentId);
+    const agent = agents.find((a: AgentSummary) => a.id === agentId);
     if (!agent) return;
 
     // Check if tab already exists
@@ -868,6 +1055,26 @@ export default function App() {
       setIsLocked(true);
     }
   }, [agenciesError]);
+
+  // Handle hub connection
+  const handleConnect = useCallback((url: string, secret?: string) => {
+    setStoredHubUrl(url);
+    if (secret) {
+      setStoredSecret(secret);
+    }
+    setConnectionError(undefined);
+    setHubConfigured(true);
+    // Force re-render with new client
+    window.location.reload();
+  }, []);
+
+  // Handle hub disconnection
+  const handleDisconnect = useCallback(() => {
+    clearStoredHubUrl();
+    setHubConfigured(false);
+    navigate("/");
+    window.location.reload();
+  }, [navigate]);
 
   // Handle unlock attempt
   const handleUnlock = useCallback((secret: string) => {
@@ -1014,6 +1221,16 @@ export default function App() {
     }
   };
 
+  // Show hub connection screen if not configured
+  if (!hubConfigured) {
+    return (
+      <HubConnectScreen
+        onConnect={handleConnect}
+        error={connectionError}
+      />
+    );
+  }
+
   // Loading state
   if (!agenciesFetched) {
     return <AuthLoadingScreen />;
@@ -1034,17 +1251,22 @@ export default function App() {
           const agency = await createAgency(name);
           navigate(`/${agency.id}`);
         }}
+        hubUrl={getStoredHubUrl() || ""}
+        onDisconnect={handleDisconnect}
       />
     );
   }
 
   // Active tab ID
   const activeTabId = agentId ? `tab-${agentId}` : null;
+  const hubUrl = getStoredHubUrl() || "";
 
   return (
     <div className="h-screen flex flex-col bg-black">
-      {/* Top Header */}
-      <TopHeader
+      {/* Top Header with hub connection info */}
+      <ConnectedTopHeader
+        hubUrl={hubUrl}
+        onDisconnect={handleDisconnect}
         agencies={agencies}
         selectedAgencyId={agencyId}
         selectedAgencyName={currentAgency?.name}
@@ -1142,14 +1364,18 @@ function EmptyState({ onOpenCommandPalette }: { onOpenCommandPalette: () => void
   );
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <ToastProvider>
-          <App />
-        </ToastProvider>
-      </QueryClientProvider>
-    </ErrorBoundary>
-  </StrictMode>
-);
+export default function App() {
+  return (
+    <StrictMode>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <ToastProvider>
+            <MainApp />
+          </ToastProvider>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </StrictMode>
+  );
+}
+
+createRoot(document.getElementById("root")!).render(<App />);

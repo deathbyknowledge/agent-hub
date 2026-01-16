@@ -1,28 +1,28 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
 import hub from "agents-hub/vite";
 
 const sandbox = (process.env.SANDBOX ?? "0") === "1";
 
 export default defineConfig({
   plugins: [
-    react(),
     hub({
       srcDir: "./hub",
       outFile: "./_generated.ts",
       defaultModel: "z-ai/glm-4.7",
       sandbox,
-      metrics: true, // Enable Analytics Engine metrics
       cloudflare: {
         name: "agents-hub",
         routes: [
           {
-            pattern: "hub.deathbyknowledge.com", // don't add this to yours :)
+            pattern: "hub.deathbyknowledge.com",
             zone_name: "deathbyknowledge.com",
             custom_domain: true,
           },
         ],
       },
     }),
-  ]
+  ],
+  server: {
+    cors: true, // Allow cross-origin requests from control-plane
+  },
 });

@@ -19,9 +19,41 @@ import {
   type AddMcpServerRequest,
 } from "agents-hub/client";
 
-// Get base URL from current location
+// ============================================================================
+// Hub Connection Storage - supports connecting to any remote hub
+// ============================================================================
+
+// Get hub URL from localStorage (for universal control plane)
+export function getStoredHubUrl(): string | undefined {
+  const url = localStorage.getItem("hub_url");
+  return url || undefined;
+}
+
+// Set hub URL in localStorage
+export function setStoredHubUrl(url: string): void {
+  // Normalize URL - remove trailing slash
+  const normalized = url.replace(/\/+$/, "");
+  localStorage.setItem("hub_url", normalized);
+  clientInstance = null;
+  // Clear all WebSocket managers when hub changes
+  agencyWsManagers.clear();
+}
+
+// Clear hub URL from localStorage
+export function clearStoredHubUrl(): void {
+  localStorage.removeItem("hub_url");
+  clientInstance = null;
+  agencyWsManagers.clear();
+}
+
+// Check if hub is configured
+export function isHubConfigured(): boolean {
+  return !!localStorage.getItem("hub_url");
+}
+
+// Get base URL - uses stored hub URL or falls back to current origin
 function getBaseUrl(): string {
-  return window.location.origin;
+  return getStoredHubUrl() || window.location.origin;
 }
 
 // Get secret from localStorage

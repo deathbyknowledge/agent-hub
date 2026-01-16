@@ -1,6 +1,6 @@
 {
   "name": "personal-hub",
-  "description": "Personal AgentHub deployment",
+  "description": "Personal AgentHub deployment (backend only - use control-plane for UI)",
   "type": "module",
   "version": "0.0.1",
   "license": "MIT",
@@ -17,23 +17,12 @@
   },
   "dependencies": {
     "@cloudflare/sandbox": "^0.6.7",
-    "@tanstack/react-query": "^5.90.12",
-    "agent-hub": "^0.0.1",
     "agents": "^0.3.3",
-    "clsx": "^2.1.1",
-    "hnsw": "^1.0.3",
-    "react-dom": "^19.0.0",
-    "tailwind-merge": "^3.4.0",
-    "wouter": "^3.8.1"
+    "hnsw": "^1.0.3"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.19.0",
     "@cloudflare/workers-types": "^4.20251221.0",
     "@types/node": "^25.0.3",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.4",
-    "react": "^19.2.1",
     "typedoc": "^0.28.15",
     "vite": "^7.3.0"
   }
