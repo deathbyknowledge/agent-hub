@@ -624,7 +624,7 @@ export const createHandler = (opts: HandlerOptions = {}) => {
           return withCors(new Response("Unauthorized", { status: 401 }));
         }
         return new Response(
-          "Forbidden: Please provide ?key=YOUR_SECRET or set hub_secret in localStorage",
+          "Forbidden: Please provide ?key=YOUR_SECRET or X-SECRET header",
           { status: 403 }
         );
       }
