@@ -209,7 +209,7 @@ export class Agency extends Agent<AgentEnv> {
     router.get("/mcp", () => this.handleListMcpServers());
     router.post("/mcp", (req: IRequest) => this.handleAddMcpServer(req));
     router.delete("/mcp/:id", (req: IRequest) => this.handleRemoveMcpServer(req.params.id));
-    router.post("/mcp/:id/retry", (req: IRequest) => this.handleRetryMcpServer(req.params.id));
+    router.post("/mcp/:id/retry", (req: IRequest) => this.handleRetryMcpServer(req.params.id, req));
     router.get("/mcp/tools", () => this.handleListMcpTools());
     router.post("/mcp/call", (req: IRequest) => this.handleMcpToolCall(req));
 
@@ -394,13 +394,16 @@ export class Agency extends Agent<AgentEnv> {
     }
 
     try {
+      // Extract callback host from request for OAuth redirects
+      const callbackHost = new URL(req.url).origin;
+      
       // Use SDK's addMcpServer - it returns { id, authUrl }
       // Pass headers through transport options if provided (for token auth)
       const result = await this.addMcpServer(
         body.name,
         body.url,
-        undefined, // callbackHost (auto-derived from request)
-        undefined, // agentsPrefix
+        callbackHost,
+        "oauth", // Callback URL: /oauth/agency/{name}/callback
         body.headers ? { transport: { headers: body.headers } } : undefined
       );
       
@@ -438,7 +441,7 @@ export class Agency extends Agent<AgentEnv> {
     }
   }
 
-  private async handleRetryMcpServer(id: string): Promise<Response> {
+  private async handleRetryMcpServer(id: string, req: Request): Promise<Response> {
     const mcpState = this.getMcpServers();
     const serverState = mcpState.servers[id];
     if (!serverState) {
@@ -449,9 +452,11 @@ export class Agency extends Agent<AgentEnv> {
       // Remove and re-add the server to retry connection
       const name = serverState.name;
       const url = serverState.server_url;
+      // Extract callback host from request for OAuth redirects
+      const callbackHost = new URL(req.url).origin;
       
       await this.removeMcpServer(id);
-      const result = await this.addMcpServer(name, url);
+      const result = await this.addMcpServer(name, url, callbackHost, "oauth");
       
       const newMcpState = this.getMcpServers();
       const newServerState = newMcpState.servers[result.id];

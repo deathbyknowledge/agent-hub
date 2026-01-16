@@ -356,7 +356,7 @@ function buildCloudflareConfig(
     compatibility_flags: ["nodejs_compat", "allow_importable_env"],
     assets: {
       not_found_handling: "single-page-application",
-      run_worker_first: ["/api/*", "/agencies", "/agency/*", "/plugins"],
+      run_worker_first: ["/api/*", "/agencies", "/agency/*", "/plugins", "/oauth/*"],
     },
     r2_buckets: [
       {

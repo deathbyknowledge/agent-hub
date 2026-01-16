@@ -43,6 +43,16 @@ const CORS_HEADERS = {
   "Access-Control-Max-Age": "86400",
 };
 
+/**
+ * Create a DO request URL that preserves the original host but remaps the pathname.
+ * This is important for OAuth callbacks where the DO needs to know the public host.
+ */
+function createDoUrl(req: Request, pathname: string): URL {
+  const url = new URL(req.url);
+  url.pathname = pathname;
+  return url;
+}
+
 function withCors(response: Response): Response {
   // Don't wrap WebSocket upgrade responses - they have a webSocket property
   // that gets lost when creating a new Response
@@ -190,12 +200,12 @@ async function requireAgency(agencyId: string, env: HandlerEnv): Promise<Respons
 
 const deleteAgency = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request("http://do/destroy", { method: "DELETE" }));
+  return agencyStub.fetch(new Request(createDoUrl(req, "/destroy"), { method: "DELETE" }));
 };
 
 const listBlueprints = async (req: IRequest, { ctx, opts }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  const res = await agencyStub.fetch(new Request("http://do/blueprints"));
+  const res = await agencyStub.fetch(new Request(createDoUrl(req, "/blueprints")));
   if (!res.ok) return res;
 
   const dynamic = await res.json<{ blueprints: AgentBlueprint[] }>();
@@ -209,13 +219,13 @@ const listBlueprints = async (req: IRequest, { ctx, opts }: RequestContext) => {
 
 const createBlueprint = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request("http://do/blueprints", req));
+  return agencyStub.fetch(new Request(createDoUrl(req, "/blueprints"), req));
 };
 
 const deleteBlueprint = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request(`http://do/blueprints/${req.params.blueprintName}`, { method: "DELETE" })
+    new Request(createDoUrl(req, `/blueprints/${req.params.blueprintName}`), { method: "DELETE" })
   );
 };
 
@@ -224,7 +234,7 @@ const listAgents = async (req: IRequest, { ctx, env }: RequestContext) => {
   if (notFound) return notFound;
   
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request("http://do/agents"));
+  return agencyStub.fetch(new Request(createDoUrl(req, "/agents")));
 };
 
 const createAgent = async (req: IRequest, { ctx, env }: RequestContext) => {
@@ -236,7 +246,7 @@ const createAgent = async (req: IRequest, { ctx, env }: RequestContext) => {
   body.requestContext = buildRequestContext(req);
 
   return agencyStub.fetch(
-    new Request("http://do/agents", {
+    new Request(createDoUrl(req, "/agents"), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
@@ -247,29 +257,29 @@ const createAgent = async (req: IRequest, { ctx, env }: RequestContext) => {
 const deleteAgent = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request(`http://do/agents/${req.params.agentId}`, { method: "DELETE" })
+    new Request(createDoUrl(req, `/agents/${req.params.agentId}`), { method: "DELETE" })
   );
 };
 
 const getAgentTree = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request(`http://do/agents/${req.params.agentId}/tree`));
+  return agencyStub.fetch(new Request(createDoUrl(req, `/agents/${req.params.agentId}/tree`)));
 };
 
 const getAgentForest = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request("http://do/agents/tree"));
+  return agencyStub.fetch(new Request(createDoUrl(req, "/agents/tree")));
 };
 
 const listSchedules = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request("http://do/schedules"));
+  return agencyStub.fetch(new Request(createDoUrl(req, "/schedules")));
 };
 
 const createSchedule = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request("http://do/schedules", {
+    new Request(createDoUrl(req, "/schedules"), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: req.body,
@@ -279,13 +289,13 @@ const createSchedule = async (req: IRequest, { ctx }: RequestContext) => {
 
 const getSchedule = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request(`http://do/schedules/${req.params.scheduleId}`));
+  return agencyStub.fetch(new Request(createDoUrl(req, `/schedules/${req.params.scheduleId}`)));
 };
 
 const updateSchedule = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request(`http://do/schedules/${req.params.scheduleId}`, {
+    new Request(createDoUrl(req, `/schedules/${req.params.scheduleId}`), {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: req.body,
@@ -296,34 +306,34 @@ const updateSchedule = async (req: IRequest, { ctx }: RequestContext) => {
 const deleteSchedule = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request(`http://do/schedules/${req.params.scheduleId}`, { method: "DELETE" })
+    new Request(createDoUrl(req, `/schedules/${req.params.scheduleId}`), { method: "DELETE" })
   );
 };
 
 const pauseSchedule = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request(`http://do/schedules/${req.params.scheduleId}/pause`, { method: "POST" })
+    new Request(createDoUrl(req, `/schedules/${req.params.scheduleId}/pause`), { method: "POST" })
   );
 };
 
 const resumeSchedule = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request(`http://do/schedules/${req.params.scheduleId}/resume`, { method: "POST" })
+    new Request(createDoUrl(req, `/schedules/${req.params.scheduleId}/resume`), { method: "POST" })
   );
 };
 
 const triggerSchedule = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request(`http://do/schedules/${req.params.scheduleId}/trigger`, { method: "POST" })
+    new Request(createDoUrl(req, `/schedules/${req.params.scheduleId}/trigger`), { method: "POST" })
   );
 };
 
 const getScheduleRuns = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request(`http://do/schedules/${req.params.scheduleId}/runs`));
+  return agencyStub.fetch(new Request(createDoUrl(req, `/schedules/${req.params.scheduleId}/runs`)));
 };
 
 // --- Vars ---
@@ -333,7 +343,7 @@ const getVars = async (req: IRequest, { ctx, env }: RequestContext) => {
   if (notFound) return notFound;
   
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request("http://do/vars"));
+  return agencyStub.fetch(new Request(createDoUrl(req, "/vars")));
 };
 
 const setVars = async (req: IRequest, { ctx, env }: RequestContext) => {
@@ -342,7 +352,7 @@ const setVars = async (req: IRequest, { ctx, env }: RequestContext) => {
   
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request("http://do/vars", {
+    new Request(createDoUrl(req, "/vars"), {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: req.body,
@@ -355,7 +365,7 @@ const getVar = async (req: IRequest, { ctx, env }: RequestContext) => {
   if (notFound) return notFound;
   
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request(`http://do/vars/${req.params.varKey}`));
+  return agencyStub.fetch(new Request(createDoUrl(req, `/vars/${req.params.varKey}`)));
 };
 
 const setVar = async (req: IRequest, { ctx, env }: RequestContext) => {
@@ -364,7 +374,7 @@ const setVar = async (req: IRequest, { ctx, env }: RequestContext) => {
   
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request(`http://do/vars/${req.params.varKey}`, {
+    new Request(createDoUrl(req, `/vars/${req.params.varKey}`), {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: req.body,
@@ -375,7 +385,7 @@ const setVar = async (req: IRequest, { ctx, env }: RequestContext) => {
 const deleteVar = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request(`http://do/vars/${req.params.varKey}`, { method: "DELETE" })
+    new Request(createDoUrl(req, `/vars/${req.params.varKey}`), { method: "DELETE" })
   );
 };
 
@@ -383,13 +393,13 @@ const deleteVar = async (req: IRequest, { ctx }: RequestContext) => {
 
 const listMcpServers = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request("http://do/mcp"));
+  return agencyStub.fetch(new Request(createDoUrl(req, "/mcp")));
 };
 
 const addMcpServer = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request("http://do/mcp", {
+    new Request(createDoUrl(req, "/mcp"), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: req.body,
@@ -400,26 +410,26 @@ const addMcpServer = async (req: IRequest, { ctx }: RequestContext) => {
 const removeMcpServer = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request(`http://do/mcp/${req.params.serverId}`, { method: "DELETE" })
+    new Request(createDoUrl(req, `/mcp/${req.params.serverId}`), { method: "DELETE" })
   );
 };
 
 const retryMcpServer = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request(`http://do/mcp/${req.params.serverId}/retry`, { method: "POST" })
+    new Request(createDoUrl(req, `/mcp/${req.params.serverId}/retry`), { method: "POST" })
   );
 };
 
 const listMcpTools = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request("http://do/mcp/tools"));
+  return agencyStub.fetch(new Request(createDoUrl(req, "/mcp/tools")));
 };
 
 const callMcpTool = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(
-    new Request("http://do/mcp/call", {
+    new Request(createDoUrl(req, "/mcp/call"), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: req.body,
@@ -431,7 +441,7 @@ const handleFilesystem = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   const fsPath = req.params.path || "";
   return agencyStub.fetch(
-    new Request(`http://do/fs/${fsPath}`, {
+    new Request(createDoUrl(req, `/fs/${fsPath}`), {
       method: req.method,
       headers: req.headers,
       body: req.body,
@@ -441,10 +451,18 @@ const handleFilesystem = async (req: IRequest, { ctx }: RequestContext) => {
 
 const getMetrics = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
-  return agencyStub.fetch(new Request("http://do/metrics"));
+  return agencyStub.fetch(new Request(createDoUrl(req, "/metrics")));
 };
 
 const handleAgencyWebSocket = async (req: IRequest, { ctx }: RequestContext) => {
+  const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
+  return agencyStub.fetch(req);
+};
+
+/**
+ * Handle MCP OAuth callbacks. Forwards to Agency DO where the SDK handles the OAuth flow.
+ */
+const handleMcpOAuthCallback = async (req: IRequest, { ctx }: RequestContext) => {
   const agencyStub = await getAgencyStub(req.params.agencyId, ctx);
   return agencyStub.fetch(req);
 };
@@ -545,6 +563,9 @@ export const createHandler = (opts: HandlerOptions = {}) => {
   router.all("/agency/:agencyId/agent/:agentId/:path+", handleAgentRequest);
   router.all("/agency/:agencyId/agent/:agentId", handleAgentRequest);
 
+  // MCP OAuth callbacks
+  router.get("/oauth/agency/:agencyId/callback", handleMcpOAuthCallback);
+
   // 404
   router.all("*", () => new Response("Not found", { status: 404 }));
 
@@ -557,10 +578,11 @@ export const createHandler = (opts: HandlerOptions = {}) => {
         return new Response(null, { status: 204, headers: CORS_HEADERS });
       }
 
-      // Auth check
+      // Auth check (skip for OAuth callbacks which come from browser redirects)
+      const isOAuthCallback = url.pathname.includes("/callback") && url.searchParams.has("state");
       const providedSecret = req.headers.get("X-SECRET") || url.searchParams.get("key");
       const secret = process.env.SECRET;
-      if (secret && providedSecret !== secret) {
+      if (secret && providedSecret !== secret && !isOAuthCallback) {
         if (req.headers.get("Upgrade")?.toLowerCase() === "websocket") {
           return withCors(new Response("Unauthorized", { status: 401 }));
         }
