@@ -388,4 +388,37 @@ export class Store {
     const result = this.sql.exec("SELECT changes() as deleted").toArray()[0];
     return result ? (result.deleted as number) : 0;
   }
+
+  /**
+   * Add multiple events in a batch.
+   * Events are assigned new sequence numbers (original seq is ignored).
+   */
+  addEvents(events: AgentEvent[]): number {
+    if (!events.length) return 0;
+
+    const PARAMS_PER_ROW = 3;
+    const MAX_PARAMS = 100;
+    const CHUNK_SIZE = Math.floor(MAX_PARAMS / PARAMS_PER_ROW);
+
+    let totalInserted = 0;
+
+    for (let i = 0; i < events.length; i += CHUNK_SIZE) {
+      const chunk = events.slice(i, i + CHUNK_SIZE);
+      const placeholders: string[] = [];
+      const bindings: unknown[] = [];
+
+      for (const e of chunk) {
+        placeholders.push(`(?, ?, ?)`);
+        bindings.push(e.type);
+        bindings.push(JSON.stringify(e.data));
+        bindings.push(e.ts);
+      }
+
+      const query = `INSERT INTO events (type, data, ts) VALUES ${placeholders.join(", ")}`;
+      this.sql.exec(query, ...bindings);
+      totalInserted += chunk.length;
+    }
+
+    return totalInserted;
+  }
 }

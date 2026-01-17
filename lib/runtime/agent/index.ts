@@ -44,6 +44,10 @@ export type Info = {
   agentType: string;
   pendingToolCalls?: ToolCall[];
   blueprint?: AgentBlueprint;
+  /** Thread ID this agent was forked from */
+  forkedFrom?: string;
+  /** Event sequence number this agent was forked at */
+  forkedAt?: number;
 };
 export abstract class HubAgent<
   Env extends AgentEnv = AgentEnv,
@@ -206,6 +210,17 @@ export abstract class HubAgent<
           return new Response("method not allowed", { status: 405 });
         }
         return this.exportEvents(req);
+      case "/fork":
+        if (req.method !== "POST") {
+          return new Response("method not allowed", { status: 405 });
+        }
+        return this.forkAgent(req);
+      // Internal endpoint for receiving copied events during fork
+      case "/internal/copy-events":
+        if (req.method !== "POST") {
+          return new Response("method not allowed", { status: 405 });
+        }
+        return this.copyEvents(req);
       default:
         return new Response("not found", { status: 404 });
     }
@@ -614,6 +629,130 @@ export abstract class HubAgent<
     }
 
     return Response.json(exportData);
+  }
+
+  /**
+   * POST /fork - Fork this agent at a specific point in history.
+   * Creates a new agent with events copied up to the specified sequence.
+   * 
+   * Request body:
+   * - at?: number - Sequence number to fork from (defaults to latest)
+   * - id?: string - Custom ID for the forked agent
+   */
+  async forkAgent(req: Request) {
+    const body = await req.json<{ at?: number; id?: string }>().catch(() => ({} as { at?: number; id?: string }));
+    const { at, id: customId } = body;
+
+    const { agencyId, agentType, createdAt } = this.info;
+    if (!agencyId || !agentType) {
+      return Response.json({ error: "Agent not initialized" }, { status: 400 });
+    }
+
+    // Get events up to the specified sequence (or all if not specified)
+    let events = this.store.listEvents();
+    if (at !== undefined) {
+      events = events.filter((e) => (e.seq ?? 0) <= at);
+    }
+
+    if (events.length === 0) {
+      return Response.json({ error: "No events to fork" }, { status: 400 });
+    }
+
+    // Generate a new agent ID or use custom ID
+    const forkId = customId ?? crypto.randomUUID();
+
+    // Get the Agency to spawn the new agent
+    const agencyStub = await getAgentByName(this.exports.Agency, agencyId);
+
+    // Spawn the forked agent
+    const spawnRes = await agencyStub.fetch(
+      new Request("http://do/agents", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          agentType,
+          id: forkId,
+          requestContext: {
+            ...this.info.request,
+            forkedFrom: this.info.threadId,
+            forkedAt: at ?? this.store.getMaxEventSeq(),
+          },
+        }),
+      })
+    );
+
+    if (!spawnRes.ok) {
+      const text = await spawnRes.text();
+      return Response.json({ error: `Failed to spawn fork: ${text}` }, { status: 500 });
+    }
+
+    const spawnData = (await spawnRes.json()) as { id: string };
+
+    // Get the forked agent stub
+    const forkStub = await getAgentByName(this.exports.HubAgent, spawnData.id);
+
+    // Copy events to the forked agent via a special endpoint
+    const copyRes = await forkStub.fetch(
+      new Request("http://do/internal/copy-events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          events,
+          sourceThreadId: this.info.threadId,
+          forkedAt: at ?? this.store.getMaxEventSeq(),
+        }),
+      })
+    );
+
+    if (!copyRes.ok) {
+      const text = await copyRes.text();
+      return Response.json({ error: `Failed to copy events: ${text}` }, { status: 500 });
+    }
+
+    return Response.json({
+      agent: {
+        id: spawnData.id,
+        agentType,
+        createdAt: new Date().toISOString(),
+      },
+      eventsCopied: events.length,
+    });
+  }
+
+  /**
+   * POST /internal/copy-events - Internal endpoint for receiving copied events during fork.
+   * This is called by the source agent to populate a forked agent with its events.
+   */
+  async copyEvents(req: Request) {
+    const body = await req.json<{
+      events: AgentEvent[];
+      sourceThreadId: string;
+      forkedAt: number;
+    }>().catch(() => null);
+
+    if (!body || !body.events || !Array.isArray(body.events)) {
+      return Response.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const { events, sourceThreadId, forkedAt } = body;
+
+    if (events.length === 0) {
+      return Response.json({ error: "No events to copy" }, { status: 400 });
+    }
+
+    // Store fork metadata in agent info
+    this.info.forkedFrom = sourceThreadId;
+    this.info.forkedAt = forkedAt;
+
+    // Add all events to the store (they get new sequence numbers)
+    const inserted = this.store.addEvents(events);
+
+    return Response.json({
+      ok: true,
+      eventsCopied: inserted,
+      sourceThreadId,
+      forkedAt,
+    });
   }
 
   /**

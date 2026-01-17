@@ -646,6 +646,8 @@ function AgentView({
     events,
     sendMessage,
     cancel,
+    fork,
+    getProjectionAt,
   } = useAgent(agencyId, agentId);
   const [, navigate] = useLocation();
   const { showError } = useToast();
@@ -657,6 +659,13 @@ function AgentView({
     type: string;
   } | null>(null);
   const [showDeleteAgent, setShowDeleteAgent] = useState(false);
+  
+  // Time-travel state
+  const [timeTravelSeq, setTimeTravelSeq] = useState<number | null>(null);
+  const [timeTravelState, setTimeTravelState] = useState<{
+    messages: Message[];
+    atSeq: number;
+  } | null>(null);
 
   const selectedAgent = agents.find((a: AgentSummary) => a.id === agentId);
 
@@ -695,6 +704,65 @@ function AgentView({
     }
   };
 
+  const handleFork = async (event: { seq?: number; type?: string }) => {
+    if (event.seq === undefined) return;
+    
+    // Only allow forking at stable points - after tool results or completed turns
+    const safeTypes = [
+      "gen_ai.agent.invoked",     // Start of agent
+      "gen_ai.agent.completed",   // Agent finished
+      "gen_ai.agent.paused",      // Waiting for approval
+      "gen_ai.tool.finish",       // Tool completed
+      "gen_ai.tool.error",        // Tool errored
+      "gen_ai.content.user_message", // User input
+    ];
+    
+    if (event.type && !safeTypes.includes(event.type)) {
+      showError(`Cannot fork at ${event.type} - try forking after a tool result or completed message`);
+      return;
+    }
+    
+    try {
+      const { id } = await fork(event.seq);
+      // Wait a bit for the agent to be registered in the agency
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await refreshAgents();
+      // Small delay to ensure React Query has updated
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      navigate(`/${agencyId}/${id}`);
+    } catch (err) {
+      console.error("[AgentView] Failed to fork agent:", err);
+      showError("Failed to fork agent. Please try again.");
+    }
+  };
+
+  // Time-travel handler
+  const handleTimeTravel = async (seq: number) => {
+    // Check if we're going back to live
+    const maxSeq = Math.max(...events.map((e) => e.seq ?? 0));
+    if (seq >= maxSeq) {
+      setTimeTravelSeq(null);
+      setTimeTravelState(null);
+      return;
+    }
+    
+    setTimeTravelSeq(seq);
+    try {
+      const result = await getProjectionAt(seq);
+      // Cast messages - legacy format from ?legacy=true matches ChatMessage type
+      const projectionMessages = convertChatMessages(
+        (result.projection.messages || []) as Parameters<typeof convertChatMessages>[0]
+      );
+      setTimeTravelState({
+        messages: projectionMessages,
+        atSeq: result.meta.atSeq ?? seq,
+      });
+    } catch (err) {
+      console.error("[AgentView] Failed to get projection:", err);
+      showError("Failed to load historical state.");
+    }
+  };
+
   if (!selectedAgent) {
     if (agencyLoading) {
       return (
@@ -718,6 +786,9 @@ function AgentView({
       onEventClick={(event, label, type) =>
         setSelectedEvent({ event, label, type })
       }
+      onFork={handleFork}
+      onTimeTravel={handleTimeTravel}
+      timeTravelSeq={timeTravelSeq}
     />
   );
 
@@ -745,13 +816,19 @@ function AgentView({
       {/* Main content area - chat takes priority */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Chat view - always visible, takes remaining space */}
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden relative">
+          {/* Time-travel indicator */}
+          {timeTravelState && (
+            <div className="absolute top-0 left-0 right-0 z-10 bg-[#ffaa00]/90 text-black text-[11px] uppercase tracking-wider text-center py-1 font-medium">
+              Viewing history at event #{timeTravelState.atSeq} — Messages are read-only
+            </div>
+          )}
           <ChatView
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            onStop={cancel}
-            isLoading={status === "running"}
-            scrollKey={agentId}
+            messages={timeTravelState?.messages ?? messages}
+            onSendMessage={timeTravelState ? undefined : handleSendMessage}
+            onStop={timeTravelState ? undefined : cancel}
+            isLoading={!timeTravelState && status === "running"}
+            scrollKey={timeTravelState ? `${agentId}-${timeTravelState.atSeq}` : agentId}
           />
         </div>
 

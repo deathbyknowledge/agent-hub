@@ -1283,11 +1283,35 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     }
   }, [agencyId]);
 
+  // Fork agent at a specific event sequence
+  const fork = useCallback(
+    async (atSeq?: number): Promise<{ id: string; agentType: string }> => {
+      const agentClient = agentClientRef.current;
+      if (!agentClient) throw new Error("No agent selected");
+      const result = await agentClient.fork({ at: atSeq });
+      return result.agent;
+    },
+    []
+  );
+
+  // Get projected state at a specific event sequence (time-travel)
+  const getProjectionAt = useCallback(
+    async (atSeq: number) => {
+      const agentClient = agentClientRef.current;
+      if (!agentClient) throw new Error("No agent selected");
+      const result = await agentClient.getProjection({ at: atSeq, legacy: true });
+      return result;
+    },
+    []
+  );
+
   return {
     ...hookState,
     sendMessage,
     cancel,
     approve,
+    fork,
+    getProjectionAt,
     refresh: fetchState,
     refreshEvents: fetchEvents,
     reconnect,

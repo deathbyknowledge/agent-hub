@@ -5,6 +5,7 @@ import type {
   ChatMessage,
   InvokeBody,
   RunState,
+  RunStatus,
   SubagentLink,
   ThreadMetadata,
   ToolCall,
@@ -309,6 +310,70 @@ export interface GetEventsResponse {
   events: AgentEvent[];
 }
 
+/** Projection state derived from events (event-sourced) */
+export interface ProjectionState {
+  messages: unknown[];
+  status: RunStatus;
+  step: number;
+  pendingToolCalls: ToolCall[];
+  vars: Record<string, unknown>;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  inferenceCount: number;
+  lastError?: { type: string; message?: string };
+}
+
+export interface GetProjectionResponse {
+  projection: ProjectionState;
+  meta: {
+    eventCount: number;
+    atSeq: number | null;
+  };
+}
+
+export interface GetProjectionOptions {
+  /** Sequence number to project up to (for time-travel) */
+  at?: number;
+  /** If true, convert messages to legacy format */
+  legacy?: boolean;
+}
+
+export interface ExportEventsResponse {
+  meta: {
+    threadId: string;
+    agencyId: string;
+    agentType: string;
+    createdAt: string;
+    exportedAt: string;
+    eventCount: number;
+  };
+  events: AgentEvent[];
+  snapshot?: {
+    lastEventSeq: number;
+    state: ProjectionState;
+    createdAt: string;
+  };
+}
+
+export interface ExportEventsOptions {
+  /** If true, include latest snapshot in export */
+  includeSnapshot?: boolean;
+}
+
+export interface ForkAgentResponse {
+  /** The new forked agent */
+  agent: AgentSummary;
+  /** Number of events copied to the fork */
+  eventsCopied: number;
+}
+
+export interface ForkAgentOptions {
+  /** Sequence number to fork from (defaults to latest) */
+  at?: number;
+  /** Custom ID for the forked agent */
+  id?: string;
+}
+
 export interface OkResponse {
   ok: boolean;
 }
@@ -466,6 +531,36 @@ export class AgentClient {
 
   async getEvents(): Promise<GetEventsResponse> {
     return this.request<GetEventsResponse>("GET", "/events");
+  }
+
+  /**
+   * Get projected state from events (event-sourced).
+   * Supports time-travel via the `at` option.
+   */
+  async getProjection(options: GetProjectionOptions = {}): Promise<GetProjectionResponse> {
+    const params = new URLSearchParams();
+    if (options.at !== undefined) params.set("at", String(options.at));
+    if (options.legacy) params.set("legacy", "true");
+    const query = params.toString();
+    return this.request<GetProjectionResponse>("GET", `/projection${query ? `?${query}` : ""}`);
+  }
+
+  /**
+   * Export all events for debugging or migration.
+   */
+  async exportEvents(options: ExportEventsOptions = {}): Promise<ExportEventsResponse> {
+    const params = new URLSearchParams();
+    if (options.includeSnapshot) params.set("includeSnapshot", "true");
+    const query = params.toString();
+    return this.request<ExportEventsResponse>("GET", `/export${query ? `?${query}` : ""}`);
+  }
+
+  /**
+   * Fork this agent at a specific point in its history.
+   * Creates a new agent with events up to the specified sequence.
+   */
+  async fork(options: ForkAgentOptions = {}): Promise<ForkAgentResponse> {
+    return this.request<ForkAgentResponse>("POST", "/fork", options);
   }
 
   async invoke(request: InvokeRequest = {}): Promise<InvokeResponse> {

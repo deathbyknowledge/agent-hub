@@ -36,7 +36,8 @@ function ThinkingIndicator() {
 
 interface ChatViewProps {
   messages: Message[];
-  onSendMessage: (content: string) => void;
+  /** If not provided, the input is hidden (read-only mode) */
+  onSendMessage?: (content: string) => void;
   onStop?: () => void;
   isLoading?: boolean;
   placeholder?: string;
@@ -287,7 +288,7 @@ export function ChatView({
   }, [scrollKey, messages.length, isLoading]);
 
   const handleSubmit = () => {
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || !onSendMessage) return;
     onSendMessage(input.trim());
     setInput("");
   };
@@ -333,50 +334,52 @@ export function ChatView({
         )}
       </div>
 
-      {/* Input area */}
-      <div className="border-t-2 border-white bg-black p-2 sm:p-3">
-        <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-stretch border border-white/50 focus-within:border-[#00ff00] focus-within:bg-black transition-colors">
-            {/* Line carets - one > per line */}
-            <div className="flex flex-col py-2 pl-2 pr-1 text-[#00ff00] text-xs font-mono select-none">
-              {Array.from({ length: Math.max(1, input.split('\n').length) }).map((_, i) => (
-                <span key={i} className="leading-[1.5] h-[18px]">&gt;</span>
-              ))}
+      {/* Input area - hidden in read-only mode */}
+      {onSendMessage && (
+        <div className="border-t-2 border-white bg-black p-2 sm:p-3">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-stretch border border-white/50 focus-within:border-[#00ff00] focus-within:bg-black transition-colors">
+              {/* Line carets - one > per line */}
+              <div className="flex flex-col py-2 pl-2 pr-1 text-[#00ff00] text-xs font-mono select-none">
+                {Array.from({ length: Math.max(1, input.split('\n').length) }).map((_, i) => (
+                  <span key={i} className="leading-[1.5] h-[18px]">&gt;</span>
+                ))}
+              </div>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={placeholder}
+                disabled={isLoading}
+                rows={1}
+                style={{ caretColor: '#00ff00' }}
+                className={cn(
+                  "w-full px-1 py-2 bg-transparent text-[#00ff00] text-xs font-mono leading-[1.5]",
+                  "placeholder:text-white/30 placeholder:uppercase placeholder:tracking-wider resize-none",
+                  "focus:outline-none",
+                  "disabled:opacity-30"
+                )}
+              />
             </div>
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={placeholder}
-              disabled={isLoading}
-              rows={1}
-              style={{ caretColor: '#00ff00' }}
-              className={cn(
-                "w-full px-1 py-2 bg-transparent text-[#00ff00] text-xs font-mono leading-[1.5]",
-                "placeholder:text-white/30 placeholder:uppercase placeholder:tracking-wider resize-none",
-                "focus:outline-none",
-                "disabled:opacity-30"
-              )}
-            />
-          </div>
 
-          {isLoading && onStop ? (
-            <Button variant="danger" onClick={onStop} icon={<span className="blink-hard">■</span>} size="sm">
-              ABORT
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              onClick={handleSubmit}
-              disabled={!input.trim() || isLoading}
-              size="sm"
-            >
-              [EXEC]
-            </Button>
-          )}
+            {isLoading && onStop ? (
+              <Button variant="danger" onClick={onStop} icon={<span className="blink-hard">■</span>} size="sm">
+                ABORT
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                onClick={handleSubmit}
+                disabled={!input.trim() || isLoading}
+                size="sm"
+              >
+                [EXEC]
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

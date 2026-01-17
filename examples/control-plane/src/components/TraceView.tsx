@@ -16,6 +16,12 @@ interface TraceViewProps {
   events: AgentEvent[];
   threads?: ThreadMeta[];
   onEventClick?: (event: AgentEvent, label: string, type: string) => void;
+  /** Fork the agent at this event's sequence number */
+  onFork?: (event: AgentEvent) => void;
+  /** Time-travel: callback when user selects a point in history */
+  onTimeTravel?: (seq: number) => void;
+  /** Currently selected time-travel position (null = live) */
+  timeTravelSeq?: number | null;
 }
 
 // ============================================================================
@@ -185,6 +191,20 @@ type ChildAgent = {
 
 type AgentStatus = "running" | "paused" | "done" | "error";
 
+// Safe event types for forking - these represent stable state boundaries
+const FORKABLE_EVENTS = new Set([
+  "gen_ai.agent.invoked",        // Start of agent
+  "gen_ai.agent.completed",      // Agent finished
+  "gen_ai.agent.paused",         // Waiting for approval
+  "gen_ai.tool.finish",          // Tool completed
+  "gen_ai.tool.error",           // Tool errored
+  "gen_ai.content.user_message", // User input
+]);
+
+function isForkableEvent(type: string): boolean {
+  return FORKABLE_EVENTS.has(type);
+}
+
 // ============================================================================
 // Utility Functions
 // ============================================================================
@@ -323,6 +343,7 @@ function InlineAgentCard({
   duration,
   depth,
   onEventClick,
+  onFork,
   eventsByThread,
   threadTypes,
 }: {
@@ -333,6 +354,7 @@ function InlineAgentCard({
   duration?: number;
   depth: number;
   onEventClick?: (event: AgentEvent, label: string, type: string) => void;
+  onFork?: (event: AgentEvent) => void;
   eventsByThread: Map<string, AgentEvent[]>;
   threadTypes: Map<string, string>;
 }) {
@@ -511,27 +533,41 @@ function InlineAgentCard({
 
                 return (
                   <div key={`${event.type}-${event.ts}-${idx}`}>
-                    <button
-                      onClick={() => onEventClick?.(event, label, event.type)}
-                      className="flex items-center gap-2 py-0.5 text-[11px] w-full text-left hover:bg-white/5 transition-colors"
-                    >
-                      <span className="text-[10px] text-white/30 font-mono w-16 shrink-0">
-                        {formatTime(event.ts)}
-                      </span>
-                      <span
-                        className={cn("text-[10px] w-14 shrink-0", config.color)}
+                    <div className="flex items-center gap-1 group">
+                      <button
+                        onClick={() => onEventClick?.(event, label, event.type)}
+                        className="flex items-center gap-2 py-0.5 text-[11px] flex-1 text-left hover:bg-white/5 transition-colors"
                       >
-                        {config.tag}
-                      </span>
-                      <span className="flex-1 truncate text-white/70 uppercase">
-                        {label}
-                      </span>
-                      {children && children.length > 0 && (
-                        <span className="text-[10px] text-[#00aaff]">
-                          {children.length}x SUB
+                        <span className="text-[10px] text-white/30 font-mono w-16 shrink-0">
+                          {formatTime(event.ts)}
                         </span>
+                        <span
+                          className={cn("text-[10px] w-14 shrink-0", config.color)}
+                        >
+                          {config.tag}
+                        </span>
+                        <span className="flex-1 truncate text-white/70 uppercase">
+                          {label}
+                        </span>
+                        {children && children.length > 0 && (
+                          <span className="text-[10px] text-[#00aaff]">
+                            {children.length}x SUB
+                          </span>
+                        )}
+                      </button>
+                      {onFork && event.seq !== undefined && isForkableEvent(event.type) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onFork(event);
+                          }}
+                          className="px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white/30 hover:text-white hover:bg-white/10 border border-white/10 hover:border-white/40 transition-all shrink-0"
+                          title={`Fork at event #${event.seq}`}
+                        >
+                          Fork
+                        </button>
                       )}
-                    </button>
+                    </div>
                     {/* Nested children under this tool call */}
                     {children && children.length > 0 && (
                       <div className="ml-4 mt-1 space-y-1">
@@ -564,6 +600,7 @@ function InlineAgentCard({
                               duration={childDuration}
                               depth={depth + 1}
                               onEventClick={onEventClick}
+                              onFork={onFork}
                               eventsByThread={eventsByThread}
                               threadTypes={threadTypes}
                             />
@@ -611,6 +648,7 @@ function InlineAgentCard({
                       duration={childDuration}
                       depth={depth + 1}
                       onEventClick={onEventClick}
+                      onFork={onFork}
                       eventsByThread={eventsByThread}
                       threadTypes={threadTypes}
                     />
@@ -663,6 +701,9 @@ export function TraceView({
   events,
   threads = [],
   onEventClick,
+  onFork,
+  onTimeTravel,
+  timeTravelSeq,
 }: TraceViewProps) {
   const [enabledFilters, setEnabledFilters] = useState<Set<EventFilter>>(
     new Set(["input", "model", "tool", "status"])
@@ -853,6 +894,45 @@ export function TraceView({
           ))}
         </div>
 
+        {/* Time-travel slider */}
+        {onTimeTravel && events.length > 0 && (() => {
+          const maxSeq = Math.max(...events.map((e) => e.seq ?? 0));
+          const minSeq = Math.min(...events.filter((e) => e.seq !== undefined).map((e) => e.seq!));
+          const currentSeq = timeTravelSeq ?? maxSeq;
+          const isLive = timeTravelSeq === null || timeTravelSeq === undefined;
+          
+          return (
+            <div className="px-3 py-2 border-b border-white/20 bg-black/50 flex items-center gap-3">
+              <span className="text-[10px] uppercase tracking-wider text-white/30 shrink-0">
+                TIME:
+              </span>
+              <input
+                type="range"
+                min={minSeq}
+                max={maxSeq}
+                value={currentSeq}
+                onChange={(e) => onTimeTravel(parseInt(e.target.value, 10))}
+                className="flex-1 h-1 bg-white/20 appearance-none cursor-pointer accent-white"
+                style={{ accentColor: isLive ? "#00ff00" : "#ffaa00" }}
+              />
+              <span className={cn(
+                "text-[10px] font-mono w-20 text-right",
+                isLive ? "text-[#00ff00]" : "text-[#ffaa00]"
+              )}>
+                {isLive ? "LIVE" : `@${currentSeq}`}
+              </span>
+              {!isLive && (
+                <button
+                  onClick={() => onTimeTravel(maxSeq)}
+                  className="px-2 py-0.5 text-[9px] uppercase tracking-wider text-[#00ff00] border border-[#00ff00]/50 hover:bg-[#00ff00]/10 transition-colors"
+                >
+                  Go Live
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Timeline content */}
         <div className="flex-1 overflow-auto p-3 bg-black">
           <div className="space-y-2">
@@ -866,6 +946,7 @@ export function TraceView({
                 duration={agent.duration}
                 depth={0}
                 onEventClick={onEventClick}
+                onFork={onFork}
                 eventsByThread={eventsByThread}
                 threadTypes={threadTypes}
               />
