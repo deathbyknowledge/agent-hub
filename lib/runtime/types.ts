@@ -44,6 +44,99 @@ export type ToolCall = {
   id: string;
 };
 
+// =============================================================================
+// OTel-compliant message types
+// See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-events/
+// =============================================================================
+
+/** Content modality for binary/media parts */
+export type MessageModality = "image" | "video" | "audio";
+
+/** Text content sent to or received from the model */
+export type TextPart = {
+  type: "text";
+  content: string;
+};
+
+/** Tool call requested by the model */
+export type ToolCallPart = {
+  type: "tool_call";
+  id: string;
+  name: string;
+  arguments: unknown;
+};
+
+/** Tool call result sent back to the model */
+export type ToolCallResponsePart = {
+  type: "tool_call_response";
+  id: string;
+  response: unknown;
+};
+
+/** Reasoning/thinking content (e.g., DeepSeek thinking blocks) */
+export type ReasoningPart = {
+  type: "reasoning";
+  content: string;
+};
+
+/** Inline binary data (base64 encoded) */
+export type BlobPart = {
+  type: "blob";
+  modality: MessageModality;
+  content: string;
+  mime_type?: string;
+};
+
+/** External file reference by URI */
+export type UriPart = {
+  type: "uri";
+  modality: MessageModality;
+  uri: string;
+  mime_type?: string;
+};
+
+/** External file reference by provider file ID */
+export type FilePart = {
+  type: "file";
+  modality: MessageModality;
+  file_id: string;
+  mime_type?: string;
+};
+
+/** Union of all message part types */
+export type MessagePart =
+  | TextPart
+  | ToolCallPart
+  | ToolCallResponsePart
+  | ReasoningPart
+  | BlobPart
+  | UriPart
+  | FilePart;
+
+/** Message role following OTel spec */
+export type MessageRole = "system" | "user" | "assistant" | "tool";
+
+/** Reason for finishing generation (OTel spec) */
+export type FinishReason = "stop" | "length" | "content_filter" | "tool_call" | "error";
+
+/**
+ * OTel-compliant message format with parts array.
+ * This is the canonical message format for event sourcing.
+ */
+export type OTelMessage = {
+  role: MessageRole;
+  parts: MessagePart[];
+  name?: string;
+  finish_reason?: FinishReason;
+  ts?: string;
+};
+
+/** System instruction part (for gen_ai.system_instructions) */
+export type SystemInstruction = {
+  type: "text";
+  content: string;
+};
+
 export type ToolJsonSchema = Record<string, unknown>;
 
 /** Metadata describing a tool for the LLM (name, description, JSON Schema). */
@@ -58,14 +151,24 @@ export type ChatMessageBase = {
   ts?: string;
 };
 
-/** A single message in the conversation (user, assistant, system, or tool result). */
-export type ChatMessage = ChatMessageBase &
+/**
+ * Legacy message format - flat structure with content/toolCalls fields.
+ * @deprecated Use OTelMessage with parts[] for new code.
+ */
+export type LegacyChatMessage = ChatMessageBase &
   (
     | { role: "system" | "user"; content: string }
     | { role: "assistant"; reasoning?: string; content: string }
     | { role: "assistant"; reasoning?: string; toolCalls: ToolCall[] }
     | { role: "tool"; content: string; toolCallId: string }
   );
+
+/**
+ * A single message in the conversation.
+ * Currently uses legacy format for backward compatibility.
+ * Will migrate to OTelMessage in future versions.
+ */
+export type ChatMessage = LegacyChatMessage;
 
 /** Request body for the `/invoke` endpoint. */
 export interface InvokeBody {

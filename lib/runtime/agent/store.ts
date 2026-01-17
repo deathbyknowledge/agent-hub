@@ -1,6 +1,7 @@
 import type { SqlStorage } from "@cloudflare/workers-types";
 import type { ChatMessage } from "../types";
 import type { AgentEvent } from "../events";
+import type { AgentProjection, ProjectionSnapshot } from "./projections";
 
 export type ContextCheckpoint = {
   id: number;
@@ -43,6 +44,16 @@ export class Store {
         archived_path TEXT,
         created_at INTEGER NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS projection_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        last_event_seq INTEGER NOT NULL,
+        state JSON NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_snapshots_last_event_seq 
+        ON projection_snapshots(last_event_seq DESC);
     `);
   }
 
@@ -247,5 +258,134 @@ export class Store {
   getCheckpointCount(): number {
     const result = this.sql.exec("SELECT COUNT(*) as count FROM context_checkpoints").toArray()[0];
     return result ? (result.count as number) : 0;
+  }
+
+  // ==========================================================================
+  // Projection Snapshots (for event sourcing)
+  // ==========================================================================
+
+  /**
+   * Add a projection snapshot.
+   * Snapshots capture the projected state at a point in time for fast replay.
+   */
+  addSnapshot(snapshot: ProjectionSnapshot): number {
+    this.sql.exec(
+      `INSERT INTO projection_snapshots (last_event_seq, state, created_at)
+       VALUES (?, ?, ?)`,
+      snapshot.lastEventSeq,
+      JSON.stringify(snapshot.state),
+      snapshot.createdAt
+    );
+
+    const result = this.sql.exec("SELECT last_insert_rowid() as id").toArray()[0];
+    return result ? (result.id as number) : 0;
+  }
+
+  /**
+   * Get the latest projection snapshot.
+   */
+  getLatestSnapshot(): ProjectionSnapshot | null {
+    const result = this.sql.exec(
+      `SELECT id, last_event_seq, state, created_at
+       FROM projection_snapshots
+       ORDER BY last_event_seq DESC
+       LIMIT 1`
+    ).toArray()[0];
+
+    if (!result) return null;
+
+    return {
+      lastEventSeq: result.last_event_seq as number,
+      state: JSON.parse(result.state as string) as AgentProjection,
+      createdAt: result.created_at as string,
+    };
+  }
+
+  /**
+   * Get a snapshot at or before a specific event sequence.
+   * Useful for time-travel to a specific point.
+   */
+  getSnapshotAt(beforeSeq: number): ProjectionSnapshot | null {
+    const result = this.sql.exec(
+      `SELECT id, last_event_seq, state, created_at
+       FROM projection_snapshots
+       WHERE last_event_seq <= ?
+       ORDER BY last_event_seq DESC
+       LIMIT 1`,
+      beforeSeq
+    ).toArray()[0];
+
+    if (!result) return null;
+
+    return {
+      lastEventSeq: result.last_event_seq as number,
+      state: JSON.parse(result.state as string) as AgentProjection,
+      createdAt: result.created_at as string,
+    };
+  }
+
+  /**
+   * Get events after a specific sequence number.
+   * Used with snapshots to replay only recent events.
+   */
+  getEventsAfter(afterSeq: number): AgentEvent[] {
+    const cursor = this.sql.exec(
+      `SELECT seq, type, data, ts FROM events WHERE seq > ? ORDER BY seq ASC`,
+      afterSeq
+    );
+    const out: AgentEvent[] = [];
+    for (const r of cursor) {
+      out.push({
+        seq: r.seq as number,
+        type: r.type as string,
+        ts: r.ts as string,
+        data: r.data ? JSON.parse(r.data as string) : {},
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Get the maximum event sequence number.
+   */
+  getMaxEventSeq(): number {
+    const result = this.sql.exec("SELECT MAX(seq) as max_seq FROM events").toArray()[0];
+    return result?.max_seq ? (result.max_seq as number) : 0;
+  }
+
+  /**
+   * Get the total number of events.
+   * More efficient than listEvents().length.
+   */
+  getEventCount(): number {
+    const result = this.sql.exec("SELECT COUNT(*) as count FROM events").toArray()[0];
+    return result ? (result.count as number) : 0;
+  }
+
+  /**
+   * Get the number of events since the last snapshot.
+   */
+  getEventsSinceLastSnapshot(): number {
+    const snapshot = this.getLatestSnapshot();
+    const lastSnapshotSeq = snapshot?.lastEventSeq ?? 0;
+    const maxEventSeq = this.getMaxEventSeq();
+    return maxEventSeq - lastSnapshotSeq;
+  }
+
+  /**
+   * Delete old snapshots, keeping only the most recent N.
+   */
+  pruneSnapshots(keepCount = 3): number {
+    this.sql.exec(
+      `DELETE FROM projection_snapshots
+       WHERE id NOT IN (
+         SELECT id FROM projection_snapshots
+         ORDER BY last_event_seq DESC
+         LIMIT ?
+       )`,
+      keepCount
+    );
+    const result = this.sql.exec("SELECT changes() as deleted").toArray()[0];
+    return result ? (result.deleted as number) : 0;
   }
 }

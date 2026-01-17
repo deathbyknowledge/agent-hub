@@ -7,7 +7,15 @@
  * - gen_ai.chat.* - LLM/model call events (OTel uses "chat" for inference)
  * - gen_ai.tool.* - Tool execution events
  * - gen_ai.content.* - Content/message events
+ * - gen_ai.client.* - Client-side operation events
  */
+
+import type {
+  OTelMessage,
+  SystemInstruction,
+  ToolMeta,
+  FinishReason,
+} from "./types";
 export enum AgentEventType {
   // Agent lifecycle (maps to OTel gen_ai.agent spans)
   AGENT_INVOKED = "gen_ai.agent.invoked",       // Agent run started
@@ -30,6 +38,10 @@ export enum AgentEventType {
 
   // Content events
   CONTENT_MESSAGE = "gen_ai.content.message",   // Assistant message (text or tool calls)
+
+  // Inference operation details (OTel standard event for event sourcing)
+  // See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-events/
+  INFERENCE_DETAILS = "gen_ai.client.inference.operation.details",
 
   // System/infrastructure events (not OTel standard, but useful)
   SYSTEM_THREAD_CREATED = "gen_ai.system.thread_created",
@@ -179,4 +191,48 @@ export type AgentEventData =
   | {
       type: AgentEventType.PLUGIN_HOOK;
       data: { hook: "before_model" | "after_model"; pluginName: string };
+    }
+
+  // Inference operation details (OTel standard)
+  // This is the key event for event sourcing - contains full input/output
+  | {
+      type: AgentEventType.INFERENCE_DETAILS;
+      data: InferenceDetailsData;
     };
+
+/**
+ * Data payload for gen_ai.client.inference.operation.details event.
+ * Following OTel GenAI semantic conventions.
+ * See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-events/
+ */
+export type InferenceDetailsData = {
+  // Required fields
+  "gen_ai.operation.name": "chat" | "invoke_agent" | string;
+
+  // Conditionally required
+  "gen_ai.request.model"?: string;
+  "gen_ai.conversation.id"?: string;
+
+  // Input/output messages (opt-in, but required for event sourcing)
+  "gen_ai.input.messages"?: OTelMessage[];
+  "gen_ai.output.messages"?: OTelMessage[];
+
+  // System instructions
+  "gen_ai.system_instructions"?: SystemInstruction[];
+
+  // Tool definitions
+  "gen_ai.tool.definitions"?: ToolMeta[];
+
+  // Usage metrics
+  "gen_ai.usage.input_tokens"?: number;
+  "gen_ai.usage.output_tokens"?: number;
+
+  // Response metadata
+  "gen_ai.response.model"?: string;
+  "gen_ai.response.id"?: string;
+  "gen_ai.response.finish_reasons"?: FinishReason[];
+
+  // Error information (if operation failed)
+  "error.type"?: string;
+  "error.message"?: string;
+};

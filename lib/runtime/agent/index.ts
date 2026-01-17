@@ -12,14 +12,23 @@ import type {
   AgentBlueprint,
   AgentEnv,
   CfCtx,
+  SystemInstruction,
 } from "../types";
 import { Agent, type AgentContext, getAgentByName } from "agents";
-import { type AgentEvent, AgentEventType } from "../events";
+import { type AgentEvent, AgentEventType, type InferenceDetailsData } from "../events";
 import { Store } from "./store";
 import { PersistedObject } from "../persisted";
 import { AgentFileSystem } from "../fs";
 import { ModelPlanBuilder } from "../plan";
 import { DEFAULT_MAX_ITERATIONS, MAX_TOOLS_PER_TICK } from "../config";
+import { toOTelMessage, toOTelMessages, fromOTelMessages } from "../messages";
+import {
+  projectEvents,
+  projectFromSnapshot,
+  createSnapshot,
+  shouldSnapshot,
+  type AgentProjection,
+} from "./projections";
 
 /** Event relayed from agent to agency */
 export type AgencyRelayEvent = AgentEvent & {
@@ -162,6 +171,17 @@ export abstract class HubAgent<
           return new Response(null, { status: 204 });
         }
         return new Response("method not allowed", { status: 405 });
+      // Event sourcing endpoints
+      case "/projection":
+        if (req.method !== "GET") {
+          return new Response("method not allowed", { status: 405 });
+        }
+        return this.getProjection(req);
+      case "/export":
+        if (req.method !== "GET") {
+          return new Response("method not allowed", { status: 405 });
+        }
+        return this.exportEvents(req);
       default:
         return new Response("not found", { status: 404 });
     }
@@ -295,6 +315,10 @@ export abstract class HubAgent<
 
         this.store.add(res.message);
 
+        // Emit INFERENCE_DETAILS event for event sourcing
+        // This captures the complete input/output for state replay
+        this.emitInferenceDetails(req, res);
+
         let toolCalls: ToolCall[] = [];
         let reply = "";
 
@@ -329,6 +353,8 @@ export abstract class HubAgent<
           }
 
           this.emit(AgentEventType.AGENT_COMPLETED, { result: reply });
+          // Create snapshot for future replay optimization
+          await this.createProjectionSnapshot();
           // Disconnect from Agency WebSocket - run is done
           this.disconnectFromAgency();
           return;
@@ -432,6 +458,162 @@ export abstract class HubAgent<
 
   getEvents(_req: Request) {
     return Response.json({ events: this.store.listEvents() });
+  }
+
+  // ==========================================================================
+  // Event Sourcing Endpoints
+  // ==========================================================================
+
+  /**
+   * GET /projection - Get projected state from events.
+   * Supports time-travel via ?at=<seq> query parameter.
+   * 
+   * Query params:
+   * - at: Sequence number to project up to (for time-travel)
+   * - legacy: If "true", convert messages to legacy format
+   */
+  getProjection(req: Request) {
+    const url = new URL(req.url);
+    const atParam = url.searchParams.get("at");
+    const legacyParam = url.searchParams.get("legacy");
+
+    let projection: AgentProjection;
+    let maxSeq: number | null;
+
+    if (atParam) {
+      // Time-travel: project up to specific sequence
+      const atSeq = parseInt(atParam, 10);
+      if (isNaN(atSeq)) {
+        return Response.json({ error: "Invalid 'at' parameter" }, { status: 400 });
+      }
+      maxSeq = atSeq;
+
+      // Use snapshot if available for optimization
+      const snapshot = this.store.getSnapshotAt(atSeq);
+      if (snapshot) {
+        // Only load events after the snapshot, up to atSeq
+        const recentEvents = this.store.getEventsAfter(snapshot.lastEventSeq)
+          .filter((e) => (e.seq ?? 0) <= atSeq);
+        projection = projectFromSnapshot(snapshot.state, snapshot.lastEventSeq, recentEvents);
+      } else {
+        // No snapshot, load all events up to atSeq
+        const events = this.store.listEvents().filter((e) => (e.seq ?? 0) <= atSeq);
+        projection = projectEvents(events);
+      }
+    } else {
+      // Current state: use latest snapshot + recent events
+      const currentMaxSeq = this.store.getMaxEventSeq();
+      maxSeq = currentMaxSeq > 0 ? currentMaxSeq : null;
+      const snapshot = this.store.getLatestSnapshot();
+      if (snapshot) {
+        const recentEvents = this.store.getEventsAfter(snapshot.lastEventSeq);
+        projection = projectFromSnapshot(snapshot.state, snapshot.lastEventSeq, recentEvents);
+      } else {
+        const events = this.store.listEvents();
+        projection = projectEvents(events);
+      }
+    }
+
+    const eventCount = this.store.getEventCount();
+
+    // Convert messages to legacy format if requested
+    if (legacyParam === "true") {
+      return Response.json({
+        projection: {
+          ...projection,
+          messages: fromOTelMessages(projection.messages),
+        },
+        meta: {
+          eventCount,
+          atSeq: maxSeq,
+        },
+      });
+    }
+
+    return Response.json({
+      projection,
+      meta: {
+        eventCount,
+        atSeq: maxSeq,
+      },
+    });
+  }
+
+  /**
+   * GET /export - Export all events for debugging or migration.
+   * 
+   * Query params:
+   * - includeSnapshot: If "true", include latest snapshot
+   */
+  exportEvents(req: Request) {
+    const url = new URL(req.url);
+    const includeSnapshot = url.searchParams.get("includeSnapshot") === "true";
+
+    const events = this.store.listEvents();
+    const { threadId, agencyId, agentType, createdAt } = this.info;
+
+    const exportData: {
+      meta: {
+        threadId: string;
+        agencyId: string;
+        agentType: string;
+        createdAt: string;
+        exportedAt: string;
+        eventCount: number;
+      };
+      events: AgentEvent[];
+      snapshot?: import("./projections").ProjectionSnapshot | null;
+    } = {
+      meta: {
+        threadId,
+        agencyId,
+        agentType,
+        createdAt,
+        exportedAt: new Date().toISOString(),
+        eventCount: events.length,
+      },
+      events,
+    };
+
+    if (includeSnapshot) {
+      const snapshot = this.store.getLatestSnapshot();
+      if (snapshot) {
+        exportData.snapshot = snapshot;
+      }
+    }
+
+    return Response.json(exportData);
+  }
+
+  /**
+   * Create a snapshot of the current projection.
+   * Should be called periodically to optimize future projections.
+   */
+  async createProjectionSnapshot(): Promise<void> {
+    // Check if we need a snapshot
+    const eventsSinceSnapshot = this.store.getEventsSinceLastSnapshot();
+    if (!shouldSnapshot(eventsSinceSnapshot)) return;
+
+    const maxSeq = this.store.getMaxEventSeq();
+    if (maxSeq === 0) return;
+
+    // Project current state using snapshot optimization
+    const snapshot = this.store.getLatestSnapshot();
+    let projection: AgentProjection;
+    
+    if (snapshot) {
+      const recentEvents = this.store.getEventsAfter(snapshot.lastEventSeq);
+      projection = projectFromSnapshot(snapshot.state, snapshot.lastEventSeq, recentEvents);
+    } else {
+      const events = this.store.listEvents();
+      projection = projectEvents(events);
+    }
+
+    // Save snapshot
+    this.store.addSnapshot(createSnapshot(projection, maxSeq));
+
+    // Prune old snapshots
+    this.store.pruneSnapshots(3);
   }
 
   async executePendingTools(maxTools: number) {
@@ -547,6 +729,45 @@ export abstract class HubAgent<
     this.broadcast(JSON.stringify(event));
     // Relay to Agency via WebSocket (if connected)
     this.relayEventToAgency(event);
+  }
+
+  /**
+   * Emit an INFERENCE_DETAILS event following OTel GenAI semantic conventions.
+   * This event captures complete input/output for event sourcing and replay.
+   */
+  private emitInferenceDetails(
+    req: import("../types").ModelRequest,
+    res: import("../providers").ModelResult
+  ) {
+    // Build system instructions from system prompt
+    const systemInstructions: SystemInstruction[] = req.systemPrompt
+      ? [{ type: "text", content: req.systemPrompt }]
+      : [];
+
+    // Convert messages to OTel format
+    const inputMessages = toOTelMessages(req.messages);
+    const outputMessage = toOTelMessage(res.message);
+
+    // Determine finish reason
+    const finishReasons = outputMessage.finish_reason
+      ? [outputMessage.finish_reason]
+      : undefined;
+
+    const data: InferenceDetailsData = {
+      "gen_ai.operation.name": "chat",
+      "gen_ai.request.model": req.model,
+      "gen_ai.conversation.id": this.info.threadId,
+      "gen_ai.input.messages": inputMessages,
+      "gen_ai.output.messages": [outputMessage],
+      "gen_ai.system_instructions": systemInstructions.length > 0 ? systemInstructions : undefined,
+      "gen_ai.tool.definitions": req.toolDefs,
+      "gen_ai.usage.input_tokens": res.usage?.promptTokens,
+      "gen_ai.usage.output_tokens": res.usage?.completionTokens,
+      "gen_ai.response.model": req.model,
+      "gen_ai.response.finish_reasons": finishReasons,
+    };
+
+    this.emit(AgentEventType.INFERENCE_DETAILS, data);
   }
 
   /**
