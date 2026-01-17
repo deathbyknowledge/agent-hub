@@ -22,16 +22,21 @@ interface TraceViewProps {
 // Filter System
 // ============================================================================
 
-type EventFilter = "model" | "tool" | "status" | "tick" | "context";
+type EventFilter = "model" | "tool" | "status" | "tick" | "context" | "input";
 
 const FilterContext = createContext<Set<EventFilter>>(
-  new Set(["model", "tool", "status", "context"])
+  new Set(["model", "tool", "status", "context", "input"])
 );
 
 const FILTER_CONFIG: Record<
   EventFilter,
   { label: string; tag: string; events: string[] }
 > = {
+  input: {
+    label: "INPUT",
+    tag: "[USR]",
+    events: ["gen_ai.content.user_message"],
+  },
   model: {
     label: "MODEL",
     tag: "[MODEL]",
@@ -71,6 +76,11 @@ const EVENT_CONFIG: Record<
     label: string;
   }
 > = {
+  "gen_ai.content.user_message": {
+    tag: "[USR]",
+    color: "text-[#ffaa00]",
+    label: "INPUT",
+  },
   "gen_ai.agent.invoked": {
     tag: "[SYS]",
     color: "text-[#00aaff]",
@@ -202,6 +212,17 @@ function formatTime(ts: string): string {
 function getEventLabel(event: AgentEvent): string {
   const config = EVENT_CONFIG[event.type] || DEFAULT_EVENT_CONFIG;
   const data = event.data;
+
+  // User input event
+  if (event.type === "gen_ai.content.user_message" && data) {
+    // Try to extract preview from OTel message format
+    const messages = (data as { "gen_ai.content.messages"?: Array<{ parts?: Array<{ type: string; content?: string }> }> })["gen_ai.content.messages"];
+    if (messages?.[0]?.parts?.[0]?.content) {
+      const preview = messages[0].parts[0].content;
+      return preview.length > 40 ? preview.slice(0, 40) + "..." : preview;
+    }
+    return "User Input";
+  }
 
   // Agent lifecycle events
   if (event.type === "gen_ai.agent.invoked") {
@@ -644,7 +665,7 @@ export function TraceView({
   onEventClick,
 }: TraceViewProps) {
   const [enabledFilters, setEnabledFilters] = useState<Set<EventFilter>>(
-    new Set(["model", "tool", "status"])
+    new Set(["input", "model", "tool", "status"])
   );
 
   const toggleFilter = (filter: EventFilter) => {

@@ -606,9 +606,10 @@ export function useAgency(agencyId: string | null) {
     mutationFn: async (agentType: string) => requireClient().spawnAgent({ agentType }),
     onSuccess: (newAgent) => {
       if (!agencyId) return;
+      // Prepend new agent to show at top (most recent first)
       queryClient.setQueryData<AgentSummary[]>(
         queryKeys.agents(agencyId),
-        (old) => (old ? [...old, newAgent] : [newAgent])
+        (old) => (old ? [newAgent, ...old] : [newAgent])
       );
     },
   });
@@ -1081,6 +1082,7 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
     if (event.type === "gen_ai.content.message" && event.agentId === agentId) {
       const data = event.data as {
         "gen_ai.content.text"?: string;
+        "gen_ai.content.reasoning"?: string;
         "gen_ai.content.tool_calls"?: Array<{ id: string; name: string; arguments: unknown }>;
       };
       
@@ -1089,6 +1091,7 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
         
         // Build the new assistant message
         const toolCalls = data["gen_ai.content.tool_calls"];
+        const reasoning = data["gen_ai.content.reasoning"];
         const newMessage: ChatMessage = toolCalls?.length
           ? {
               role: "assistant" as const,
@@ -1097,11 +1100,13 @@ export function useAgent(agencyId: string | null, agentId: string | null) {
                 name: tc.name,
                 args: tc.arguments,
               })),
+              reasoning,
               ts: event.ts,
             }
           : {
               role: "assistant" as const,
               content: data["gen_ai.content.text"] || "",
+              reasoning,
               ts: event.ts,
             };
         

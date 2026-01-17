@@ -38,6 +38,7 @@ export enum AgentEventType {
 
   // Content events
   CONTENT_MESSAGE = "gen_ai.content.message",   // Assistant message (text or tool calls)
+  USER_MESSAGE = "gen_ai.content.user_message", // User input message
 
   // Inference operation details (OTel standard event for event sourcing)
   // See: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-events/
@@ -170,6 +171,12 @@ export type AgentEventData =
           name: string;
           arguments: unknown;
         }>;
+      };
+    }
+  | {
+      type: AgentEventType.USER_MESSAGE;
+      data: {
+        "gen_ai.content.messages": OTelMessage[];
       };
     }
 

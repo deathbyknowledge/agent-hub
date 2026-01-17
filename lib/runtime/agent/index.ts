@@ -21,7 +21,7 @@ import { PersistedObject } from "../persisted";
 import { AgentFileSystem } from "../fs";
 import { ModelPlanBuilder } from "../plan";
 import { DEFAULT_MAX_ITERATIONS, MAX_TOOLS_PER_TICK } from "../config";
-import { toOTelMessage, toOTelMessages, fromOTelMessages } from "../messages";
+import { toOTelMessage, toOTelMessages, fromOTelMessages, userMessage } from "../messages";
 import {
   projectEvents,
   projectFromSnapshot,
@@ -103,8 +103,32 @@ export abstract class HubAgent<
     return (this.ctx as unknown as CfCtx).exports;
   }
 
+  /**
+   * Get messages from event projection (event-sourced).
+   * This replaces the old store.getContext() approach.
+   */
   get messages() {
-    return this.store.getContext(1000);
+    return this.getProjectedMessages();
+  }
+
+  /**
+   * Get messages by projecting events.
+   * Uses snapshots for optimization when available.
+   */
+  private getProjectedMessages(): import("../types").ChatMessage[] {
+    const snapshot = this.store.getLatestSnapshot();
+    let projection: AgentProjection;
+    
+    if (snapshot) {
+      const recentEvents = this.store.getEventsAfter(snapshot.lastEventSeq);
+      projection = projectFromSnapshot(snapshot.state, snapshot.lastEventSeq, recentEvents);
+    } else {
+      const events = this.store.listEvents();
+      projection = projectEvents(events);
+    }
+    
+    // Convert OTel messages to legacy format for backward compatibility
+    return fromOTelMessages(projection.messages);
   }
 
   get model(): string {
@@ -238,7 +262,13 @@ export abstract class HubAgent<
         Object.assign(this.vars, body.vars);
       }
 
-      if (body.messages?.length) this.store.add(body.messages);
+      // Emit user messages as event (event-sourced)
+      if (body.messages?.length) {
+        const otelMessages = toOTelMessages(body.messages);
+        this.emit(AgentEventType.USER_MESSAGE, {
+          "gen_ai.content.messages": otelMessages,
+        });
+      }
 
       if (body.files && typeof body.files === "object") {
         const fs = this.fs;
@@ -313,21 +343,22 @@ export abstract class HubAgent<
         for (const p of this.plugins)
           await p.onModelResult?.(this.pluginContext, res);
 
-        this.store.add(res.message);
-
-        // Emit INFERENCE_DETAILS event for event sourcing
+        // Emit INFERENCE_DETAILS event (event-sourced - replaces store.add)
         // This captures the complete input/output for state replay
         this.emitInferenceDetails(req, res);
 
         let toolCalls: ToolCall[] = [];
         let reply = "";
+        let reasoning: string | undefined;
 
         if ("toolCalls" in res.message) toolCalls = res.message.toolCalls;
         if ("content" in res.message) reply = res.message.content;
+        if ("reasoning" in res.message) reasoning = res.message.reasoning;
 
         // Emit assistant message event so UI can update incrementally
         this.emit(AgentEventType.CONTENT_MESSAGE, {
           "gen_ai.content.text": reply || undefined,
+          "gen_ai.content.reasoning": reasoning || undefined,
           "gen_ai.content.tool_calls": toolCalls.length > 0 ? toolCalls.map(tc => ({
             id: tc.id,
             name: tc.name,
@@ -691,21 +722,8 @@ export abstract class HubAgent<
       })
     );
 
-    const messages = toolResults
-      .filter((r) => r.out !== null || !!r.error)
-      .map(({ call, out, error }) => {
-        const content = error
-          ? `Error: ${error instanceof Error ? error.message : String(error)}`
-          : typeof out === "string"
-            ? out
-            : JSON.stringify(out ?? "Tool had no output");
-        return {
-          role: "tool" as const,
-          content,
-          toolCallId: call.id,
-        };
-      });
-    this.store.add(messages);
+    // Tool results are captured by TOOL_FINISH/TOOL_ERROR events above
+    // No need for store.add() - messages are event-sourced
   }
 
   emit(type: AgentEventType | string, data: Record<string, unknown>) {

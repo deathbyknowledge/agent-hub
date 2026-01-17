@@ -99,6 +99,41 @@ describe("Event Projections", () => {
     });
   });
 
+  describe("applyEvent - USER_MESSAGE", () => {
+    it("should append user messages", () => {
+      const userMessage: OTelMessage = {
+        role: "user",
+        parts: [{ type: "text", content: "Hello!" }],
+      };
+
+      const event = createEvent(1, AgentEventType.USER_MESSAGE, {
+        "gen_ai.content.messages": [userMessage],
+      });
+
+      const state = applyEvent(initialProjection, event);
+
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0]).toEqual(userMessage);
+    });
+
+    it("should append multiple user messages", () => {
+      const messages: OTelMessage[] = [
+        { role: "user", parts: [{ type: "text", content: "First" }] },
+        { role: "user", parts: [{ type: "text", content: "Second" }] },
+      ];
+
+      const event = createEvent(1, AgentEventType.USER_MESSAGE, {
+        "gen_ai.content.messages": messages,
+      });
+
+      const state = applyEvent(initialProjection, event);
+
+      expect(state.messages).toHaveLength(2);
+      expect(state.messages[0].role).toBe("user");
+      expect(state.messages[1].role).toBe("user");
+    });
+  });
+
   describe("applyEvent - INFERENCE_DETAILS", () => {
     it("should append output messages", () => {
       const outputMessage: OTelMessage = {
@@ -123,108 +158,35 @@ describe("Event Projections", () => {
       expect(state.inferenceCount).toBe(1);
     });
 
-    it("should include new user messages from input", () => {
+    it("should only append output (user messages come from USER_MESSAGE event)", () => {
+      // User message already in state from USER_MESSAGE event
       const userMessage: OTelMessage = {
         role: "user",
         parts: [{ type: "text", content: "What is the weather?" }],
       };
+      const stateWithUser: AgentProjection = {
+        ...initialProjection,
+        messages: [userMessage],
+      };
+
       const assistantMessage: OTelMessage = {
         role: "assistant",
         parts: [{ type: "text", content: "The weather is sunny!" }],
         finish_reason: "stop",
       };
 
-      const event = createEvent(1, AgentEventType.INFERENCE_DETAILS, {
+      const event = createEvent(2, AgentEventType.INFERENCE_DETAILS, {
         "gen_ai.operation.name": "chat",
-        "gen_ai.input.messages": [userMessage],
+        "gen_ai.input.messages": [userMessage], // Input context (ignored)
         "gen_ai.output.messages": [assistantMessage],
       });
 
-      const state = applyEvent(initialProjection, event);
+      const state = applyEvent(stateWithUser, event);
 
-      // Should have both user and assistant messages
+      // Should have: user (from previous) + assistant (from output) = 2 messages
       expect(state.messages).toHaveLength(2);
       expect(state.messages[0].role).toBe("user");
       expect(state.messages[1].role).toBe("assistant");
-    });
-
-    it("should not duplicate existing messages from input", () => {
-      // State already has one message
-      const existingMessage: OTelMessage = {
-        role: "user",
-        parts: [{ type: "text", content: "First message" }],
-      };
-      const stateWithMessage: AgentProjection = {
-        ...initialProjection,
-        messages: [existingMessage],
-      };
-
-      // Input includes existing message plus new one
-      const newUserMessage: OTelMessage = {
-        role: "user",
-        parts: [{ type: "text", content: "Second message" }],
-      };
-      const assistantMessage: OTelMessage = {
-        role: "assistant",
-        parts: [{ type: "text", content: "Response" }],
-      };
-
-      const event = createEvent(2, AgentEventType.INFERENCE_DETAILS, {
-        "gen_ai.operation.name": "chat",
-        "gen_ai.input.messages": [existingMessage, newUserMessage],
-        "gen_ai.output.messages": [assistantMessage],
-      });
-
-      const state = applyEvent(stateWithMessage, event);
-
-      // Should have: existing + new user + assistant = 3 messages
-      expect(state.messages).toHaveLength(3);
-      expect(state.messages[0]).toEqual(existingMessage);
-      expect(state.messages[1]).toEqual(newUserMessage);
-      expect(state.messages[2]).toEqual(assistantMessage);
-    });
-
-    it("should not duplicate tool messages from input (handled by TOOL_* events)", () => {
-      // State has: user message, assistant tool call, tool result
-      const userMessage: OTelMessage = {
-        role: "user",
-        parts: [{ type: "text", content: "Search for X" }],
-      };
-      const assistantToolCall: OTelMessage = {
-        role: "assistant",
-        parts: [{ type: "tool_call", id: "call_1", name: "search", arguments: {} }],
-      };
-      const toolResult: OTelMessage = {
-        role: "tool",
-        parts: [{ type: "tool_call_response", id: "call_1", response: "result" }],
-      };
-      
-      const stateWithToolResult: AgentProjection = {
-        ...initialProjection,
-        messages: [userMessage, assistantToolCall, toolResult],
-      };
-
-      // Next inference includes the tool result in input (which we already have)
-      const finalResponse: OTelMessage = {
-        role: "assistant",
-        parts: [{ type: "text", content: "Based on the search..." }],
-      };
-
-      const event = createEvent(3, AgentEventType.INFERENCE_DETAILS, {
-        "gen_ai.operation.name": "chat",
-        // Input includes the tool result we already processed
-        "gen_ai.input.messages": [userMessage, assistantToolCall, toolResult],
-        "gen_ai.output.messages": [finalResponse],
-      });
-
-      const state = applyEvent(stateWithToolResult, event);
-
-      // Should have: user + assistant + tool + final = 4 messages (no duplicate tool)
-      expect(state.messages).toHaveLength(4);
-      expect(state.messages[0].role).toBe("user");
-      expect(state.messages[1].role).toBe("assistant");
-      expect(state.messages[2].role).toBe("tool");
-      expect(state.messages[3].role).toBe("assistant");
     });
 
     it("should extract pending tool calls from output", () => {
@@ -506,12 +468,16 @@ describe("Event Projections", () => {
   });
 
   describe("Complex Scenarios", () => {
-    it("should handle tool call -> result -> completion flow", () => {
+    it("should handle full conversation: user -> tool call -> result -> completion", () => {
       const events: AgentEvent[] = [
         createEvent(1, AgentEventType.AGENT_INVOKED, {}),
-        createEvent(2, AgentEventType.AGENT_STEP, { step: 1 }),
+        // User message
+        createEvent(2, AgentEventType.USER_MESSAGE, {
+          "gen_ai.content.messages": [{ role: "user", parts: [{ type: "text", content: "What's the weather?" }] }],
+        }),
+        createEvent(3, AgentEventType.AGENT_STEP, { step: 1 }),
         // First inference - tool call
-        createEvent(3, AgentEventType.INFERENCE_DETAILS, {
+        createEvent(4, AgentEventType.INFERENCE_DETAILS, {
           "gen_ai.operation.name": "chat",
           "gen_ai.output.messages": [{
             role: "assistant",
@@ -522,14 +488,14 @@ describe("Event Projections", () => {
           "gen_ai.usage.output_tokens": 10,
         }),
         // Tool execution
-        createEvent(4, AgentEventType.TOOL_FINISH, {
+        createEvent(5, AgentEventType.TOOL_FINISH, {
           "gen_ai.tool.name": "search",
           "gen_ai.tool.call.id": "call_1",
           "gen_ai.tool.response": "Sunny, 72F",
         }),
-        createEvent(5, AgentEventType.AGENT_STEP, { step: 2 }),
+        createEvent(6, AgentEventType.AGENT_STEP, { step: 2 }),
         // Second inference - final response
-        createEvent(6, AgentEventType.INFERENCE_DETAILS, {
+        createEvent(7, AgentEventType.INFERENCE_DETAILS, {
           "gen_ai.operation.name": "chat",
           "gen_ai.output.messages": [{
             role: "assistant",
@@ -539,14 +505,19 @@ describe("Event Projections", () => {
           "gen_ai.usage.input_tokens": 50,
           "gen_ai.usage.output_tokens": 15,
         }),
-        createEvent(7, AgentEventType.AGENT_COMPLETED, { result: "The weather is sunny, 72F!" }),
+        createEvent(8, AgentEventType.AGENT_COMPLETED, { result: "The weather is sunny, 72F!" }),
       ];
 
       const state = projectEvents(events);
 
       expect(state.status).toBe("completed");
       expect(state.step).toBe(2);
-      expect(state.messages).toHaveLength(3); // tool call, tool result, final response
+      // user + tool_call + tool_result + final = 4 messages
+      expect(state.messages).toHaveLength(4);
+      expect(state.messages[0].role).toBe("user");
+      expect(state.messages[1].role).toBe("assistant"); // tool call
+      expect(state.messages[2].role).toBe("tool"); // tool result
+      expect(state.messages[3].role).toBe("assistant"); // final response
       expect(state.pendingToolCalls).toEqual([]);
       expect(state.totalInputTokens).toBe(70);
       expect(state.totalOutputTokens).toBe(25);

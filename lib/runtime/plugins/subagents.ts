@@ -76,12 +76,17 @@ export const subagents: AgentPlugin = {
       // Update link status
       sql`UPDATE mw_subagent_links SET status='completed', completed_at=${Date.now()}, report=${report ?? null} WHERE child_thread_id = ${childThreadId}`;
 
-      // Append tool result with agentId for follow-up capability
-      const result = JSON.stringify({
+      // Emit TOOL_FINISH event with agentId for follow-up capability
+      // This replaces store.add() - messages are now event-sourced
+      const result = {
         agentId: childThreadId,
         result: report ?? "",
+      };
+      ctx.agent.emit(AgentEventType.TOOL_FINISH, {
+        "gen_ai.tool.name": "task",
+        "gen_ai.tool.call.id": toolCallId,
+        "gen_ai.tool.response": result,
       });
-      ctx.agent.store.add({ role: "tool", toolCallId, content: result });
 
       ctx.agent.emit(SubagentEventType.COMPLETED, {
         childThreadId,

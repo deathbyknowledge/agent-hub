@@ -53,10 +53,10 @@ function ReasoningBlock({ reasoning }: { reasoning: string }) {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 text-left hover:bg-white/5 transition-colors py-0.5 group"
       >
-        <span className="text-[10px] text-white/30 w-4">
+        <span className="text-[10px] text-white/30 shrink-0 whitespace-nowrap">
           {expanded ? "[-]" : "[+]"}
         </span>
-        <span className="text-[10px] text-white/40">[REASON]</span>
+        <span className="text-[10px] text-white/40 shrink-0">[REASON]</span>
         <span className="text-[10px] text-white/30 truncate flex-1 italic">
           {expanded ? "" : reasoning.slice(0, 60) + (reasoning.length > 60 ? "..." : "")}
         </span>
@@ -151,12 +151,12 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
         className="w-full flex items-center gap-2 text-left hover:bg-white/5 transition-colors py-0.5 group"
       >
         {/* Expand indicator */}
-        <span className="text-[10px] text-white/30 w-4">
+        <span className="text-[10px] text-white/30 shrink-0 whitespace-nowrap">
           {expanded ? "[-]" : "[+]"}
         </span>
         
         {/* Type tag */}
-        <span className="text-[10px] text-white/50">[TOOL]</span>
+        <span className="text-[10px] text-white/50 shrink-0">[TOOL]</span>
         
         {/* Tool name - UPPERCASE */}
         <span className="text-[11px] text-white/80 truncate flex-1 uppercase">

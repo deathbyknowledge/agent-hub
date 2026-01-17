@@ -18,16 +18,6 @@ import type { OTelMessage, RunStatus, ToolCall } from "../types";
 import { fromOTelMessages, extractToolCalls } from "../messages";
 
 /**
- * Generate a simple hash for message deduplication.
- * Uses role + JSON-stringified parts for uniqueness.
- */
-function messageHash(msg: OTelMessage): string {
-  // Use role + parts content for identity
-  // This is more robust than count-based comparison
-  return `${msg.role}:${JSON.stringify(msg.parts)}`;
-}
-
-/**
  * The projected state of an agent, derived from events.
  * This represents the complete state that can be reconstructed from events.
  */
@@ -109,35 +99,21 @@ export function applyEvent(
     case AgentEventType.AGENT_CANCELED:
       return { ...state, status: "canceled", pendingToolCalls: [] };
 
-    // Inference details - the key event for message reconstruction
+    // User input messages (from invoke)
+    case AgentEventType.USER_MESSAGE: {
+      const data = event.data as { "gen_ai.content.messages": OTelMessage[] };
+      const userMessages = data["gen_ai.content.messages"] ?? [];
+      return {
+        ...state,
+        messages: [...state.messages, ...userMessages],
+      };
+    }
+
+    // Inference details - captures model output
+    // NOTE: User messages come from USER_MESSAGE event, tool results from TOOL_* events
     case AgentEventType.INFERENCE_DETAILS: {
       const data = event.data as InferenceDetailsData;
-      const inputMessages = data["gen_ai.input.messages"] ?? [];
       const outputMessages = data["gen_ai.output.messages"] ?? [];
-
-      // Find new user/system messages from input that aren't already in state.
-      // Input messages are the context sent to the model, which may include
-      // new user messages that we haven't seen yet.
-      // 
-      // NOTE: We only extract "user" and "system" messages here.
-      // - "tool" messages are handled by TOOL_FINISH/TOOL_ERROR events
-      // - "assistant" messages come from output
-      //
-      // We use content hashing instead of count-based comparison for robustness.
-      const existingHashes = new Set(state.messages.map(messageHash));
-      const newInputMessages: OTelMessage[] = [];
-      
-      for (const msg of inputMessages) {
-        // Only consider user/system messages (tool messages come from TOOL_* events)
-        if (msg.role !== "user" && msg.role !== "system") continue;
-        
-        // Skip if we've already seen this message
-        const hash = messageHash(msg);
-        if (existingHashes.has(hash)) continue;
-        
-        newInputMessages.push(msg);
-        existingHashes.add(hash); // Prevent duplicates within same batch
-      }
 
       // Extract pending tool calls from output messages
       const pendingToolCalls: ToolCall[] = [];
@@ -149,8 +125,8 @@ export function applyEvent(
 
       return {
         ...state,
-        // Append new input messages (user/tool), then output messages (assistant)
-        messages: [...state.messages, ...newInputMessages, ...outputMessages],
+        // Append output messages (assistant response)
+        messages: [...state.messages, ...outputMessages],
         pendingToolCalls,
         // Update token counts
         totalInputTokens:
