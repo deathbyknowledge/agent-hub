@@ -608,7 +608,28 @@ export const createHandler = (opts: HandlerOptions = {}) => {
       // Auth check (skip for OAuth callbacks which come from browser redirects)
       // OAuth callback pattern: /oauth/agency/{agencyId}/callback with state param
       const isOAuthCallback = /^\/oauth\/agency\/[^/]+\/callback$/.test(url.pathname) && url.searchParams.has("state");
-      const providedSecret = req.headers.get("X-SECRET") || url.searchParams.get("key");
+      
+      // Check for secret in multiple places (in order of preference):
+      // 1. X-SECRET header (preferred)
+      // 2. WebSocket subprotocol "auth-{base64(secret)}" (for WS connections)
+      // 3. URL query param "key" (legacy, less secure)
+      let providedSecret = req.headers.get("X-SECRET") || url.searchParams.get("key");
+      
+      // For WebSocket upgrades, also check subprotocol
+      if (!providedSecret && req.headers.get("Upgrade")?.toLowerCase() === "websocket") {
+        const protocols = req.headers.get("Sec-WebSocket-Protocol");
+        if (protocols) {
+          const authProtocol = protocols.split(",").map(p => p.trim()).find(p => p.startsWith("auth-"));
+          if (authProtocol) {
+            try {
+              providedSecret = atob(authProtocol.slice(5)); // Remove "auth-" prefix and decode
+            } catch {
+              // Invalid base64, ignore
+            }
+          }
+        }
+      }
+      
       const secret = process.env.SECRET;
       if (secret && !secureCompare(providedSecret, secret) && !isOAuthCallback) {
         if (req.headers.get("Upgrade")?.toLowerCase() === "websocket") {

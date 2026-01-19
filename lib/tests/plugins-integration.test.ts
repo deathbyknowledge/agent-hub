@@ -547,12 +547,13 @@ describe("Plugin Integration Tests", () => {
 
       const stateRes = await agentStub.fetch(new Request("http://do/state"));
       const state = (await stateRes.json()) as {
-        state: { hasCheckpoint: boolean; checkpointCount: number };
+        state: { hasSummary: boolean; messageCount: number; summarizedCount: number };
       };
 
-      // Context plugin exposes checkpoint state
-      expect(state.state.hasCheckpoint).toBe(false);
-      expect(state.state.checkpointCount).toBe(0);
+      // Context plugin exposes summary state (event-sourced)
+      expect(state.state.hasSummary).toBe(false);
+      expect(state.state.summarizedCount).toBe(0);
+      expect(state.state.messageCount).toBeGreaterThanOrEqual(0);
     });
   });
 

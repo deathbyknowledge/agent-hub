@@ -467,6 +467,23 @@ describe("Event Projections", () => {
     });
   });
 
+  describe("Custom/Plugin Events", () => {
+    it("should ignore unknown event types (plugins can define their own)", () => {
+      // Plugins can emit custom events like "gen_ai.context.summarized".
+      // The projection ignores them - plugins read their own events directly.
+      const event = createEvent(1, "gen_ai.context.summarized", {
+        "context.summary": "User asked about weather. AI provided sunny forecast.",
+        "context.summarized_count": 5,
+        "context.kept_count": 3,
+      });
+
+      const state = applyEvent(initialProjection, event);
+
+      // Projection should be unchanged
+      expect(state).toEqual(initialProjection);
+    });
+  });
+
   describe("Complex Scenarios", () => {
     it("should handle full conversation: user -> tool call -> result -> completion", () => {
       const events: AgentEvent[] = [

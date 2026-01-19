@@ -201,7 +201,9 @@ export function applyEvent(
       };
     }
 
-    // Ignore other events - they don't affect projection state
+    // Ignore other events - they don't affect projection state.
+    // Note: Plugins can emit custom events (e.g., "gen_ai.context.summarized")
+    // which are stored but not processed here. Plugins read their own events directly.
     default:
       return state;
   }

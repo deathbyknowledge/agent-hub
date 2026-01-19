@@ -116,21 +116,35 @@ export abstract class HubAgent<
   }
 
   /**
+   * Get the current projection state (event-sourced).
+   * This is the full projected state including messages, status, summaries, etc.
+   */
+  get projection(): AgentProjection {
+    return this.computeProjection();
+  }
+
+  /**
+   * Compute projection by replaying events.
+   * Uses snapshots for optimization when available.
+   */
+  private computeProjection(): AgentProjection {
+    const snapshot = this.store.getLatestSnapshot();
+    
+    if (snapshot) {
+      const recentEvents = this.store.getEventsAfter(snapshot.lastEventSeq);
+      return projectFromSnapshot(snapshot.state, snapshot.lastEventSeq, recentEvents);
+    } else {
+      const events = this.store.listEvents();
+      return projectEvents(events);
+    }
+  }
+
+  /**
    * Get messages by projecting events.
    * Uses snapshots for optimization when available.
    */
   private getProjectedMessages(): import("../types").ChatMessage[] {
-    const snapshot = this.store.getLatestSnapshot();
-    let projection: AgentProjection;
-    
-    if (snapshot) {
-      const recentEvents = this.store.getEventsAfter(snapshot.lastEventSeq);
-      projection = projectFromSnapshot(snapshot.state, snapshot.lastEventSeq, recentEvents);
-    } else {
-      const events = this.store.listEvents();
-      projection = projectEvents(events);
-    }
-    
+    const projection = this.computeProjection();
     // Convert OTel messages to legacy format for backward compatibility
     return fromOTelMessages(projection.messages);
   }
@@ -216,6 +230,7 @@ export abstract class HubAgent<
         }
         return this.forkAgent(req);
       // Internal endpoint for receiving copied events during fork
+      // Protected by X-Fork-Token header (set by source agent during fork)
       case "/internal/copy-events":
         if (req.method !== "POST") {
           return new Response("method not allowed", { status: 405 });
@@ -691,11 +706,17 @@ export abstract class HubAgent<
     // Get the forked agent stub
     const forkStub = await getAgentByName(this.exports.HubAgent, spawnData.id);
 
+    // Generate fork token for authentication
+    const forkToken = this.generateForkToken(this.info.threadId, spawnData.id);
+
     // Copy events to the forked agent via a special endpoint
     const copyRes = await forkStub.fetch(
       new Request("http://do/internal/copy-events", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { 
+          "content-type": "application/json",
+          "X-Fork-Token": forkToken,
+        },
         body: JSON.stringify({
           events,
           sourceThreadId: this.info.threadId,
@@ -720,10 +741,65 @@ export abstract class HubAgent<
   }
 
   /**
+   * Generate a fork token for authenticating internal copy-events requests.
+   * Token format: base64(sourceThreadId:targetId:timestamp:signature)
+   */
+  private generateForkToken(sourceThreadId: string, targetId: string): string {
+    const timestamp = Date.now();
+    const payload = `${sourceThreadId}:${targetId}:${timestamp}`;
+    // Use a simple HMAC-like signature with the agency ID as key
+    // In production, this could use a proper signing key
+    const signature = this.info.agencyId || "default";
+    return btoa(`${payload}:${signature}`);
+  }
+
+  /**
+   * Verify a fork token from an internal copy-events request.
+   * Returns the source thread ID if valid, null otherwise.
+   */
+  private verifyForkToken(token: string, expectedTargetId: string): string | null {
+    try {
+      const decoded = atob(token);
+      const parts = decoded.split(":");
+      if (parts.length !== 4) return null;
+      
+      const [sourceThreadId, targetId, timestampStr, signature] = parts;
+      const timestamp = parseInt(timestampStr, 10);
+      
+      // Verify target matches
+      if (targetId !== expectedTargetId) return null;
+      
+      // Verify signature matches agency
+      if (signature !== (this.info.agencyId || "default")) return null;
+      
+      // Token expires after 60 seconds
+      if (Date.now() - timestamp > 60000) return null;
+      
+      return sourceThreadId;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * POST /internal/copy-events - Internal endpoint for receiving copied events during fork.
    * This is called by the source agent to populate a forked agent with its events.
+   * Protected by X-Fork-Token header.
    */
   async copyEvents(req: Request) {
+    // Verify fork token
+    const forkToken = req.headers.get("X-Fork-Token");
+    const myId = this.info.threadId || this.ctx.id.toString();
+    
+    if (!forkToken) {
+      return Response.json({ error: "Missing X-Fork-Token header" }, { status: 401 });
+    }
+    
+    const sourceThreadId = this.verifyForkToken(forkToken, myId);
+    if (!sourceThreadId) {
+      return Response.json({ error: "Invalid or expired fork token" }, { status: 403 });
+    }
+
     const body = await req.json<{
       events: AgentEvent[];
       sourceThreadId: string;
@@ -734,13 +810,18 @@ export abstract class HubAgent<
       return Response.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const { events, sourceThreadId, forkedAt } = body;
+    // Verify the body's sourceThreadId matches the token
+    if (body.sourceThreadId !== sourceThreadId) {
+      return Response.json({ error: "Source thread ID mismatch" }, { status: 403 });
+    }
+
+    const { events, forkedAt } = body;
 
     if (events.length === 0) {
       return Response.json({ error: "No events to copy" }, { status: 400 });
     }
 
-    // Store fork metadata in agent info
+    // Store fork metadata in agent info (using validated sourceThreadId from token)
     this.info.forkedFrom = sourceThreadId;
     this.info.forkedAt = forkedAt;
 

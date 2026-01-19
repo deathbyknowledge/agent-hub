@@ -573,11 +573,22 @@ export class AgentClient {
 
   connect(options: WebSocketOptions = {}): AgentWebSocket {
     const secret = (this.headers as Record<string, string>)["X-SECRET"];
-    const secretParam = secret ? `?key=${encodeURIComponent(secret)}` : "";
     const wsUrl = this.path
       .replace(/^http/, "ws")
-      .replace(/^wss:\/\/localhost/, "ws://localhost") + secretParam;
-    const ws = new WebSocket(wsUrl, options.protocols);
+      .replace(/^wss:\/\/localhost/, "ws://localhost");
+    
+    // Use subprotocol for auth instead of URL query param (more secure)
+    // Protocol format: "auth-{base64(secret)}" or custom protocols from options
+    const protocols: string[] = [];
+    if (secret) {
+      protocols.push(`auth-${btoa(secret)}`);
+    }
+    if (options.protocols) {
+      const customProtocols = Array.isArray(options.protocols) ? options.protocols : [options.protocols];
+      protocols.push(...customProtocols);
+    }
+    
+    const ws = new WebSocket(wsUrl, protocols.length > 0 ? protocols : undefined);
 
     ws.onopen = () => options.onOpen?.();
 
@@ -964,11 +975,22 @@ export class AgencyClient {
    */
   connect(options: AgencyWebSocketOptions = {}): AgencyWebSocket {
     const secret = (this.headers as Record<string, string>)["X-SECRET"];
-    const secretParam = secret ? `?key=${encodeURIComponent(secret)}` : "";
     const wsUrl = `${this.path}/ws`
       .replace(/^http/, "ws")
-      .replace(/^wss:\/\/localhost/, "ws://localhost") + secretParam;
-    const ws = new WebSocket(wsUrl, options.protocols);
+      .replace(/^wss:\/\/localhost/, "ws://localhost");
+    
+    // Use subprotocol for auth instead of URL query param (more secure)
+    // Protocol format: "auth-{base64(secret)}" or custom protocols from options
+    const protocols: string[] = [];
+    if (secret) {
+      protocols.push(`auth-${btoa(secret)}`);
+    }
+    if (options.protocols) {
+      const customProtocols = Array.isArray(options.protocols) ? options.protocols : [options.protocols];
+      protocols.push(...customProtocols);
+    }
+    
+    const ws = new WebSocket(wsUrl, protocols.length > 0 ? protocols : undefined);
 
     ws.onopen = () => options.onOpen?.();
 

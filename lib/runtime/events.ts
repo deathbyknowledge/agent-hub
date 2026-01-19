@@ -166,6 +166,7 @@ export type AgentEventData =
       type: AgentEventType.CONTENT_MESSAGE;
       data: {
         "gen_ai.content.text"?: string;
+        "gen_ai.content.reasoning"?: string;
         "gen_ai.content.tool_calls"?: Array<{
           id: string;
           name: string;
