@@ -326,8 +326,10 @@ export abstract class HubAgent<
       return Response.json({ status }, { status: 202 });
     } catch (error: unknown) {
       const err = error as Error;
+      // Don't expose stack traces to clients - log them server-side instead
+      console.error("invoke error:", err);
       return Response.json(
-        { error: err.message, stack: err.stack },
+        { error: err.message },
         { status: 500 }
       );
     }
@@ -658,9 +660,46 @@ export abstract class HubAgent<
     const body = await req.json<{ at?: number; id?: string }>().catch(() => ({} as { at?: number; id?: string }));
     const { at, id: customId } = body;
 
-    const { agencyId, agentType, createdAt } = this.info;
+    const { agencyId, agentType } = this.info;
     if (!agencyId || !agentType) {
       return Response.json({ error: "Agent not initialized" }, { status: 400 });
+    }
+
+    // Validate 'at' parameter if provided
+    if (at !== undefined) {
+      if (typeof at !== "number" || !Number.isInteger(at)) {
+        return Response.json({ error: "'at' must be an integer" }, { status: 400 });
+      }
+      if (at < 0) {
+        return Response.json({ error: "'at' must be non-negative" }, { status: 400 });
+      }
+      const maxSeq = this.store.getMaxEventSeq();
+      if (at > maxSeq) {
+        return Response.json(
+          { error: `'at' (${at}) exceeds max event sequence (${maxSeq})` },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Validate custom ID if provided
+    if (customId !== undefined) {
+      if (typeof customId !== "string") {
+        return Response.json({ error: "'id' must be a string" }, { status: 400 });
+      }
+      if (customId.length === 0) {
+        return Response.json({ error: "'id' cannot be empty" }, { status: 400 });
+      }
+      if (customId.length > 128) {
+        return Response.json({ error: "'id' exceeds maximum length (128)" }, { status: 400 });
+      }
+      // Allow alphanumeric, dashes, underscores
+      if (!/^[a-zA-Z0-9_-]+$/.test(customId)) {
+        return Response.json(
+          { error: "'id' must contain only alphanumeric characters, dashes, and underscores" },
+          { status: 400 }
+        );
+      }
     }
 
     // Get events up to the specified sequence (or all if not specified)

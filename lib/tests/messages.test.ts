@@ -249,9 +249,9 @@ describe("Message Conversions", () => {
 
       expect(result.role).toBe("assistant");
       expect(result).toHaveProperty("toolCalls");
-      const toolCalls = (result as any).toolCalls;
-      expect(toolCalls).toHaveLength(1);
-      expect(toolCalls[0]).toEqual({ id: "call_1", name: "search", args: { q: "test" } });
+      const resultWithToolCalls = result as LegacyChatMessage & { toolCalls: Array<{ id: string; name: string; args: unknown }> };
+      expect(resultWithToolCalls.toolCalls).toHaveLength(1);
+      expect(resultWithToolCalls.toolCalls[0]).toEqual({ id: "call_1", name: "search", args: { q: "test" } });
     });
 
     it("should convert tool response back to legacy", () => {

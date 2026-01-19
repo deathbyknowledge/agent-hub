@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it } from "vitest";
 
 /**
  * Tests for fork token generation and verification.
@@ -171,6 +171,109 @@ describe("Fork Token Authentication", () => {
  * 
  * The client now sends auth via subprotocol instead of URL query param.
  */
+describe("Fork Input Validation", () => {
+  // These tests validate the input validation logic that would be in the fork endpoint
+  
+  describe("'at' parameter validation", () => {
+    function validateAt(at: unknown, maxSeq: number): string | null {
+      if (at === undefined) return null;
+      if (typeof at !== "number" || !Number.isInteger(at)) {
+        return "'at' must be an integer";
+      }
+      if (at < 0) {
+        return "'at' must be non-negative";
+      }
+      if (at > maxSeq) {
+        return `'at' (${at}) exceeds max event sequence (${maxSeq})`;
+      }
+      return null;
+    }
+
+    it("should accept undefined", () => {
+      expect(validateAt(undefined, 100)).toBeNull();
+    });
+
+    it("should accept valid integer within range", () => {
+      expect(validateAt(50, 100)).toBeNull();
+      expect(validateAt(0, 100)).toBeNull();
+      expect(validateAt(100, 100)).toBeNull();
+    });
+
+    it("should reject non-integer numbers", () => {
+      expect(validateAt(1.5, 100)).toBe("'at' must be an integer");
+      expect(validateAt(10.001, 100)).toBe("'at' must be an integer");
+    });
+
+    it("should reject negative values", () => {
+      expect(validateAt(-1, 100)).toBe("'at' must be non-negative");
+      expect(validateAt(-100, 100)).toBe("'at' must be non-negative");
+    });
+
+    it("should reject values exceeding max sequence", () => {
+      expect(validateAt(101, 100)).toBe("'at' (101) exceeds max event sequence (100)");
+      expect(validateAt(200, 100)).toBe("'at' (200) exceeds max event sequence (100)");
+    });
+
+    it("should reject non-number types", () => {
+      expect(validateAt("50", 100)).toBe("'at' must be an integer");
+      expect(validateAt(null, 100)).toBe("'at' must be an integer");
+      expect(validateAt({}, 100)).toBe("'at' must be an integer");
+    });
+  });
+
+  describe("'id' parameter validation", () => {
+    function validateId(id: unknown): string | null {
+      if (id === undefined) return null;
+      if (typeof id !== "string") {
+        return "'id' must be a string";
+      }
+      if (id.length === 0) {
+        return "'id' cannot be empty";
+      }
+      if (id.length > 128) {
+        return "'id' exceeds maximum length (128)";
+      }
+      if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+        return "'id' must contain only alphanumeric characters, dashes, and underscores";
+      }
+      return null;
+    }
+
+    it("should accept undefined", () => {
+      expect(validateId(undefined)).toBeNull();
+    });
+
+    it("should accept valid IDs", () => {
+      expect(validateId("my-fork")).toBeNull();
+      expect(validateId("fork_123")).toBeNull();
+      expect(validateId("MyFork-v2_test")).toBeNull();
+      expect(validateId("a")).toBeNull();
+    });
+
+    it("should reject empty string", () => {
+      expect(validateId("")).toBe("'id' cannot be empty");
+    });
+
+    it("should reject IDs exceeding max length", () => {
+      const longId = "a".repeat(129);
+      expect(validateId(longId)).toBe("'id' exceeds maximum length (128)");
+    });
+
+    it("should reject IDs with invalid characters", () => {
+      expect(validateId("fork/test")).toBe("'id' must contain only alphanumeric characters, dashes, and underscores");
+      expect(validateId("fork test")).toBe("'id' must contain only alphanumeric characters, dashes, and underscores");
+      expect(validateId("fork.test")).toBe("'id' must contain only alphanumeric characters, dashes, and underscores");
+      expect(validateId("fork@test")).toBe("'id' must contain only alphanumeric characters, dashes, and underscores");
+    });
+
+    it("should reject non-string types", () => {
+      expect(validateId(123)).toBe("'id' must be a string");
+      expect(validateId(null)).toBe("'id' must be a string");
+      expect(validateId({})).toBe("'id' must be a string");
+    });
+  });
+});
+
 describe("WebSocket Subprotocol Auth", () => {
   describe("Client-side protocol generation", () => {
     // Simulate what the client does

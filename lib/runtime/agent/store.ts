@@ -3,6 +3,17 @@ import type { ChatMessage } from "../types";
 import type { AgentEvent } from "../events";
 import type { AgentProjection, ProjectionSnapshot } from "./projections";
 
+/** Row type for messages table */
+type MessageRow = {
+  seq: number;
+  role: string;
+  content: string | null;
+  tool_calls: string | null;
+  tool_call_id: string | null;
+  reasoning_content: string | null;
+  created_at: number;
+};
+
 export type ContextCheckpoint = {
   id: number;
   summary: string;
@@ -158,17 +169,28 @@ export class Store {
     return out;
   }
 
-  private _mapRows(cursor: Iterable<any>): ChatMessage[] {
+  private _mapRows(cursor: Iterable<Record<string, unknown>>): ChatMessage[] {
     const out: ChatMessage[] = [];
     for (const r of cursor) {
-       out.push({
-         role: r.role,
-         content: r.content ? JSON.parse(r.content as string) : null,
-         toolCalls: r.tool_calls ? JSON.parse(r.tool_calls as string) : undefined,
-         toolCallId: r.tool_call_id || undefined,
-         reasoning: r.reasoning_content || undefined,
-         ts: r.created_at ? new Date(r.created_at as number).toISOString() : undefined,
-       });
+      const row = r as MessageRow;
+      // Build message object - use Record to avoid strict union type issues
+      const msg: Record<string, unknown> = {
+        role: row.role,
+        content: row.content ? JSON.parse(row.content) : null,
+      };
+      if (row.tool_calls) {
+        msg.toolCalls = JSON.parse(row.tool_calls);
+      }
+      if (row.tool_call_id) {
+        msg.toolCallId = row.tool_call_id;
+      }
+      if (row.reasoning_content) {
+        msg.reasoning = row.reasoning_content;
+      }
+      if (row.created_at) {
+        msg.ts = new Date(row.created_at).toISOString();
+      }
+      out.push(msg as ChatMessage);
     }
     return out;
   }
