@@ -1,59 +1,17 @@
 import type { SqlStorage } from "@cloudflare/workers-types";
-import type { ChatMessage } from "../types";
 import type { AgentEvent } from "../events";
 import type { AgentProjection, ProjectionSnapshot } from "./projections";
-
-/** Row type for messages table */
-type MessageRow = {
-  seq: number;
-  role: string;
-  content: string | null;
-  tool_calls: string | null;
-  tool_call_id: string | null;
-  reasoning_content: string | null;
-  created_at: number;
-};
-
-export type ContextCheckpoint = {
-  id: number;
-  summary: string;
-  messagesStartSeq: number;
-  messagesEndSeq: number;
-  archivedPath?: string;
-  createdAt: number;
-};
 
 export class Store {
   constructor(private sql: SqlStorage) {}
 
   init() {
     this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS messages (
-        seq INTEGER PRIMARY KEY AUTOINCREMENT,
-        role TEXT NOT NULL,
-        content JSON,            -- Strictly stores JSON-serialized content ("text" or [{"type":...}])
-        tool_calls JSON,         -- JSON Array of tool calls
-        tool_call_id TEXT,       -- ID being responded to
-        reasoning_content TEXT,  -- DeepSeek thinking blocks
-        created_at INTEGER NOT NULL
-      );
-      
-      CREATE INDEX IF NOT EXISTS idx_messages_role ON messages(role);
-
       CREATE TABLE IF NOT EXISTS events (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT NOT NULL,
         data JSON NOT NULL,
         ts TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS context_checkpoints (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        summary TEXT NOT NULL,
-        messages_start_seq INTEGER NOT NULL,
-        messages_end_seq INTEGER NOT NULL,
-        archived_path TEXT,
-        created_at INTEGER NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS projection_snapshots (
@@ -68,79 +26,14 @@ export class Store {
     `);
   }
 
-  add(input: ChatMessage | ChatMessage[]): void {
-    const msgs = Array.isArray(input) ? input : [input];
-    if (!msgs.length) return;
+  // ==========================================================================
+  // Events (source of truth)
+  // ==========================================================================
 
-    const now = Date.now();
-    const PARAMS_PER_ROW = 6;
-    const MAX_PARAMS = 100;
-    const CHUNK_SIZE = Math.floor(MAX_PARAMS / PARAMS_PER_ROW);
-
-    const toJSON = (v: unknown) =>
-      v === undefined || v === null ? null : JSON.stringify(v);
-
-    for (let i = 0; i < msgs.length; i += CHUNK_SIZE) {
-      const chunk = msgs.slice(i, i + CHUNK_SIZE);
-      const placeholders: string[] = [];
-      const bindings: unknown[] = [];
-
-      for (const m of chunk) {
-        placeholders.push(`(?, ?, ?, ?, ?, ?)`);
-        bindings.push(m.role);
-        bindings.push(toJSON("content" in m ? m.content : undefined));
-        bindings.push(toJSON("toolCalls" in m ? m.toolCalls : undefined));
-        bindings.push("toolCallId" in m ? m.toolCallId : null);
-        bindings.push("reasoning" in m ? m.reasoning : null);
-        bindings.push(now);
-      }
-
-      const query = `
-        INSERT INTO messages (
-          role, content, tool_calls, tool_call_id, reasoning_content, created_at
-        ) VALUES ${placeholders.join(", ")}
-      `;
-
-      this.sql.exec(query, ...bindings);
-    }
-  }
-
-  getContext(limit = 100): ChatMessage[] {
-    const cursor = this.sql.exec(`
-      SELECT * FROM (
-        SELECT seq, role, content, tool_calls, tool_call_id, reasoning_content, created_at
-        FROM messages 
-        ORDER BY seq DESC 
-        LIMIT ?
-      ) ORDER BY seq ASC
-    `, limit);
-
-    return this._mapRows(cursor);
-  }
-
-  lastAssistant(): ChatMessage | null {
-    const cursor = this.sql.exec(`
-      SELECT role, content, tool_calls, tool_call_id, reasoning_content, created_at
-      FROM messages 
-      WHERE role = 'assistant'
-      ORDER BY seq DESC
-      LIMIT 1
-    `);
-
-    const row = cursor.toArray()[0];
-    if (!row) return null;
-
-    return {
-      role: "assistant",
-      content: row.content ? JSON.parse(row.content as string) : null,
-      toolCalls: row.tool_calls
-        ? JSON.parse(row.tool_calls as string)
-        : undefined,
-      reasoning: row.reasoning_content as string | undefined,
-      ts: row.created_at ? new Date(row.created_at as number).toISOString() : undefined,
-    };
-  }
-
+  /**
+   * Add a single event.
+   * Returns the assigned sequence number.
+   */
   addEvent(e: AgentEvent): number {
     this.sql.exec(
       "INSERT INTO events (type, data, ts) VALUES (?, ?, ?)",
@@ -153,6 +46,42 @@ export class Store {
     return result ? (result.id as number) : 0;
   }
 
+  /**
+   * Add multiple events in a batch.
+   * Events are assigned new sequence numbers (original seq is ignored).
+   */
+  addEvents(events: AgentEvent[]): number {
+    if (!events.length) return 0;
+
+    const PARAMS_PER_ROW = 3;
+    const MAX_PARAMS = 100;
+    const CHUNK_SIZE = Math.floor(MAX_PARAMS / PARAMS_PER_ROW);
+
+    let totalInserted = 0;
+
+    for (let i = 0; i < events.length; i += CHUNK_SIZE) {
+      const chunk = events.slice(i, i + CHUNK_SIZE);
+      const placeholders: string[] = [];
+      const bindings: unknown[] = [];
+
+      for (const e of chunk) {
+        placeholders.push(`(?, ?, ?)`);
+        bindings.push(e.type);
+        bindings.push(JSON.stringify(e.data));
+        bindings.push(e.ts);
+      }
+
+      const query = `INSERT INTO events (type, data, ts) VALUES ${placeholders.join(", ")}`;
+      this.sql.exec(query, ...bindings);
+      totalInserted += chunk.length;
+    }
+
+    return totalInserted;
+  }
+
+  /**
+   * List all events in sequence order.
+   */
   listEvents(): AgentEvent[] {
     const cursor = this.sql.exec(
       `SELECT seq, type, data, ts FROM events ORDER BY seq ASC`
@@ -169,121 +98,45 @@ export class Store {
     return out;
   }
 
-  private _mapRows(cursor: Iterable<Record<string, unknown>>): ChatMessage[] {
-    const out: ChatMessage[] = [];
+  /**
+   * Get events after a specific sequence number.
+   * Used with snapshots to replay only recent events.
+   */
+  getEventsAfter(afterSeq: number): AgentEvent[] {
+    const cursor = this.sql.exec(
+      `SELECT seq, type, data, ts FROM events WHERE seq > ? ORDER BY seq ASC`,
+      afterSeq
+    );
+    const out: AgentEvent[] = [];
     for (const r of cursor) {
-      const row = r as MessageRow;
-      // Build message object - use Record to avoid strict union type issues
-      const msg: Record<string, unknown> = {
-        role: row.role,
-        content: row.content ? JSON.parse(row.content) : null,
-      };
-      if (row.tool_calls) {
-        msg.toolCalls = JSON.parse(row.tool_calls);
-      }
-      if (row.tool_call_id) {
-        msg.toolCallId = row.tool_call_id;
-      }
-      if (row.reasoning_content) {
-        msg.reasoning = row.reasoning_content;
-      }
-      if (row.created_at) {
-        msg.ts = new Date(row.created_at).toISOString();
-      }
-      out.push(msg as ChatMessage);
+      out.push({
+        seq: r.seq as number,
+        type: r.type as string,
+        ts: r.ts as string,
+        data: r.data ? JSON.parse(r.data as string) : {},
+      });
     }
     return out;
   }
 
-  getMessageCount(): number {
-    const result = this.sql.exec("SELECT COUNT(*) as count FROM messages").toArray()[0];
-    return result ? (result.count as number) : 0;
-  }
-
-  getMessagesAfter(afterSeq: number, limit = 1000): ChatMessage[] {
-    const cursor = this.sql.exec(
-      `SELECT seq, role, content, tool_calls, tool_call_id, reasoning_content, created_at
-       FROM messages 
-       WHERE seq > ?
-       ORDER BY seq ASC
-       LIMIT ?`,
-      afterSeq,
-      limit
-    );
-    return this._mapRows(cursor);
-  }
-
-  getMessagesInRange(startSeq: number, endSeq: number): ChatMessage[] {
-    const cursor = this.sql.exec(
-      `SELECT seq, role, content, tool_calls, tool_call_id, reasoning_content, created_at
-       FROM messages 
-       WHERE seq >= ? AND seq <= ?
-       ORDER BY seq ASC`,
-      startSeq,
-      endSeq
-    );
-    return this._mapRows(cursor);
-  }
-
-  getLatestCheckpoint(): ContextCheckpoint | null {
-    const result = this.sql.exec(
-      `SELECT id, summary, messages_start_seq, messages_end_seq, archived_path, created_at
-       FROM context_checkpoints
-       ORDER BY id DESC
-       LIMIT 1`
-    ).toArray()[0];
-
-    if (!result) return null;
-
-    return {
-      id: result.id as number,
-      summary: result.summary as string,
-      messagesStartSeq: result.messages_start_seq as number,
-      messagesEndSeq: result.messages_end_seq as number,
-      archivedPath: result.archived_path as string | undefined,
-      createdAt: result.created_at as number,
-    };
-  }
-
-  addCheckpoint(
-    summary: string,
-    messagesStartSeq: number,
-    messagesEndSeq: number,
-    archivedPath?: string
-  ): number {
-    this.sql.exec(
-      `INSERT INTO context_checkpoints 
-       (summary, messages_start_seq, messages_end_seq, archived_path, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      summary,
-      messagesStartSeq,
-      messagesEndSeq,
-      archivedPath ?? null,
-      Date.now()
-    );
-
-    const result = this.sql.exec("SELECT last_insert_rowid() as id").toArray()[0];
-    return result ? (result.id as number) : 0;
-  }
-
-  deleteMessagesBefore(beforeSeq: number): number {
-    this.sql.exec("DELETE FROM messages WHERE seq <= ?", beforeSeq);
-    const result = this.sql.exec("SELECT changes() as deleted").toArray()[0];
-    return result ? (result.deleted as number) : 0;
-  }
-
-  getMaxMessageSeq(): number {
-    const result = this.sql.exec("SELECT MAX(seq) as max_seq FROM messages").toArray()[0];
+  /**
+   * Get the maximum event sequence number.
+   */
+  getMaxEventSeq(): number {
+    const result = this.sql.exec("SELECT MAX(seq) as max_seq FROM events").toArray()[0];
     return result?.max_seq ? (result.max_seq as number) : 0;
   }
 
-  getCheckpointCount(): number {
-    const result = this.sql.exec("SELECT COUNT(*) as count FROM context_checkpoints").toArray()[0];
+  /**
+   * Get the total number of events.
+   */
+  getEventCount(): number {
+    const result = this.sql.exec("SELECT COUNT(*) as count FROM events").toArray()[0];
     return result ? (result.count as number) : 0;
   }
 
   // ==========================================================================
-  // Projection Snapshots (for event sourcing)
+  // Projection Snapshots (for efficient event replay)
   // ==========================================================================
 
   /**
@@ -347,44 +200,6 @@ export class Store {
   }
 
   /**
-   * Get events after a specific sequence number.
-   * Used with snapshots to replay only recent events.
-   */
-  getEventsAfter(afterSeq: number): AgentEvent[] {
-    const cursor = this.sql.exec(
-      `SELECT seq, type, data, ts FROM events WHERE seq > ? ORDER BY seq ASC`,
-      afterSeq
-    );
-    const out: AgentEvent[] = [];
-    for (const r of cursor) {
-      out.push({
-        seq: r.seq as number,
-        type: r.type as string,
-        ts: r.ts as string,
-        data: r.data ? JSON.parse(r.data as string) : {},
-      });
-    }
-    return out;
-  }
-
-  /**
-   * Get the maximum event sequence number.
-   */
-  getMaxEventSeq(): number {
-    const result = this.sql.exec("SELECT MAX(seq) as max_seq FROM events").toArray()[0];
-    return result?.max_seq ? (result.max_seq as number) : 0;
-  }
-
-  /**
-   * Get the total number of events.
-   * More efficient than listEvents().length.
-   */
-  getEventCount(): number {
-    const result = this.sql.exec("SELECT COUNT(*) as count FROM events").toArray()[0];
-    return result ? (result.count as number) : 0;
-  }
-
-  /**
    * Get the number of events since the last snapshot.
    */
   getEventsSinceLastSnapshot(): number {
@@ -409,38 +224,5 @@ export class Store {
     );
     const result = this.sql.exec("SELECT changes() as deleted").toArray()[0];
     return result ? (result.deleted as number) : 0;
-  }
-
-  /**
-   * Add multiple events in a batch.
-   * Events are assigned new sequence numbers (original seq is ignored).
-   */
-  addEvents(events: AgentEvent[]): number {
-    if (!events.length) return 0;
-
-    const PARAMS_PER_ROW = 3;
-    const MAX_PARAMS = 100;
-    const CHUNK_SIZE = Math.floor(MAX_PARAMS / PARAMS_PER_ROW);
-
-    let totalInserted = 0;
-
-    for (let i = 0; i < events.length; i += CHUNK_SIZE) {
-      const chunk = events.slice(i, i + CHUNK_SIZE);
-      const placeholders: string[] = [];
-      const bindings: unknown[] = [];
-
-      for (const e of chunk) {
-        placeholders.push(`(?, ?, ?)`);
-        bindings.push(e.type);
-        bindings.push(JSON.stringify(e.data));
-        bindings.push(e.ts);
-      }
-
-      const query = `INSERT INTO events (type, data, ts) VALUES ${placeholders.join(", ")}`;
-      this.sql.exec(query, ...bindings);
-      totalInserted += chunk.length;
-    }
-
-    return totalInserted;
   }
 }
